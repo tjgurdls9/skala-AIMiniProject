@@ -82,12 +82,18 @@ async function startReplay(rec: ReplayRecording, e: MouseEvent): Promise<void> {
   submitError.value = null
   try {
     const snapshot = await props.api.createRun(rec.project_id, { mode: 'replay', source_run_id: rec.source_run_id })
+    moreOpen.value = false // 최상위 층 dialog가 전환 위에 남지 않게
     emit('openRun', snapshot.run_id, { x: e.clientX, y: e.clientY })
   } catch (error) {
     submitError.value = error instanceof ApiError ? error : new ApiError(0, 'NETWORK', '재생을 만들지 못했습니다.')
   } finally {
     submitting.value = false
   }
+}
+
+function openExample(id: string, e: MouseEvent): void {
+  moreOpen.value = false // 최상위 층 dialog가 전환 위에 남지 않게
+  emit('openExample', id, { x: e.clientX, y: e.clientY })
 }
 
 /** Enter로 보내고 Shift+Enter는 줄바꿈. 한글 조합 중 Enter는 무시한다 */
@@ -125,7 +131,7 @@ onMounted(async () => {
           v-model="request"
           rows="1"
           maxlength="32000"
-          placeholder="예: 고객 문의를 분류하고 처리 상태를 관리하는 작은 대시보드"
+          placeholder="예: 고객 문의 분류 대시보드"
           aria-describedby="prompt-hint"
           @keydown="onKeydown"
           @input="autoGrow"
@@ -174,7 +180,7 @@ onMounted(async () => {
         <h3 id="ex-title">합성 예시 <span class="chip example">실제 실행 아님</span></h3>
         <ul class="plain list grid">
           <li v-for="s in SCENARIOS" :key="s.id">
-            <button type="button" class="btn item" @click="emit('openExample', s.id, { x: $event.clientX, y: $event.clientY })">
+            <button type="button" class="btn item" @click="openExample(s.id, $event)">
               <span><strong>[예시] {{ s.label }}</strong><br /><span class="small muted">{{ s.description }}</span></span>
             </button>
           </li>
@@ -190,37 +196,37 @@ onMounted(async () => {
 <style scoped>
 .start { min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; position: relative; }
 .corner { position: absolute; top: 16px; right: 16px; }
-.center { width: min(760px, 100%); display: grid; gap: 18px; justify-items: center; text-align: center; }
+.center { width: min(720px, 100%); display: grid; gap: 16px; justify-items: center; text-align: center; }
 .headline {
-  font-size: clamp(2.5rem, 1.2rem + 6vw, 5.5rem);
+  font-size: clamp(2.4rem, 1.2rem + 6vw, 5.5rem);
   font-weight: 900;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.045em;
   line-height: 1.02;
 }
 .prompt {
   width: 100%;
   display: flex; align-items: flex-end; gap: 8px;
-  padding: 10px 10px 10px 20px;
-  border: 2px solid var(--ink); border-radius: 22px;
+  padding: 8px 8px 8px 18px;
+  border: 2px solid var(--ink); border-radius: 18px;
   background: var(--surface);
-  box-shadow: 0 10px 30px rgb(0 0 0 / 0.08);
 }
-.prompt:focus-within { box-shadow: 0 0 0 4px color-mix(in srgb, var(--focus) 35%, transparent), 0 10px 30px rgb(0 0 0 / 0.08); }
+.prompt:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
 .prompt textarea {
-  flex: 1; min-height: 44px; max-height: 220px; padding: 10px 0; border: 0; background: none; resize: none;
-  font-size: 1.15rem; line-height: 1.5;
+  flex: 1; min-width: 0; min-height: 44px; max-height: 220px; padding: 10px 0; border: 0; background: none; resize: none;
+  font-size: 1.1rem; line-height: 1.5;
 }
+.prompt textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .prompt textarea:focus { outline: none; }
 .send {
-  width: 48px; height: 48px; flex: none; border-radius: 16px; border: 0;
-  background: var(--ink); color: var(--bg); font-size: 1.4rem; font-weight: 800; cursor: pointer;
+  width: 48px; height: 48px; flex: none; border-radius: 12px; border: 0;
+  background: var(--ink); color: var(--bg); font-size: 1.3rem; font-weight: 800; cursor: pointer;
 }
-.send:disabled { opacity: 0.35; cursor: not-allowed; }
-.hint { color: var(--ink-3); font-size: 0.9rem; max-width: 640px; }
-.hint.warn { color: var(--tone-warn); font-weight: 600; }
+.send:disabled { opacity: 0.3; cursor: not-allowed; }
+.hint { color: var(--ink-3); font-size: 0.875rem; max-width: 600px; }
+.hint.warn { color: var(--tone-warn); }
 .more {
   min-height: var(--tap); padding: 0 12px; border: 0; background: none; color: var(--ink-2);
-  text-decoration: underline; text-underline-offset: 4px; cursor: pointer; font-size: 0.9rem;
+  text-decoration: underline; text-underline-offset: 4px; cursor: pointer; font-size: 0.875rem;
 }
 h3 { font-size: 0.95rem; display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .list { display: grid; gap: 6px; }
@@ -228,4 +234,7 @@ h3 { font-size: 0.95rem; display: flex; align-items: center; gap: 8px; margin-bo
 .item { width: 100%; height: auto; padding: 10px 12px; text-align: left; white-space: normal; justify-content: flex-start; }
 .reasons { margin: 8px 0 0; padding-left: 1.2em; color: var(--ink-2); }
 .chip.example { color: var(--example); background: var(--example-bg); border-color: currentColor; }
+@media (max-width: 480px) {
+  .hint { font-size: 0.8rem; }
+}
 </style>

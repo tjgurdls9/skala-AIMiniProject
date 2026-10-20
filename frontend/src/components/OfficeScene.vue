@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { RunEvent, Task } from '../api/types'
-import { drawScene, packetFor, PACKET_MS, readPalette, type Packet } from '../office/draw'
+import { drawScene, INTRO_MS, packetFor, PACKET_MS, readPalette, type Packet } from '../office/draw'
 import { computeLayout, hitSeat, type OfficeLayout } from '../office/layout'
 
 /**
@@ -27,6 +27,10 @@ const packets = ref<Packet[]>([])
 const prefersReduced = ref(false)
 const hidden = ref(false)
 
+/** 첫 진입에 방마다 불이 켜지는 장식 인트로. 모션이 꺼져 있으면 바로 켜진 상태 */
+let introStart = 0
+const introProgress = (now: number) => (animate.value && introStart ? Math.min(1, (now - introStart) / INTRO_MS) : 1)
+
 const tasksById = computed(() => new Map(props.tasks.map((t) => [t.id, t])))
 const layout = computed<OfficeLayout>(() => computeLayout(size.value.w, size.value.h, props.tasks))
 const animate = computed(() => props.motion && !prefersReduced.value && !hidden.value)
@@ -41,7 +45,7 @@ function paint(now = performance.now()): void {
   if (!ctx) return
   const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR)
   const frame = animate.value ? Math.floor(now / TYPING_FRAME_MS) : 0
-  drawScene(ctx, { layout: layout.value, tasks: tasksById.value, selectedTaskId: props.selectedTaskId, packets: packets.value, frame, now }, readPalette(el), dpr)
+  drawScene(ctx, { layout: layout.value, tasks: tasksById.value, selectedTaskId: props.selectedTaskId, packets: packets.value, frame, now, intro: introProgress(now) }, readPalette(el), dpr)
 }
 
 /** 실행 중 작업이 있으면 낮은 빈도로, 패킷이 있으면 rAF로 그린다. 그 외에는 변경 시에만 그린다. */
@@ -57,7 +61,7 @@ function schedule(): void {
   const now = performance.now()
   packets.value = packets.value.filter((p) => now - p.startedAt < PACKET_MS)
   paint(now)
-  if (packets.value.length > 0) raf = requestAnimationFrame(schedule)
+  if (packets.value.length > 0 || introProgress(now) < 1) raf = requestAnimationFrame(schedule)
   else if (props.tasks.some((t) => t.state === 'running')) timer = setTimeout(schedule, TYPING_FRAME_MS)
 }
 
@@ -104,6 +108,7 @@ onMounted(() => {
   ro = new ResizeObserver(resize)
   if (wrap.value) ro.observe(wrap.value)
   resize()
+  introStart = performance.now()
   schedule()
   unsubscribe = props.subscribe((event) => {
     if (!animate.value) return

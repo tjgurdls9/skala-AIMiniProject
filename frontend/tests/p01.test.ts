@@ -65,9 +65,10 @@ describe('CR-C09 AC 판정 소비', () => {
 
   test('판정 없는 AC는 충족으로 추정하지 않고 판정 없음으로 센다', () => {
     const index = acIndex({ spec_version_id: 's', items: [{ id: 'A', status: 'met', report_id: 'rp' }, { id: 'B', status: 'failed' }] })
-    expect(acView(index, 'A')).toEqual({ state: 'met', reportId: 'rp' })
-    expect(acView(index, 'Z')).toEqual({ state: 'unknown' })
-    expect(tallyAc(index, ['A', 'B', 'Z'])).toEqual({ met: 1, unmet: 0, failed: 1, not_run: 0, unknown: 1 })
+    const reports = new Set(['rp'])
+    expect(acView(index, 'A', reports)).toEqual({ state: 'met', reportId: 'rp' })
+    expect(acView(index, 'Z', reports)).toEqual({ state: 'unknown' })
+    expect(tallyAc(index, ['A', 'B', 'Z'], reports)).toEqual({ met: 1, unmet: 0, failed: 1, not_run: 0, unknown: 1, stale: 0 })
     expect(acIndex(null).size).toBe(0)
   })
 

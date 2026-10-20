@@ -27,8 +27,9 @@ const ACTION_TEXT: Record<AlertAction['kind'], string> = { plan: '기획 검토'
 .alerts { padding: 8px 16px 0; }
 .alert {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding: 6px 10px; margin-bottom: 6px; border: 1px solid currentColor; border-left-width: 4px;
-  border-radius: var(--radius); background: var(--surface); font-weight: 600;
+  padding: 10px 12px; margin-bottom: 8px;
+  border: 1px solid var(--line); border-left: 4px solid currentColor;
+  border-radius: 10px; font-weight: 600; background: var(--surface);
 }
 .alert .text { flex: 1 1 260px; color: var(--ink); font-weight: 500; }
 .glyph { font-weight: 700; }

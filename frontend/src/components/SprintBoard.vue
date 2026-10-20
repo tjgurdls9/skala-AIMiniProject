@@ -25,7 +25,8 @@ const path = computed(() =>
 )
 const selected = computed(() => props.snapshot.sprints.find((s) => s.id === props.sprintId) ?? null)
 const tally = computed(() => (selected.value ? tallySprint(props.snapshot, selected.value) : null))
-const acTally = computed(() => (selected.value ? tallyAc(props.acIndex, selected.value.acceptance_ids) : null))
+const reportIds = computed(() => new Set(props.snapshot.reports.map((r) => r.id)))
+const acTally = computed(() => (selected.value ? tallyAc(props.acIndex, selected.value.acceptance_ids, reportIds.value) : null))
 </script>
 
 <template>
@@ -76,7 +77,7 @@ const acTally = computed(() => (selected.value ? tallyAc(props.acIndex, selected
             {{ tally.acceptanceCount }}개 중
             <span class="tone-ok">{{ AC_STATE.met.glyph }} 충족 {{ acTally.met }}</span>
             · <span :class="acTally.failed ? 'tone-danger' : ''">{{ AC_STATE.failed.glyph }} 실패 {{ acTally.failed }}</span>
-            · 미충족 {{ acTally.unmet }}<template v-if="acTally.not_run"> · 미실행 {{ acTally.not_run }}</template><template v-if="acTally.unknown"> · 판정 없음 {{ acTally.unknown }}</template>
+            · 미충족 {{ acTally.unmet }}<template v-if="acTally.not_run"> · 미실행 {{ acTally.not_run }}</template><template v-if="acTally.unknown"> · 판정 없음 {{ acTally.unknown }}</template><template v-if="acTally.stale"> · <span class="tone-warn">근거 없음 {{ acTally.stale }}</span></template>
           </span>
           <span class="small muted">· 서버 판정{{ isReplay ? '(기록 당시 동결)' : '' }}, 작업 완료 수와 별개</span>
           <p v-if="acNotice" class="small tone-warn">{{ acNotice }}</p>
@@ -90,16 +91,17 @@ const acTally = computed(() => (selected.value ? tallyAc(props.acIndex, selected
 
 <style scoped>
 .board { display: grid; gap: 14px; }
-.path { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
-.phase { display: grid; gap: 4px; flex: 1 0 auto; }
+.path { display: flex; flex-wrap: wrap; gap: 12px 16px; }
+.phase { display: grid; gap: 6px; align-content: start; }
 .phase-name { color: var(--ink-3); font-weight: 600; }
 .sprints { display: flex; gap: 6px; }
+.sprints { flex-wrap: wrap; }
 .cell {
-  min-width: 92px; min-height: var(--tap); display: grid; gap: 4px; padding: 6px 8px; text-align: left;
-  border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); cursor: pointer;
+  min-width: 96px; min-height: var(--tap); display: grid; gap: 6px; padding: 8px 10px; text-align: left;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface); cursor: pointer;
 }
 .cell:hover { background: var(--surface-2); }
-.cell[aria-pressed="true"] { border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
+.cell[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
 .cell.current .cell-title::after { content: " ●"; color: var(--tone-active); }
 .cell-title { font-size: 0.85rem; font-weight: 600; }
 .bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--surface-2); }
@@ -108,6 +110,6 @@ const acTally = computed(() => (selected.value ? tallyAc(props.acIndex, selected
 .seg.danger { background: var(--tone-danger); }
 .seg.rest { background: var(--line); }
 .goal { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 12px 20px; }
-.goal-title { font-size: 1.05rem; margin: 2px 0 4px; }
+.goal-title { font-size: 1.25rem; font-weight: 800; letter-spacing: -0.02em; margin: 2px 0 6px; }
 @media (max-width: 900px) { .goal { grid-template-columns: 1fr; } }
 </style>

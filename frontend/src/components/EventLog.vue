@@ -78,9 +78,11 @@ function toggle(kind: WorkKind): void {
 .interests .btn[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
 .only { display: inline-flex; gap: 6px; align-items: center; min-height: var(--tap); }
 .entries { max-height: 320px; overflow: auto; }
-.entry { display: grid; grid-template-columns: 76px 140px 1fr; gap: 4px 10px; padding: 6px 4px; border-bottom: 1px solid var(--line); }
-.entry.critical { border-left: 3px solid var(--tone-warn); padding-left: 8px; }
+.entry { display: grid; grid-template-columns: 70px 132px 1fr; gap: 4px 10px; padding: 8px 4px; border-bottom: 1px solid var(--line); }
+.entry.critical { box-shadow: inset 3px 0 0 var(--tone-warn); padding-left: 10px; }
 .entry.related { background: var(--surface-2); }
+.time { font-family: var(--mono); font-size: 0.78rem; padding-top: 2px; }
+.type { font-weight: 700; }
 .task-link { margin-left: 6px; border: 0; background: none; color: var(--focus); text-decoration: underline; cursor: pointer; min-height: 32px; }
 .more { justify-self: start; }
 @media (max-width: 760px) { .entry { grid-template-columns: 1fr; } }

@@ -44,14 +44,14 @@ const notices = computed(() => {
   const list: string[] = []
   if (run.loadError.value) list.push(`스냅샷을 읽지 못했습니다: ${run.loadError.value.message} (실행 상태가 바뀐 것은 아닙니다)`)
   if (run.notice.value) list.push(run.notice.value)
-  if (props.source.kind === 'example') list.push('합성 예시입니다. 명령을 보내지 않으며 외부 승인·배포가 실행되지 않습니다.')
   if (headerError.value) list.push(`${headerError.value.message}`)
   return list
 })
 const acIndex = computed(() => indexAcceptance(run.acceptance.value))
 const acNotice = computed(() => {
+  if (run.acceptanceError.value) return `AC 판정을 읽지 못했습니다: ${run.acceptanceError.value.message} (이전 판정은 쓰지 않음)`
   if (run.acceptanceMismatch.value) return '판정의 명세 버전이 현재와 달라 표시하지 않습니다. 최신 판정을 다시 읽는 중입니다.'
-  if (run.acceptanceError.value) return `AC 판정을 읽지 못했습니다: ${run.acceptanceError.value.message} (충족으로 추정하지 않음)`
+  if (run.acceptancePending.value) return '현재 상태의 판정을 갱신하는 중입니다. 그동안 이전 판정은 표시하지 않습니다.'
   return null
 })
 const planApproval = computed(() => (snapshot.value ? pendingApproval(snapshot.value, 'plan') : null))
@@ -221,6 +221,7 @@ onBeforeUnmount(() => {
             :task-id="view.taskId"
             :artifact-id="view.artifactId"
             :ac-index="acIndex"
+            :ac-notice="acNotice"
             @task="selectTask"
             @artifact="selectArtifact"
           />
@@ -321,7 +322,6 @@ onBeforeUnmount(() => {
   margin-right: calc((var(--side-w) + 16px + var(--gap-p)) * (var(--p) - 1));
   border-radius: calc(14px * var(--p));
   overflow: hidden;
-  box-shadow: 0 calc(12px * var(--p)) calc(32px * var(--p)) rgb(0 0 0 / calc(0.18 * var(--p)));
 }
 
 .side-cell {
@@ -367,26 +367,27 @@ onBeforeUnmount(() => {
   display: inline-flex; flex-direction: column; gap: 2px;
   max-width: min(520px, 100%);
   padding: 8px 12px; border-radius: 10px;
-  background: var(--px-label-bg); color: var(--px-label-ink);
-  border: 1px solid rgb(0 0 0 / 0.08);
-  backdrop-filter: blur(6px);
-  font-size: 0.9rem; text-align: left;
+  background: #14181d; color: #f2efe6;
+  border: 1px solid #2c333a;
+  font-size: 0.875rem; text-align: left;
 }
+.hud-chip.sprint strong { font-size: 0.95rem; }
 .hud-chip.sprint span { font-size: 0.85rem; opacity: 0.8; }
 .hud-alerts { display: grid; gap: 6px; justify-items: end; }
-.hud-chip.alert { flex-direction: row; gap: 6px; min-height: var(--tap); align-items: center; cursor: pointer; font-weight: 600; border-left: 4px solid currentColor; }
+.hud-chip.alert { flex-direction: row; gap: 8px; min-height: var(--tap); align-items: center; cursor: pointer; font-weight: 650; border-left: 4px solid currentColor; }
+.hud-chip.alert.tone-danger { color: #ffb4a8; }
+.hud-chip.alert.tone-warn { color: #ffd27a; }
+.hud-chip.alert.tone-wait { color: #c9c4ff; }
 .hud-chip.alert:hover { filter: brightness(1.05); }
 .hud-chip.more { font-size: 0.8rem; }
 
 .scroll-cue {
   position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%);
-  min-height: var(--tap); padding: 0 18px; border-radius: 999px; border: 0;
-  background: var(--px-label-bg); color: var(--px-label-ink); font-weight: 700; cursor: pointer;
+  min-height: var(--tap); padding: 0 18px; border-radius: 999px; border: 1px solid #2c333a;
+  background: #14181d; color: #f2efe6; font-weight: 700; cursor: pointer;
   opacity: calc(1 - var(--p) * 2);
   pointer-events: auto;
 }
-.scroll-cue span { display: inline-block; animation: nudge 1.6s ease-in-out infinite; }
-@keyframes nudge { 50% { transform: translateY(3px); } }
 
 @media (max-width: 1100px) {
   .office-page { --side-w: 320px; }

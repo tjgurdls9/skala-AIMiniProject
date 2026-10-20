@@ -18,7 +18,7 @@ const groups = computed(() =>
   <section class="roster panel" aria-labelledby="roster-title">
     <header>
       <h2 id="roster-title">사무실 좌석</h2>
-      <span class="small muted">장면과 같은 내용 · 움직임은 연출이며 진행·성공의 근거가 아님</span>
+      <span class="small muted">장면과 같은 내용</span>
     </header>
     <div class="zones">
       <div v-for="group in groups" :key="group.zone" class="zone">

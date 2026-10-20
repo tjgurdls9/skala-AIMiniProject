@@ -262,8 +262,14 @@ describe('App 라우팅', () => {
 describe('장면 그리기', () => {
   test('구역·좌석·패킷을 그리고 선택 좌석을 강조한다', () => {
     const calls: string[] = []
+    const PROPS = ['fillStyle', 'strokeStyle', 'font', 'lineWidth', 'textAlign', 'textBaseline', 'globalAlpha', 'globalCompositeOperation', 'imageSmoothingEnabled']
     const ctx = new Proxy({} as CanvasRenderingContext2D, {
-      get: (_t, key) => (typeof key === 'string' && !['fillStyle', 'strokeStyle', 'font', 'lineWidth', 'textAlign', 'textBaseline', 'globalAlpha'].includes(key) ? (...args: unknown[]) => calls.push(`${key}:${String(args[0] ?? '')}`) : undefined),
+      get: (_t, key) => {
+        if (typeof key !== 'string' || PROPS.includes(key)) return undefined
+        if (key === 'createRadialGradient') return () => ({ addColorStop: () => {} })
+        if (key === 'measureText') return (text: string) => ({ width: text.length * 7 })
+        return (...args: unknown[]) => calls.push(`${key}:${String(args[0] ?? '')}`)
+      },
       set: () => true,
     })
     const tasks = findScenario('building')!.snapshot.tasks.filter((t) => t.sprint_id === 'sp-2')
@@ -278,11 +284,27 @@ describe('장면 그리기', () => {
       now: 450,
     }, palette)
     expect(calls).toContain('fillText:명세 회의실')
-    expect(calls).toContain('fillText:구현 구역 · 4')
+    expect(calls).toContain('fillText:구현 구역  4')
     expect(calls).toContain('fillText:● 진행 중')
     expect(calls).toContain('fillText:⊘ 차단')
     expect(calls).toContain('fillText:!') // 차단 말풍선
     expect(calls).toContain('fillText:✓') // 완료 말풍선
     expect(calls.filter((c) => c.startsWith('stroke')).length).toBeGreaterThan(0) // 선택 테두리
+    expect(calls.some((c) => c.startsWith('fillRect'))).toBe(true)
+  })
+
+  test('첫 진입 인트로 초반에는 글자층을 그리지 않는다(불이 켜진 뒤 명판·이름표)', () => {
+    const calls: string[] = []
+    const ctx = new Proxy({} as CanvasRenderingContext2D, {
+      get: (_t, key) => {
+        if (key === 'createRadialGradient') return () => ({ addColorStop: () => {} })
+        if (key === 'measureText') return () => ({ width: 10 })
+        return typeof key === 'string' ? (...args: unknown[]) => calls.push(`${key}:${String(args[0] ?? '')}`) : undefined
+      },
+      set: () => true,
+    })
+    const tasks = findScenario('building')!.snapshot.tasks.filter((t) => t.sprint_id === 'sp-2')
+    drawScene(ctx, { layout: computeLayout(1600, 900, tasks), tasks: new Map(tasks.map((t) => [t.id, t])), selectedTaskId: null, packets: [], frame: 0, now: 0, intro: 0.2 }, readPalette(document.body))
+    expect(calls.some((c) => c.startsWith('fillText'))).toBe(false)
   })
 })

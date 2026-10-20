@@ -18,22 +18,23 @@ function cycle(): void {
 
 <template>
   <div class="theme-controls">
-    <span class="chip" title="시각화 테마">테마: 사무실</span>
-    <button type="button" class="btn small" :aria-label="`화면 밝기: ${LABEL[theme]}. 눌러서 바꾸기`" @click="cycle">
-      ◐ {{ LABEL[theme] }}
+    <button type="button" class="btn icon" :title="`화면 밝기: ${LABEL[theme]}`" :aria-label="`화면 밝기: ${LABEL[theme]}. 눌러서 바꾸기`" @click="cycle">
+      <span aria-hidden="true">{{ theme === 'dark' ? '☾' : theme === 'light' ? '☀' : '◐' }}</span>
     </button>
     <button
       type="button"
-      class="btn small"
+      class="btn icon"
+      :title="motion ? '장면 모션 켜짐' : '장면 모션 꺼짐'"
       :aria-pressed="!motion"
       aria-label="장면 모션 줄이기"
       @click="emit('update:motion', !motion)"
     >
-      {{ motion ? '모션 켜짐' : '모션 꺼짐' }}
+      <span aria-hidden="true">{{ motion ? '≋' : '—' }}</span>
     </button>
   </div>
 </template>
 
 <style scoped>
-.theme-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.theme-controls { display: flex; gap: 6px; align-items: center; }
+.icon { width: var(--tap); padding: 0; justify-content: center; font-size: 1.1rem; }
 </style>
