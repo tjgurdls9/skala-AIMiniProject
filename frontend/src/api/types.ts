@@ -17,6 +17,7 @@ export type {
   Task,
 } from '../generated/protocol'
 export type {
+  AcceptanceStatus,
   CommandReceipt,
   Environment,
   Error as ApiErrorBody,
@@ -33,3 +34,7 @@ export type {
 import type { Task } from '../generated/protocol'
 export type TaskState = Task['state']
 export type WorkKind = Task['work_kind']
+
+import type { AcceptanceStatus } from '../generated/http'
+export type AcceptanceItem = AcceptanceStatus['items'][number]
+export type AcceptanceState = AcceptanceItem['status']

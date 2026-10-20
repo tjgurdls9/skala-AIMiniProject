@@ -1,7 +1,7 @@
 import { computed, ref, shallowRef } from 'vue'
 import { ApiError } from '../api/errors'
 import type { RunSource } from '../api/source'
-import type { ChangePayload, Command, CommandReceipt, DecisionPayload, RunEvent, Snapshot } from '../api/types'
+import type { AcceptanceStatus, ChangePayload, Command, CommandReceipt, DecisionPayload, RunEvent, Snapshot } from '../api/types'
 import { classifyEvent, needsSnapshot } from '../model/eventStream'
 
 /** 실행 상태와 별개의 연결 상태. 연결 끊김을 실행 실패로 표시하지 않는다. */
@@ -32,6 +32,8 @@ export function useRun(source: RunSource) {
   const loadError = shallowRef<ApiError | null>(null)
   const notice = ref<string | null>(null)
   const pending = shallowRef<PendingCommand | null>(null)
+  const acceptance = shallowRef<AcceptanceStatus | null>(null)
+  const acceptanceError = shallowRef<ApiError | null>(null)
   /** 최초 연결 시점의 seq. 이보다 큰 사건만 장면에서 연출한다(기록 사건은 연출하지 않음) */
   const liveFromSeq = ref(Number.POSITIVE_INFINITY)
   const liveListeners = new Set<(event: RunEvent) => void>()
@@ -42,6 +44,7 @@ export function useRun(source: RunSource) {
   let refreshAgain = false
   let disposed = false
   let pendingTimer: ReturnType<typeof setTimeout> | null = null
+  let acceptanceToken = 0
 
   function clearPending(): void {
     if (pendingTimer) clearTimeout(pendingTimer)
@@ -54,6 +57,24 @@ export function useRun(source: RunSource) {
     if (current && next.state_version < current.state_version) return // 늦게 도착한 이전 버전은 무시
     // 버전 증가만으로는 내 명령의 반영인지 알 수 없다(다른 작업도 버전을 올린다). 확인 표시는 건드리지 않는다.
     snapshot.value = next
+    // 업무 상태나 명세가 바뀌었으면 AC 판정도 다시 읽는다
+    if (!current || current.state_version !== next.state_version || current.spec_version_id !== next.spec_version_id) {
+      void refreshAcceptance()
+    }
+  }
+
+  /** 가장 최근 요청의 응답만 반영한다(늦게 온 옛 응답이 새 화면에 섞이지 않게) */
+  async function refreshAcceptance(): Promise<void> {
+    const token = ++acceptanceToken
+    try {
+      const result = await source.getAcceptance()
+      if (token !== acceptanceToken || disposed) return
+      acceptance.value = result
+      acceptanceError.value = null
+    } catch (error) {
+      if (token !== acceptanceToken || disposed) return
+      acceptanceError.value = error instanceof ApiError ? error : new ApiError(0, 'NETWORK', 'AC 판정을 읽지 못했습니다.')
+    }
   }
 
   /** 동시에 여러 번 요청돼도 한 번에 하나만 읽고, 진행 중 요청이 있었으면 한 번 더 읽는다 */
@@ -212,6 +233,17 @@ export function useRun(source: RunSource) {
     liveFromSeq,
     /** 실제 기록 재생은 읽기 전용. 합성 예시는 조작 흐름을 보여주되 명령을 보내지 않는다(EXAMPLE_NOOP). */
     isReplay: computed(() => source.kind === 'live' && snapshot.value?.mode === 'replay'),
+    /** 현재 스냅샷의 명세와 같은 판정만 화면에 쓴다. 다르면 null(명세 전환 중) */
+    acceptance: computed(() => {
+      const a = acceptance.value
+      return a && snapshot.value && a.spec_version_id === snapshot.value.spec_version_id ? a : null
+    }),
+    acceptanceMismatch: computed(() => {
+      const a = acceptance.value
+      return !!a && !!snapshot.value && a.spec_version_id !== snapshot.value.spec_version_id
+    }),
+    acceptanceError,
+    refreshAcceptance,
     start,
     reconnect,
     refreshSnapshot,

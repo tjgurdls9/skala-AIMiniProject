@@ -171,7 +171,7 @@ describe('명령 ID', () => {
 })
 
 describe('프리뷰 격리', () => {
-  const at = (preview: unknown) => mount(PreviewFrame, { props: { preview } }).text()
+  const at = (preview: unknown) => mount(PreviewFrame, { props: { preview, recordReason: null } }).text()
   test('주소가 없거나 origin이 다르거나 같은 hostname이면 열지 않는다', () => {
     expect(at(null)).toContain('프리뷰 주소가 제공되지 않았습니다')
     expect(at({ url: 'https://a.example/x', origin: 'https://b.example', commit_sha: 'c' })).toContain('선언된 origin과 다릅니다')
@@ -179,7 +179,7 @@ describe('프리뷰 격리', () => {
     expect(at({ url: `http://${location.hostname}:9999/`, origin: `http://${location.hostname}:9999`, commit_sha: 'c' })).toContain('같은 hostname')
   })
   test('별도 origin이면 allow-same-origin 없는 sandbox iframe으로 연다', () => {
-    const w = mount(PreviewFrame, { props: { preview: { url: 'https://preview.example/app', origin: 'https://preview.example', commit_sha: 'cd'.repeat(20) } } })
+    const w = mount(PreviewFrame, { props: { preview: { url: 'https://preview.example/app', origin: 'https://preview.example', commit_sha: 'cd'.repeat(20) }, recordReason: null } })
     const frame = w.find('iframe')
     expect(frame.attributes('sandbox')).toBe('allow-scripts allow-forms')
     expect(frame.attributes('referrerpolicy')).toBe('no-referrer')

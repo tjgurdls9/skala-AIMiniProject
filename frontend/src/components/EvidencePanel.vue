@@ -2,10 +2,11 @@
 import { computed, ref, watch } from 'vue'
 import { ApiError, errorHint } from '../api/errors'
 import type { RunSource } from '../api/source'
-import type { RunEvent, Snapshot } from '../api/types'
+import type { AcceptanceItem, RunEvent, Snapshot } from '../api/types'
 import { indexById, reviewPair, waitingReason } from '../model/derive'
 import { isPlanView } from '../model/planView'
 import { EVENT_TYPE, formatTime, ROLE, shortDigest, TASK_STATE, WORK_KIND } from '../model/labels'
+import AcceptanceList from './AcceptanceList.vue'
 import PlanViewBody from './PlanViewBody.vue'
 import ReviewPair from './ReviewPair.vue'
 
@@ -15,6 +16,7 @@ const props = defineProps<{
   source: RunSource
   taskId: string | null
   artifactId: string | null
+  acIndex: ReadonlyMap<string, AcceptanceItem>
 }>()
 const emit = defineEmits<{ task: [id: string]; artifact: [id: string] }>()
 
@@ -71,7 +73,8 @@ watch(
       <dl class="kv small">
         <dt>담당</dt><dd>{{ ROLE[task.role].text }} · {{ WORK_KIND[task.work_kind] }}</dd>
         <dt>명세</dt><dd><code>{{ task.spec_version_id }}</code></dd>
-        <dt>인수 기준</dt><dd>{{ task.acceptance_ids.join(', ') }}</dd>
+        <dt>인수 기준</dt>
+        <dd><AcceptanceList :ids="task.acceptance_ids" :index="acIndex" :reports="snapshot.reports" @artifact="emit('artifact', $event)" /></dd>
         <template v-if="waitingReason(task, tasksById)">
           <dt>대기·차단 이유</dt><dd>{{ waitingReason(task, tasksById) }}</dd>
         </template>

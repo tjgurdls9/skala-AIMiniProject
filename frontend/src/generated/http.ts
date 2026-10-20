@@ -1,4 +1,4 @@
-/* 자동 생성 파일 — 수정 금지. 원본: docs/planning/http.v1.schema.json sha256:9a10711627ee332f39e933caec4e1244de7bf679a0e88ce48b48c94e3d41f945. 재생성: npm run gen:types */
+/* 자동 생성 파일 — 수정 금지. 원본: docs/planning/http.v1.schema.json sha256:a7f384026fbde0f6dfe0c29f853c42911b000fefa0a95ee792424fb5dc909b4f. 재생성: npm run gen:types */
 
 /**
  * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
@@ -357,6 +357,18 @@ export interface PlanView {
   contract_digests: {
     [k: string]: string
   }
+}
+/**
+ * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
+ * via the `definition` "AcceptanceStatus".
+ */
+export interface AcceptanceStatus {
+  spec_version_id: null | string
+  items: {
+    id: string
+    status: 'unmet' | 'met' | 'failed' | 'not_run'
+    report_id?: string
+  }[]
 }
 /**
  * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { ApiError } from '../api/errors'
 import type { RunSource } from '../api/source'
-import type { Snapshot } from '../api/types'
+import type { Preview, Snapshot } from '../api/types'
 import type { SendResult } from '../composables/useCommandForm'
 import type { CommandInput } from '../composables/useRun'
 import { reviewPair } from '../model/derive'
@@ -28,6 +28,16 @@ const previewArtifact = computed(() => [...props.snapshot.artifacts].reverse().f
 const titles = computed(() => Object.fromEntries(props.snapshot.artifacts.map((a) => [a.id, a.title])))
 const attachIds = computed(() => [props.selectedArtifactId, previewArtifact.value?.id].filter((id, i, arr): id is string => !!id && arr.indexOf(id) === i))
 const preview = ref<unknown>(null)
+const currentCommit = computed(() => pair.value.validator?.commit_sha ?? pair.value.security?.commit_sha ?? null)
+/** CODEX-UI-001: 실행 중인 현재 후보의 프리뷰일 때만 iframe을 연다 */
+const recordReason = computed<string | null>(() => {
+  if (props.source.kind === 'example') return '합성 예시입니다.'
+  if (props.readOnly) return '실제 기록 재생에서는 외부 앱을 열지 않습니다.'
+  if (props.snapshot.state !== 'preview_ready') return '현재 프리뷰 확인 단계가 아니어서 과거 기록으로만 표시합니다.'
+  const commit = (preview.value as Partial<Preview> | null)?.commit_sha
+  if (commit && currentCommit.value && commit !== currentCommit.value) return '현재 후보와 다른 옛 후보의 프리뷰입니다.'
+  return null
+})
 const previewError = ref<string | null>(null)
 const sent = ref(false)
 
@@ -61,7 +71,7 @@ watch(
       </dl>
     </section>
     <p v-if="previewError" class="error-box" role="alert">{{ previewError }}</p>
-    <PreviewFrame v-else :preview="preview" />
+    <PreviewFrame v-else :preview="preview" :record-reason="recordReason" />
     <section>
       <h3>독립 검토</h3>
       <ReviewPair :pair="pair" @artifact="emit('artifact', $event)" />

@@ -1,11 +1,21 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { Snapshot } from '../api/types'
+import type { AcceptanceItem, Snapshot } from '../api/types'
+import { AC_STATE, tallyAc } from '../model/acceptance'
 import { orderedPhases, sprintsOf, tallySprint } from '../model/derive'
+import AcceptanceList from './AcceptanceList.vue'
 
 /** Phase 경로 위의 Sprint 집계 지도 + 선택 Sprint 목표. 작업 수 진행과 AC를 따로 보여준다. 임의 완료율·예상 시간 없음. */
-const props = defineProps<{ snapshot: Snapshot; sprintId: string | null; currentSprintId: string | null }>()
-const emit = defineEmits<{ sprint: [id: string] }>()
+const props = defineProps<{
+  snapshot: Snapshot
+  sprintId: string | null
+  currentSprintId: string | null
+  acIndex: ReadonlyMap<string, AcceptanceItem>
+  /** 판정을 쓸 수 없는 이유(읽기 실패·명세 전환 중). null이면 정상 */
+  acNotice: string | null
+  isReplay: boolean
+}>()
+const emit = defineEmits<{ sprint: [id: string]; artifact: [id: string] }>()
 
 const path = computed(() =>
   orderedPhases(props.snapshot).map((phase) => ({
@@ -15,6 +25,7 @@ const path = computed(() =>
 )
 const selected = computed(() => props.snapshot.sprints.find((s) => s.id === props.sprintId) ?? null)
 const tally = computed(() => (selected.value ? tallySprint(props.snapshot, selected.value) : null))
+const acTally = computed(() => (selected.value ? tallyAc(props.acIndex, selected.value.acceptance_ids) : null))
 </script>
 
 <template>
@@ -61,8 +72,15 @@ const tally = computed(() => (selected.value ? tallySprint(props.snapshot, selec
         <dd :class="tally.failed + tally.blocked ? 'tone-danger' : ''">실패 {{ tally.failed }} · 차단 {{ tally.blocked }}</dd>
         <dt>인수 기준</dt>
         <dd>
-          {{ selected.acceptance_ids.join(', ') }} ({{ tally.acceptanceCount }}개 정의)
-          <span class="muted">· 충족 판정은 서버가 아직 제공하지 않음</span>
+          <span v-if="acTally">
+            {{ tally.acceptanceCount }}개 중
+            <span class="tone-ok">{{ AC_STATE.met.glyph }} 충족 {{ acTally.met }}</span>
+            · <span :class="acTally.failed ? 'tone-danger' : ''">{{ AC_STATE.failed.glyph }} 실패 {{ acTally.failed }}</span>
+            · 미충족 {{ acTally.unmet }}<template v-if="acTally.not_run"> · 미실행 {{ acTally.not_run }}</template><template v-if="acTally.unknown"> · 판정 없음 {{ acTally.unknown }}</template>
+          </span>
+          <span class="small muted">· 서버 판정{{ isReplay ? '(기록 당시 동결)' : '' }}, 작업 완료 수와 별개</span>
+          <p v-if="acNotice" class="small tone-warn">{{ acNotice }}</p>
+          <AcceptanceList :ids="selected.acceptance_ids" :index="acIndex" :reports="snapshot.reports" @artifact="emit('artifact', $event)" />
         </dd>
       </dl>
     </div>

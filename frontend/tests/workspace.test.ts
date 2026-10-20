@@ -110,7 +110,8 @@ describe('작업 공간 (합성 예시)', () => {
     const preview = await workspace('preview')
     await byText(preview, '프리뷰 보기')!.trigger('click')
     await flush()
-    expect(document.querySelector('dialog[open]')?.textContent).toContain('프리뷰 주소가 제공되지 않았습니다')
+    expect(document.querySelector('dialog[open]')?.textContent).toContain('기록된 프리뷰 — 지금 실행 중인 앱이 아닙니다')
+    expect(document.querySelector('dialog[open] iframe')).toBeNull()
     preview.unmount()
 
     const release = await workspace('release-approval')

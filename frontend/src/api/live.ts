@@ -2,6 +2,7 @@ import { ApiError, toApiError } from './errors'
 import { parseEventData } from '../model/eventStream'
 import type { RunSource, StreamHandlers } from './source'
 import type {
+  AcceptanceStatus,
   Command, CommandReceipt, Environment, Project, ProjectCreate, ReplayRecording, RunCreate, Runtime, Session, Snapshot,
 } from './types'
 
@@ -52,6 +53,10 @@ export class LiveApi {
 
   getSnapshot(runId: string): Promise<Snapshot> {
     return this.request('GET', `/api/runs/${encodeURIComponent(runId)}`)
+  }
+
+  getAcceptance(runId: string): Promise<AcceptanceStatus> {
+    return this.request('GET', `/api/runs/${encodeURIComponent(runId)}/acceptance`)
   }
 
   sendCommand(runId: string, command: Command): Promise<CommandReceipt> {
@@ -122,6 +127,7 @@ export function liveSource(api: LiveApi, runId: string): RunSource {
     kind: 'live',
     runId,
     getSnapshot: () => api.getSnapshot(runId),
+    getAcceptance: () => api.getAcceptance(runId),
     openEvents: (after, handlers) => api.openEvents(runId, after, handlers),
     sendCommand: (command) => api.sendCommand(runId, command),
     getArtifact: (id) => api.getArtifact(id),

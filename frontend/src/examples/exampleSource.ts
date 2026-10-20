@@ -13,6 +13,7 @@ export function exampleSource(scenario: ExampleScenario): RunSource {
     kind: 'example',
     runId: scenario.snapshot.run_id,
     getSnapshot: async () => scenario.snapshot,
+    getAcceptance: async () => scenario.acceptance,
     openEvents(afterSeq, handlers) {
       const timers: ReturnType<typeof setTimeout>[] = []
       timers.push(setTimeout(() => {

@@ -4,6 +4,7 @@ import { ApiError } from '../api/errors'
 import type { RunSource } from '../api/source'
 import type { SendResult } from '../composables/useCommandForm'
 import { useRun, type CommandInput } from '../composables/useRun'
+import { acIndex as indexAcceptance } from '../model/acceptance'
 import { runAlerts, type AlertAction } from '../model/alerts'
 import { deriveCurrentSprintId, pendingApproval } from '../model/derive'
 import { RUN_STATE } from '../model/labels'
@@ -43,6 +44,12 @@ const notices = computed(() => {
   if (props.source.kind === 'example') list.push('합성 예시입니다. 명령을 보내지 않으며 외부 승인·배포가 실행되지 않습니다.')
   if (headerError.value) list.push(`${headerError.value.message}`)
   return list
+})
+const acIndex = computed(() => indexAcceptance(run.acceptance.value))
+const acNotice = computed(() => {
+  if (run.acceptanceMismatch.value) return '판정의 명세 버전이 현재와 달라 표시하지 않습니다. 최신 판정을 다시 읽는 중입니다.'
+  if (run.acceptanceError.value) return `AC 판정을 읽지 못했습니다: ${run.acceptanceError.value.message} (충족으로 추정하지 않음)`
+  return null
 })
 const planApproval = computed(() => (snapshot.value ? pendingApproval(snapshot.value, 'plan') : null))
 const releaseApproval = computed(() => (snapshot.value ? pendingApproval(snapshot.value, 'release') : null))
@@ -144,7 +151,16 @@ onBeforeUnmount(() => run.dispose())
           @artifact="selectArtifact"
         />
         <div class="area-center">
-          <SprintBoard :snapshot="snapshot" :sprint-id="view.sprintId" :current-sprint-id="currentSprintId" @sprint="selectSprint" />
+          <SprintBoard
+            :snapshot="snapshot"
+            :sprint-id="view.sprintId"
+            :current-sprint-id="currentSprintId"
+            :ac-index="acIndex"
+            :ac-notice="acNotice"
+            :is-replay="run.isReplay.value"
+            @sprint="selectSprint"
+            @artifact="selectArtifact"
+          />
           <OfficeScene
             :tasks="sceneTasks"
             :selected-task-id="view.taskId"
@@ -167,6 +183,7 @@ onBeforeUnmount(() => run.dispose())
           :source="source"
           :task-id="view.taskId"
           :artifact-id="view.artifactId"
+          :ac-index="acIndex"
           @task="selectTask"
           @artifact="selectArtifact"
         />

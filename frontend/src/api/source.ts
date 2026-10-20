@@ -1,4 +1,4 @@
-import type { Command, CommandReceipt, Environment, RunEvent, Snapshot } from './types'
+import type { AcceptanceStatus, Command, CommandReceipt, Environment, RunEvent, Snapshot } from './types'
 
 /** 화면의 연결 출처. LIVE/REPLAY 구분은 출처가 live일 때만 snapshot.mode로 한다. */
 export type SourceKind = 'example' | 'live'
@@ -17,6 +17,8 @@ export interface RunSource {
   readonly kind: SourceKind
   readonly runId: string
   getSnapshot(): Promise<Snapshot>
+  /** 현재 명세의 AC별 판정(CR-C09). 재생이면 기록 당시의 동결된 판정 */
+  getAcceptance(): Promise<AcceptanceStatus>
   openEvents(afterSeq: number, handlers: StreamHandlers): () => void
   sendCommand(command: Command): Promise<CommandReceipt>
   getArtifact(id: string): Promise<unknown>
