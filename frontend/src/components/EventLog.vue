@@ -78,9 +78,20 @@ function toggle(kind: WorkKind): void {
 .interests .btn[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
 .only { display: inline-flex; gap: 6px; align-items: center; min-height: var(--tap); }
 .entries { max-height: 320px; overflow: auto; }
-.entry { display: grid; grid-template-columns: 76px 140px 1fr; gap: 4px 10px; padding: 6px 4px; border-bottom: 1px solid var(--line); }
-.entry.critical { border-left: 3px solid var(--tone-warn); padding-left: 8px; }
-.entry.related { background: var(--surface-2); }
+/* 타임라인: 왼쪽 세로선 + 사건 점 */
+.entries { position: relative; padding-left: 18px; }
+.entries::before { content: ""; position: absolute; left: 6px; top: 6px; bottom: 6px; width: 2px; background: color-mix(in srgb, var(--line) 90%, transparent); border-radius: 2px; }
+.entry { position: relative; display: grid; grid-template-columns: 70px 132px 1fr; gap: 4px 10px; padding: 8px 6px; border-radius: 10px; }
+.entry::before {
+  content: ""; position: absolute; left: -17px; top: 13px; width: 10px; height: 10px; border-radius: 3px;
+  background: var(--surface); border: 2px solid var(--ink-3);
+}
+.entry:hover { background: var(--surface-2); }
+.entry.critical::before { border-color: var(--tone-warn); background: var(--tone-warn); box-shadow: 0 0 0 4px color-mix(in srgb, var(--tone-warn) 20%, transparent); }
+.entry.related { background: color-mix(in srgb, var(--role-builder) 8%, transparent); }
+.entry.related::before { border-color: var(--role-builder); }
+.time { font-family: var(--mono); font-size: 0.78rem; padding-top: 2px; }
+.type { font-weight: 700; }
 .task-link { margin-left: 6px; border: 0; background: none; color: var(--focus); text-decoration: underline; cursor: pointer; min-height: 32px; }
 .more { justify-self: start; }
 @media (max-width: 760px) { .entry { grid-template-columns: 1fr; } }

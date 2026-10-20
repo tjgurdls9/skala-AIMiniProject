@@ -90,24 +90,31 @@ const acTally = computed(() => (selected.value ? tallyAc(props.acIndex, selected
 
 <style scoped>
 .board { display: grid; gap: 14px; }
-.path { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
-.phase { display: grid; gap: 4px; flex: 1 0 auto; }
+.path { display: flex; gap: 0; overflow-x: auto; padding-bottom: 6px; }
+.phase { display: grid; gap: 6px; flex: 1 0 auto; position: relative; padding-right: 22px; }
+/* Phase 사이를 잇는 진행선 */
+.phase:not(:last-child)::after {
+  content: ""; position: absolute; right: 4px; top: 50%; width: 14px; height: 2px;
+  background: repeating-linear-gradient(90deg, var(--ink-3) 0 4px, transparent 4px 7px);
+}
 .phase-name { color: var(--ink-3); font-weight: 600; }
 .sprints { display: flex; gap: 6px; }
 .cell {
-  min-width: 92px; min-height: var(--tap); display: grid; gap: 4px; padding: 6px 8px; text-align: left;
-  border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); cursor: pointer;
+  min-width: 104px; min-height: var(--tap); display: grid; gap: 6px; padding: 8px 10px; text-align: left;
+  border: 1px solid color-mix(in srgb, var(--line) 85%, transparent); border-radius: 12px; background: var(--surface); cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
-.cell:hover { background: var(--surface-2); }
-.cell[aria-pressed="true"] { border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
+.cell:hover { transform: translateY(-2px); box-shadow: 0 10px 22px -14px rgb(20 30 50 / 0.5); }
+.cell[aria-pressed="true"] { border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 22%, transparent); }
+.cell.current { background: linear-gradient(180deg, color-mix(in srgb, var(--tone-active) 10%, var(--surface)), var(--surface)); }
 .cell.current .cell-title::after { content: " ●"; color: var(--tone-active); }
 .cell-title { font-size: 0.85rem; font-weight: 600; }
-.bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--surface-2); }
+.bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--surface-2); box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.12); }
 .seg.ok { background: var(--tone-ok); }
 .seg.active { background: var(--tone-active); }
 .seg.danger { background: var(--tone-danger); }
 .seg.rest { background: var(--line); }
 .goal { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 12px 20px; }
-.goal-title { font-size: 1.05rem; margin: 2px 0 4px; }
+.goal-title { font-size: 1.35rem; font-weight: 850; letter-spacing: -0.02em; margin: 2px 0 6px; }
 @media (max-width: 900px) { .goal { grid-template-columns: 1fr; } }
 </style>

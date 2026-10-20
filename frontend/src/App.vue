@@ -11,7 +11,6 @@ import StartScreen from './components/StartScreen.vue'
 /** 화면 위치는 URL 쿼리(?run= / ?example=)로 유지해 새로고침해도 같은 실행으로 돌아온다. */
 const api = new LiveApi()
 const params = ref(new URLSearchParams(window.location.search))
-const REVEAL_MS = 520
 
 const source = computed<RunSource | null>(() => {
   const runId = params.value.get('run')
@@ -29,30 +28,41 @@ function apply(next: Record<string, string>): void {
   window.scrollTo(0, 0)
 }
 
-type ViewTransitionDoc = Document & { startViewTransition?: (cb: () => Promise<void>) => { ready: Promise<void> } }
+const WARP_IN_MS = 560
+const WARP_OUT_MS = 520
 
 /**
- * 입력 위치에서 원이 퍼지며 사무실이 화면을 채운다(View Transitions API, MDN의 원형 공개 패턴).
- * 지원하지 않거나 모션 감소 설정이면 바로 바꾼다.
+ * 극적인 전환: 입력 위치에서 빛나는 고리를 두른 어둠이 화면을 삼키고(이전 화면은 뒤로 물러나며 흐려짐),
+ * 그 아래에서 사무실이 열린 뒤 어둠이 걷히며 방마다 불이 켜진다(OfficeScene 인트로).
+ * 모션 감소이거나 Web Animations를 쓸 수 없으면 바로 바꾼다.
  */
-function navigate(next: Record<string, string>, origin?: Origin): void {
-  const doc = document as ViewTransitionDoc
+async function navigate(next: Record<string, string>, origin?: Origin): Promise<void> {
   const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-  if (!origin || reduce || typeof doc.startViewTransition !== 'function') {
+  if (!origin || reduce || typeof document.body.animate !== 'function') {
     apply(next)
     return
   }
-  const transition = doc.startViewTransition(async () => {
+  const cover = Math.hypot(Math.max(origin.x, window.innerWidth - origin.x), Math.max(origin.y, window.innerHeight - origin.y)) * 2.3
+  const warp = document.createElement('div')
+  warp.className = 'warp'
+  warp.setAttribute('aria-hidden', 'true')
+  warp.style.left = `${origin.x}px`
+  warp.style.top = `${origin.y}px`
+  warp.style.width = warp.style.height = `${cover}px`
+  document.body.append(warp)
+  document.documentElement.classList.add('warping')
+  try {
+    await warp.animate(
+      [{ transform: 'translate(-50%, -50%) scale(0.001)' }, { transform: 'translate(-50%, -50%) scale(1)' }],
+      { duration: WARP_IN_MS, easing: 'cubic-bezier(0.7, 0, 0.84, 0)', fill: 'forwards' },
+    ).finished
     apply(next)
     await nextTick()
-  })
-  const radius = Math.hypot(Math.max(origin.x, window.innerWidth - origin.x), Math.max(origin.y, window.innerHeight - origin.y))
-  void transition.ready.then(() => {
-    document.documentElement.animate(
-      { clipPath: [`circle(0px at ${origin.x}px ${origin.y}px)`, `circle(${radius}px at ${origin.x}px ${origin.y}px)`] },
-      { duration: REVEAL_MS, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', pseudoElement: '::view-transition-new(root)' },
-    )
-  })
+  } finally {
+    document.documentElement.classList.remove('warping')
+  }
+  await warp.animate([{ opacity: 1 }, { opacity: 0 }], { duration: WARP_OUT_MS, easing: 'ease-out', fill: 'forwards' }).finished
+  warp.remove()
 }
 
 const onPop = () => {
@@ -73,10 +83,22 @@ onBeforeUnmount(() => window.removeEventListener('popstate', onPop))
 </template>
 
 <style>
-/* 기본 교차 페이드 대신 위 원형 공개만 쓴다 */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
-  mix-blend-mode: normal;
+/* 전환 중 이전 화면은 뒤로 물러나며 흐려진다 */
+html.warping #app > * {
+  transition: transform 0.56s cubic-bezier(0.7, 0, 0.84, 0), filter 0.56s ease-in;
+  transform: scale(0.93);
+  filter: blur(6px) brightness(0.7);
+}
+/* 빛나는 고리를 두른 어둠(가장자리에 따뜻한 빛, 바깥은 투명) */
+.warp {
+  position: fixed;
+  z-index: 1000;
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.001);
+  background: radial-gradient(circle closest-side,
+    #0d1013 0%, #0d1013 86%,
+    #ffd27a 88.5%, #ff8a3d 90.5%, rgb(255 120 60 / 0.35) 94%, transparent 100%);
+  box-shadow: 0 0 120px 40px rgb(255 160 80 / 0.25);
 }
 </style>

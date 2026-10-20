@@ -60,15 +60,14 @@ describe('시작 화면: 굵은 문구 하나 + 입력창 하나', () => {
   })
 })
 
-describe('팟 전환', () => {
-  test('View Transitions가 있으면 입력 위치에서 원형으로 열고, 없으면 바로 바꾼다', async () => {
-    const animate = vi.fn()
-    document.documentElement.animate = animate as unknown as typeof document.documentElement.animate
-    const start = vi.fn((cb: () => Promise<void>) => {
-      void cb()
-      return { ready: Promise.resolve() }
-    })
-    ;(document as unknown as { startViewTransition: typeof start }).startViewTransition = start
+describe('팟 전환(빛 고리 어둠)', () => {
+  test('입력 위치에서 어둠이 화면을 삼킨 뒤 바꾸고, 어둠을 걷어 낸다', async () => {
+    const calls: Array<{ el: Element; frames: Keyframe[] }> = []
+    const original = Element.prototype.animate
+    Element.prototype.animate = function (this: Element, frames: Keyframe[] | PropertyIndexedKeyframes | null) {
+      calls.push({ el: this, frames: frames as Keyframe[] })
+      return { finished: Promise.resolve() } as unknown as Animation
+    }
     vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 502 })))
     const w = mount(App, { attachTo: document.body })
     await flush()
@@ -76,16 +75,19 @@ describe('팟 전환', () => {
     await flush()
     await w.findAll('button').find((b) => b.text().includes('[예시] 구현 중'))!.trigger('click', { clientX: 100, clientY: 200 })
     await flush()
-    expect(start).toHaveBeenCalledOnce()
     expect(window.location.search).toBe('?example=building')
-    const [keyframes, options] = animate.mock.calls[0]
-    expect(keyframes.clipPath[0]).toBe('circle(0px at 100px 200px)')
-    expect(options.pseudoElement).toBe('::view-transition-new(root)')
+    const warp = calls.find((c) => (c.el as HTMLElement).classList.contains('warp'))!
+    expect((warp.el as HTMLElement).style.left).toBe('100px')
+    expect(String(warp.frames[0].transform)).toContain('scale(0.001)')
+    expect(document.querySelector('.warp')).toBeNull() // 끝나면 제거
+    expect(document.documentElement.classList.contains('warping')).toBe(false)
+    expect(document.querySelector('dialog[open]')).toBeNull() // 다른 방법 dialog가 전환 위에 남지 않음
     // 처음으로는 원점 없이 바로 바뀐다
+    const before = calls.length
     await w.findAll('button').find((b) => b.text().includes('처음'))!.trigger('click')
     await flush()
-    expect(start).toHaveBeenCalledOnce()
-    delete (document as unknown as { startViewTransition?: unknown }).startViewTransition
+    expect(calls.length).toBe(before)
+    Element.prototype.animate = original
     w.unmount()
   })
 })

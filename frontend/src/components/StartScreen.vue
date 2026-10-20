@@ -6,6 +6,7 @@ import type { ReplayRecording, Runtime } from '../api/types'
 import { SCENARIOS } from '../examples/scenarios'
 import { formatTime, shortDigest } from '../model/labels'
 import BaseDialog from './BaseDialog.vue'
+import OfficeSilhouette from './OfficeSilhouette.vue'
 import ThemeControls from './ThemeControls.vue'
 import { titleFrom, type Origin } from '../model/prompt'
 
@@ -82,12 +83,18 @@ async function startReplay(rec: ReplayRecording, e: MouseEvent): Promise<void> {
   submitError.value = null
   try {
     const snapshot = await props.api.createRun(rec.project_id, { mode: 'replay', source_run_id: rec.source_run_id })
+    moreOpen.value = false // 최상위 층 dialog가 전환 위에 남지 않게
     emit('openRun', snapshot.run_id, { x: e.clientX, y: e.clientY })
   } catch (error) {
     submitError.value = error instanceof ApiError ? error : new ApiError(0, 'NETWORK', '재생을 만들지 못했습니다.')
   } finally {
     submitting.value = false
   }
+}
+
+function openExample(id: string, e: MouseEvent): void {
+  moreOpen.value = false // 최상위 층 dialog가 전환 위에 남지 않게
+  emit('openExample', id, { x: e.clientX, y: e.clientY })
 }
 
 /** Enter로 보내고 Shift+Enter는 줄바꿈. 한글 조합 중 Enter는 무시한다 */
@@ -113,10 +120,16 @@ onMounted(async () => {
 
 <template>
   <div class="start">
+    <div class="atmosphere" aria-hidden="true">
+      <span class="glow g1" /><span class="glow g2" /><span class="glow g3" />
+      <span class="grid" /><span class="grain" />
+      <OfficeSilhouette />
+    </div>
     <div class="corner"><ThemeControls v-model:motion="motion" /></div>
 
     <main class="center">
-      <h1 id="start-title" class="headline">무엇을 만들까요?</h1>
+      <p class="eyebrow"><span class="dot" aria-hidden="true" /> 기획부터 배포까지, 사무실이 일합니다</p>
+      <h1 id="start-title" class="headline">무엇을 <span class="accent">만들까요?</span></h1>
       <form class="prompt" aria-labelledby="start-title" @submit.prevent="startLive">
         <label for="prompt-input" class="sr-only">만들고 싶은 서비스 설명</label>
         <textarea
@@ -174,7 +187,7 @@ onMounted(async () => {
         <h3 id="ex-title">합성 예시 <span class="chip example">실제 실행 아님</span></h3>
         <ul class="plain list grid">
           <li v-for="s in SCENARIOS" :key="s.id">
-            <button type="button" class="btn item" @click="emit('openExample', s.id, { x: $event.clientX, y: $event.clientY })">
+            <button type="button" class="btn item" @click="openExample(s.id, $event)">
               <span><strong>[예시] {{ s.label }}</strong><br /><span class="small muted">{{ s.description }}</span></span>
             </button>
           </li>
@@ -188,33 +201,80 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.start { min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; position: relative; }
-.corner { position: absolute; top: 16px; right: 16px; }
-.center { width: min(760px, 100%); display: grid; gap: 18px; justify-items: center; text-align: center; }
-.headline {
-  font-size: clamp(2.5rem, 1.2rem + 6vw, 5.5rem);
-  font-weight: 900;
-  letter-spacing: -0.04em;
-  line-height: 1.02;
+.start { min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px 18vh; position: relative; overflow: hidden; isolation: isolate; }
+.corner { position: absolute; top: 16px; right: 16px; z-index: 2; }
+.center { width: min(780px, 100%); display: grid; gap: 20px; justify-items: center; text-align: center; position: relative; z-index: 1; }
+
+/* 분위기: 부드러운 빛 덩어리 + 점 격자 + 미세한 노이즈 + 바닥의 희미한 사무실 */
+.atmosphere { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.glow { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.55; animation: drift 18s ease-in-out infinite alternate; }
+.g1 { width: 46vw; height: 46vw; left: -10vw; top: -14vw; background: #ffcf8a; }
+.g2 { width: 40vw; height: 40vw; right: -12vw; top: 8vh; background: #9ad7d0; animation-delay: -6s; }
+.g3 { width: 36vw; height: 36vw; left: 30vw; bottom: -20vw; background: #b9a6f0; animation-delay: -12s; opacity: 0.4; }
+:root[data-theme="dark"] .glow { opacity: 0.22; }
+@keyframes drift { to { transform: translate(4vw, 3vh) scale(1.08); } }
+.grid {
+  position: absolute; inset: 0;
+  background-image: radial-gradient(color-mix(in srgb, var(--ink) 14%, transparent) 1px, transparent 1px);
+  background-size: 22px 22px;
+  -webkit-mask-image: radial-gradient(ellipse at 50% 40%, #000 20%, transparent 70%);
+  mask-image: radial-gradient(ellipse at 50% 40%, #000 20%, transparent 70%);
 }
+.grain {
+  position: absolute; inset: 0; opacity: 0.08; mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px; border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+  backdrop-filter: blur(8px);
+  font-size: 0.85rem; font-weight: 650; color: var(--ink-2);
+}
+.eyebrow .dot { width: 8px; height: 8px; border-radius: 2px; background: var(--role-builder); box-shadow: 0 0 0 3px color-mix(in srgb, var(--role-builder) 25%, transparent); }
+.headline {
+  font-size: clamp(2.8rem, 1.2rem + 7vw, 6.5rem);
+  font-weight: 900;
+  letter-spacing: -0.05em;
+  line-height: 0.98;
+  text-wrap: balance;
+}
+.headline .accent {
+  background: linear-gradient(100deg, var(--ink) 10%, var(--role-planner) 45%, var(--role-builder) 70%, var(--ink) 95%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  background-size: 220% 100%;
+  animation: sheen 7s ease-in-out infinite alternate;
+}
+@keyframes sheen { to { background-position: 100% 0; } }
 .prompt {
   width: 100%;
   display: flex; align-items: flex-end; gap: 8px;
-  padding: 10px 10px 10px 20px;
-  border: 2px solid var(--ink); border-radius: 22px;
-  background: var(--surface);
-  box-shadow: 0 10px 30px rgb(0 0 0 / 0.08);
+  padding: 10px 10px 10px 22px;
+  border: 2px solid var(--ink); border-radius: 24px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.6) inset, 0 18px 50px -12px rgb(30 40 60 / 0.35), 0 6px 0 var(--ink);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
-.prompt:focus-within { box-shadow: 0 0 0 4px color-mix(in srgb, var(--focus) 35%, transparent), 0 10px 30px rgb(0 0 0 / 0.08); }
+.prompt:focus-within {
+  transform: translateY(-2px);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--focus) 28%, transparent), 0 24px 60px -12px rgb(30 40 60 / 0.4), 0 8px 0 var(--ink);
+}
 .prompt textarea {
   flex: 1; min-height: 44px; max-height: 220px; padding: 10px 0; border: 0; background: none; resize: none;
   font-size: 1.15rem; line-height: 1.5;
 }
 .prompt textarea:focus { outline: none; }
 .send {
-  width: 48px; height: 48px; flex: none; border-radius: 16px; border: 0;
-  background: var(--ink); color: var(--bg); font-size: 1.4rem; font-weight: 800; cursor: pointer;
+  width: 52px; height: 52px; flex: none; border-radius: 16px; border: 0;
+  background: linear-gradient(135deg, var(--role-planner), var(--role-builder));
+  color: #fff; font-size: 1.5rem; font-weight: 900; cursor: pointer;
+  box-shadow: 0 6px 18px -4px color-mix(in srgb, var(--role-builder) 60%, transparent);
+  transition: transform 0.15s ease;
 }
+.send:hover:not(:disabled) { transform: translateX(2px) rotate(-4deg); }
 .send:disabled { opacity: 0.35; cursor: not-allowed; }
 .hint { color: var(--ink-3); font-size: 0.9rem; max-width: 640px; }
 .hint.warn { color: var(--tone-warn); font-weight: 600; }

@@ -366,22 +366,30 @@ onBeforeUnmount(() => {
   pointer-events: auto;
   display: inline-flex; flex-direction: column; gap: 2px;
   max-width: min(520px, 100%);
-  padding: 8px 12px; border-radius: 10px;
-  background: var(--px-label-bg); color: var(--px-label-ink);
-  border: 1px solid rgb(0 0 0 / 0.08);
-  backdrop-filter: blur(6px);
+  padding: 10px 14px; border-radius: 14px;
+  background: color-mix(in srgb, #10141a 72%, transparent); color: #f2efe6;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  backdrop-filter: blur(12px) saturate(1.2);
+  box-shadow: 0 12px 30px -12px rgb(0 0 0 / 0.6);
   font-size: 0.9rem; text-align: left;
 }
+.hud-chip.sprint strong { font-size: 1rem; letter-spacing: -0.01em; }
+.hud-chip.sprint strong::before { content: "▸ "; color: #ffd27a; }
 .hud-chip.sprint span { font-size: 0.85rem; opacity: 0.8; }
 .hud-alerts { display: grid; gap: 6px; justify-items: end; }
-.hud-chip.alert { flex-direction: row; gap: 6px; min-height: var(--tap); align-items: center; cursor: pointer; font-weight: 600; border-left: 4px solid currentColor; }
+.hud-chip.alert { flex-direction: row; gap: 8px; min-height: var(--tap); align-items: center; cursor: pointer; font-weight: 650; border-left: 4px solid currentColor; }
+.hud-chip.alert.tone-danger { color: #ffb4a8; }
+.hud-chip.alert.tone-warn { color: #ffd27a; }
+.hud-chip.alert.tone-wait { color: #c9c4ff; }
 .hud-chip.alert:hover { filter: brightness(1.05); }
 .hud-chip.more { font-size: 0.8rem; }
 
 .scroll-cue {
   position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%);
-  min-height: var(--tap); padding: 0 18px; border-radius: 999px; border: 0;
-  background: var(--px-label-bg); color: var(--px-label-ink); font-weight: 700; cursor: pointer;
+  min-height: var(--tap); padding: 0 20px; border-radius: 999px; border: 1px solid rgb(255 255 255 / 0.18);
+  background: color-mix(in srgb, #10141a 70%, transparent); color: #f2efe6; font-weight: 750; cursor: pointer;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 30px -10px rgb(0 0 0 / 0.6), 0 0 0 6px rgb(255 210 122 / 0.08);
   opacity: calc(1 - var(--p) * 2);
   pointer-events: auto;
 }

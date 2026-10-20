@@ -79,21 +79,27 @@ const TALL: TileMap = {
 }
 
 const COMPACT_ASPECT = 1.15
+/** 지도 둘레에 배경이 보이도록 남기는 여백 비율 */
+const FIT_MARGIN = 0.94
 
 export function chooseMap(width: number, height: number): { map: TileMap; compact: boolean } {
   const compact = height > 0 && width / height < COMPACT_ASPECT
   return { map: compact ? TALL : WIDE, compact }
 }
 
-/** 지도를 화면에 맞춘다. 1배 이상이면 0.25 단위로 내려 픽셀 경계를 덜 흐리게 한다 */
+/**
+ * 지도를 화면에 맞춘다. 3배 이상이면 정수 배율로 내려 픽셀을 선명하게 하고(화면이 조금 작아져도 선명도 우선),
+ * 1~3배는 0.25 단위, 그보다 작으면 그대로 줄인다. 남는 공간은 배경 연출로 채운다.
+ */
 export function fitMap(map: TileMap, width: number, height: number): { scale: number; ox: number; oy: number } {
-  const raw = Math.min(width / (map.w * TILE), height / (map.h * TILE))
-  const scale = raw >= 1 ? Math.floor(raw * 4) / 4 : Math.max(raw, 0.01)
-  return { scale, ox: (width - map.w * TILE * scale) / 2, oy: (height - map.h * TILE * scale) / 2 }
+  const raw = Math.min(width / (map.w * TILE), height / (map.h * TILE)) * FIT_MARGIN
+  const scale = raw >= 3 ? Math.floor(raw) : raw >= 1 ? Math.floor(raw * 4) / 4 : Math.max(raw, 0.01)
+  return { scale, ox: Math.round((width - map.w * TILE * scale) / 2), oy: Math.round((height - map.h * TILE * scale) / 2) }
 }
 
-/** 방 위쪽은 표지판, 큰 방의 아래쪽은 가구 자리로 비우고 그 사이에 좌석 격자를 둔다 */
-const SIGN_ROWS = 1.6
+/** 방 위쪽 2타일은 벽면(3/4 시점), 그 아래 여유 */
+export const WALL_FACE_ROWS = 2
+const SIGN_ROWS = 2.5
 const FURNITURE_SHARE = 0.25
 const FURNITURE_MIN_ROOM_H = 10
 
@@ -139,5 +145,5 @@ export function hitSeat(layout: OfficeLayout, x: number, y: number): string | nu
 /** 방 표지판 위치(지도 좌표, 픽셀) — 근거 패킷이 향하는 곳 */
 export function zoneCenter(layout: OfficeLayout, id: ZoneId): { x: number; y: number } {
   const r = layout.map.rooms.find((z) => z.id === id)
-  return r ? { x: (r.x + r.w / 2) * TILE, y: (r.y + 0.5) * TILE } : { x: 0, y: 0 }
+  return r ? { x: (r.x + r.w / 2) * TILE, y: (r.y + WALL_FACE_ROWS) * TILE } : { x: 0, y: 0 }
 }
