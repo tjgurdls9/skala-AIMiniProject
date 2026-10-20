@@ -52,10 +52,8 @@ export function useRun(source: RunSource) {
   function applySnapshot(next: Snapshot): void {
     const current = snapshot.value
     if (current && next.state_version < current.state_version) return // 늦게 도착한 이전 버전은 무시
+    // 버전 증가만으로는 내 명령의 반영인지 알 수 없다(다른 작업도 버전을 올린다). 확인 표시는 건드리지 않는다.
     snapshot.value = next
-    // 명령 이후 업무 상태가 바뀌었으면 반영된 것으로 본다(같은 명령 ID의 사건이 오면 그쪽이 더 확실한 근거)
-    const p = pending.value
-    if (p && next.state_version > p.expectedStateVersion) clearPending()
   }
 
   /** 동시에 여러 번 요청돼도 한 번에 하나만 읽고, 진행 중 요청이 있었으면 한 번 더 읽는다 */
@@ -156,7 +154,7 @@ export function useRun(source: RunSource) {
     reopen(lastSeq, 'connecting')
   }
 
-  /** 202는 접수일 뿐이다. 반영은 같은 명령 ID의 사건 또는 이후 스냅샷의 state_version으로 확인한다. */
+  /** 202는 접수일 뿐이다. 반영은 같은 command_id가 담긴 사건으로만 확인하고, 오지 않으면 시간 초과 뒤 "미확인"으로 푼다. */
   async function send(input: CommandInput, commandId: string): Promise<CommandReceipt> {
     const snap = snapshot.value
     if (!snap) throw new ApiError(0, 'INVALID_STATE', '스냅샷이 없어 명령을 보낼 수 없습니다.')

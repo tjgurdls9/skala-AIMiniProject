@@ -128,8 +128,8 @@ describe('useRun 스트림 처리', () => {
 })
 
 describe('useRun 명령', () => {
-  test('현재 상태 버전으로 명령을 만들고, 202 접수 뒤에도 반영 전까지 pending을 유지한다', async () => {
-    const { source } = controllableSource({ ...base, state_version: 5 })
+  test('현재 상태 버전으로 명령을 만들고, 202 접수 뒤에도 같은 명령 사건이 올 때까지 pending을 유지한다', async () => {
+    const { source, streams } = controllableSource({ ...base, state_version: 5, last_event_seq: 0 })
     const run = useRun(source)
     await run.start()
     await run.send({ action: 'pause', payload: {} }, 'cmd-1')
@@ -139,7 +139,10 @@ describe('useRun 명령', () => {
 
     source.setSnapshot({ ...base, state_version: 6, state: 'paused' })
     await run.refreshSnapshot()
+    expect(run.pending.value?.commandId).toBe('cmd-1')
+    streams[0].handlers.onEvent({ ...events(1, 1, 6)[0], command_id: 'cmd-1' })
     expect(run.pending.value).toBeNull()
+    run.dispose()
   })
 
   test('409 충돌이면 pending을 지우고 최신 스냅샷을 다시 읽은 뒤 오류를 전달한다', async () => {

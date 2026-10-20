@@ -168,6 +168,23 @@ describe('M3 접수된 명령의 확인', () => {
     run.dispose()
   })
 
+  test('다른 작업 때문에 state_version이 올라도 내 명령의 확인 표시는 유지된다', async () => {
+    const { source, streams } = controllable({ ...base, state_version: 3, last_event_seq: 0 })
+    const run = useRun(source)
+    await run.start()
+    await run.send({ action: 'pause', payload: {} }, 'cmd-mine')
+    // 워커의 무관한 작업 사건(다른 command_id 또는 없음)과 그에 따른 새 스냅샷
+    source.set({ ...base, state_version: 4, last_event_seq: 1 })
+    streams[0].handlers.onEvent({ ...buildEvents([['task_finished', '워커 작업 종료', { task_id: 't-api' }]])[0], state_version: 4 })
+    await flush()
+    expect(run.snapshot.value?.state_version).toBe(4)
+    expect(run.pending.value?.commandId).toBe('cmd-mine')
+    streams[0].handlers.onEvent({ ...buildEvents([['run_state_changed', '다른 명령', {}]], 2)[0], state_version: 5, command_id: 'cmd-other' })
+    await flush()
+    expect(run.pending.value?.commandId).toBe('cmd-mine')
+    run.dispose()
+  })
+
   test('반영 근거가 오지 않으면 일정 시간 뒤 조작을 풀고 미확인을 알린다', async () => {
     vi.useFakeTimers()
     const { source } = controllable({ ...base, state_version: 3 })
