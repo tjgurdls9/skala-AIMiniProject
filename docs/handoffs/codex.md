@@ -1,3 +1,52 @@
+# Codex CLI 인계 — 공통 준비·백엔드·런타임
+
+## 현재 상태 — 2026-10-20
+
+`READY_FOR_PARALLEL_IMPLEMENTATION` — Git 연결·두 브랜치/worktree·초안 보존을 실제 완료했다. Claude는 자기 worktree에서 예시 기반 F0–F5/F7을 시작할 수 있다. LIVE 연결은 아래 D1 계약 응답을 기다린다. 제품 구현 완료·검토 PASS·배포 완료 신호가 아니다.
+
+| 항목 | 확인 결과 |
+|---|---|
+| 원격 | `https://github.com/tjgurdls9/skala-AIMiniProject.git` · private · default `main` |
+| 공통 기준 커밋 | `6cc9a0bd8c0e382f4a53a5e4a5fa32c7f5e04b18` (원격 실제 fetch 결과, 과거 `807ce7c`의 후속) |
+| 원본 | `/Users/seohyeokin/workspace/skala-AIMiniProject` · `main` → `origin/main` 추적 |
+| Codex | `/Users/seohyeokin/workspace/skala-AIMiniProject/.worktrees/codex-runtime` · `work/codex-runtime` |
+| Claude | `/Users/seohyeokin/workspace/skala-AIMiniProject/.worktrees/claude-office` · `work/claude-office` |
+| 초안 보존 커밋 | `049ed58` · Codex 브랜치만 · backend 6개/runner 2개 · 미검증 상태를 명시 |
+| protocol v1 SHA256 | `ad6decc2849e1eb80af54b557c7cc61ee05e7ac2b70e92abdddeedd3990bb07d` |
+| HTTP v1 초안 SHA256 | `3e16e55ec6ff629013ceb41afa1ab94ba4378b36f583f4ab0bfd8a11d9827a1d` · D1 확정 전 |
+| 포트 | 프론트 `127.0.0.1:5173`, API `127.0.0.1:8000`; 확인 당시 listener 없음. Vite의 `/api` 프록시 대상 `http://127.0.0.1:8000` |
+
+### 수행·보존 근거
+
+- 승인된 `.git` 쓰기와 네트워크로 `init`, origin 등록, fetch, main ref/index 연결, 두 worktree 생성을 수행했다. 원본 파일을 checkout으로 덮지 않았다.
+- 원격 26개 추적 파일을 바이트 단위 비교해 전부 동일함을 확인했다. HTTP 초안은 이미 원격에 있다. backend/runner 8개는 로컬에만 있었다.
+- 초안 8개를 Codex worktree로 복사한 뒤 원본/사본 바이트와 SHA256을 대조했다. 원본 초안은 삭제·변경하지 않고 원본에 untracked로 남겼다. 이후 제품 코딩은 Codex worktree에서만 한다.
+- GitHub keyring 인증 정상, private 확인. 등록된 Actions workflow는 0개다. push·force push·배포는 하지 않았다. 외부 GitHub App/webhook 배포 연계는 미확인이다.
+- 원본의 이 인계는 대기 중인 세션이 발견할 준비 신호 사본이다. 최신 구현 인계는 Codex worktree/브랜치의 같은 경로에서 읽는다. 다른 worktree에 문서·코드가 자동 반영되지 않는다.
+
+### 작업 목록 (상태의 단일 원본)
+
+| 작업 | 현재 상태·다음 결과 |
+|---|---|
+| D0 Git/worktree | 완료. 모델·Docker·배포 대상의 준비는 별도 미확인 |
+| D1 계약/저장 | 진행: 기존 초안 검토, CR-C01–C08 답변, API 인증/SSE/오류/생성 계약 연결 |
+| D2–D6, D8–D11 | 미완료. worker·모델 문맥·검색/MCP·격리 구현·두 검토·통합/실제 완주 증거 필요 |
+| D7 | Claude 소유. 준비 완료 신호를 읽고 해당 worktree에서 시작 |
+
+### Claude에게 필요한 요청
+
+- **CODEX-BOOTSTRAP-001** 해결: 위 기준/브랜치/경로를 사용한다. 원본에서 코딩하거나 branch를 바꾸지 않는다.
+- **CODEX-CONTRACT-001**: protocol v1은 위 기준 그대로 사용 가능. HTTP는 초안이므로 F6 LIVE 전송은 D1 응답/커밋 반영 후 연결한다. CR-C01–C08은 읽었으며 아래 구현 기록에서 같은 ID로 답한다.
+- 추가 agent·agy를 기동하지 않았다. 기존 Claude 세션으로의 자동 전달·재개는 확인하지 않았으며, 이 파일을 준비 신호로 제공한다.
+
+### 확인 범위·위험
+
+Git/worktree·바이트/해시·포트·원격 메타데이터만 확인했다. 제품 테스트·API·모델 호출·Docker·배포는 아직 미실행이다. 원본의 보존 초안을 다시 stage하지 말고 Codex 브랜치의 보존 커밋을 사용한다. 독립 검증·보안 PASS를 주장하지 않는다.
+
+---
+
+## 이전 인계 원문 (아래 BOOTSTRAP_REQUIRED 등은 당시 기록)
+
 # 관제탑 → Codex CLI: 공통 준비 인계
 
 ## 현재 상태
