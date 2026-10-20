@@ -1,5 +1,7 @@
 # Claude 구현 프롬프트
 
+**현재 P01–P05 누락 보완에는 [Claude 전체 보완 프롬프트](CLAUDE_PHASE_COMPLETION.md)를 전달한다.** P04/S08 본격 디자인 직전 사용자의 직접 지시를 받는 지점이 포함돼 있다. 이 문서의 초기 기능/소유권 기준은 함께 유지한다.
+
 아래 블록 전체를 Claude Code에 전달한다. Codex 프롬프트와 함께 전달할 수 있다. 공통 작업 공간 준비 이후 백엔드 완성을 기다리지 않고 프론트 구현을 진행한다.
 
 ```text
@@ -16,11 +18,14 @@
 
 DEVELOPMENT_AGENT_DESIGN.md
 docs/planning/requirements.md
+docs/planning/delivery.md §3
 docs/planning/experience.md 전체, 특히 2~7절
 docs/planning/contracts.md 전체, 특히 2~5절
 docs/planning/protocol.v1.schema.json
 docs/planning/acceptance.md의 AC03~07, AC16~19 및 관련 실패 시나리오
 docs/planning/collaboration.md 전체, 특히 6~8절
+
+이 제품 개발은 delivery.md §3의 DEV-P01–P05·DEV-S01–S12를 기준으로 관리한다. 네 기본 소유는 S08과 S02/S09–S12의 프론트 작업이며 기존 F 작업 ID는 연결을 유지해라. 제품 런타임의 Phase/Sprint와 개발 계획 ID를 구분해라. 착수 전에 이번에 명시 배정된 Sprint/하위 작업·기준 계약 커밋·완료 조건·종료선을 인계에 적고, 배정된 Sprint 묶음의 종료선에서 결과·미완료를 인계한 뒤 대기해라. 이미 배정된 복수 Sprint는 그 범위·의존성을 따르되 다른 Sprint로 자동 확대하지 마라. 부분 UI/예시 성공은 Sprint 전체 수용 완료가 아니다. 문서 갱신만으로 자동 재개하거나 사용자 승인을 받은 것으로 해석하지 마라.
 
 관련 설치 스킬을 확인해 읽고 적용해라. frontend-design, Vue 패턴, 접근성, contract-first가 관련 있다. 스킬 이름을 언급하는 것으로 화면 품질을 대신하지 마라. 필요하면 아래 사용자 참고 프로젝트를 읽되 수정하지 마라.
 /Users/seohyeokin/workspace/skala-AIAgent/signal_room/DESIGN.md

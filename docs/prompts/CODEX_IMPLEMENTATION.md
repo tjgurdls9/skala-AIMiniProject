@@ -1,5 +1,7 @@
 # Codex 구현 프롬프트
 
+**현재 P01–P05 누락 보완을 재개할 때는 [Codex 전체 보완 프롬프트](CODEX_PHASE_COMPLETION.md)를 전달한다.** 이 문서의 초기 구현 기준·역할 경계는 함께 유지한다. 전체 보완의 Sprint별 지시는 [공통 작업 지시서](../planning/phase-completion.md)가 정의한다.
+
 아래 블록 전체를 Codex에 전달한다. 이 파일을 작성한 현재 세션에서는 구현을 시작하지 않았다. Claude용 프롬프트도 동시에 전달할 수 있으며 공통 준비 이후 각자의 공간에서 병행한다.
 
 ```text
@@ -22,6 +24,8 @@ docs/planning/protocol.v1.schema.json
 docs/planning/delivery.md
 docs/planning/acceptance.md
 docs/planning/collaboration.md (특히 6~8절)
+
+이 제품 개발은 docs/planning/delivery.md §3의 DEV-P01–P05·DEV-S01–S12를 기준으로 관리한다. 제품 런타임이 생성 앱에 붙인 Phase/Sprint와 구분하고 기존 D 작업 ID 연결을 유지해라. 착수 전에 이번에 명시 배정된 Sprint/하위 작업·기준 커밋·완료 조건·종료선을 인계에 적어라. 부분 구현·자체 검사·실제 사용자 수용을 구분해 보고하고, 배정된 Sprint 묶음의 종료선에서 인계한 뒤 대기해라. 이미 배정된 복수 Sprint는 그 범위와 의존성을 따르되 미배정 작업·추가 에이전트·외부 작업으로 확대하지 마라. 문서 갱신만으로 세션 자동 재개나 배포 승인으로 해석하지 마라.
 
 프론트 요구는 docs/planning/experience.md도 읽어 API 소비자가 무엇을 해야 하는지 확인해라. 설치된 관련 ECC 스킬을 찾아 읽고 적용하되 사용자 요구가 우선이다. 없는 명령·스킬이 설치됐다고 가정하지 마라. contract-first, product-capability, context-and-decisions, strategic-compact, FastAPI/MCP 패턴이 관련 있다. 스킬을 읽었다고 구현이 완료됐다고 보고하지 마라.
 
