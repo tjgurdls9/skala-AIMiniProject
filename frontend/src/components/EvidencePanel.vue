@@ -9,6 +9,7 @@ import { EVENT_TYPE, formatTime, ROLE, shortDigest, TASK_STATE, WORK_KIND } from
 import AcceptanceList from './AcceptanceList.vue'
 import PlanViewBody from './PlanViewBody.vue'
 import ReviewPair from './ReviewPair.vue'
+import ReviewRounds from './ReviewRounds.vue'
 
 const props = defineProps<{
   snapshot: Snapshot
@@ -129,11 +130,16 @@ watch(
     <section class="block" aria-label="독립 검토">
       <h3>독립 검토 (각자 판정)</h3>
       <ReviewPair :pair="pair" @artifact="emit('artifact', $event)" />
+      <details class="rounds-box">
+        <summary>검토 회차 {{ snapshot.reports.length ? '' : '(없음)' }}</summary>
+        <ReviewRounds :snapshot="snapshot" @artifact="emit('artifact', $event)" />
+      </details>
     </section>
   </aside>
 </template>
 
 <style scoped>
+.rounds-box summary { min-height: 36px; cursor: pointer; display: flex; align-items: center; }
 .evidence { display: grid; gap: 14px; align-content: start; overflow: auto; }
 .block { display: grid; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .block:last-child { border-bottom: 0; }

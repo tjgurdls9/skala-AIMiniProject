@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ReviewPair } from '../model/derive'
 import { shortDigest, VERDICT } from '../model/labels'
+import { sameTarget } from '../model/reviews'
 
 /** 검증·보안 보고서를 나란히, 각자의 판정으로 보여준다. 둘을 하나의 PASS로 합치지 않는다. */
 defineProps<{ pair: ReviewPair }>()
@@ -8,6 +9,10 @@ const emit = defineEmits<{ artifact: [id: string] }>()
 </script>
 
 <template>
+  <p v-if="pair.validator && pair.security && !sameTarget(pair.validator, pair.security)" class="error-box small" role="alert">
+    두 보고서가 서로 다른 명세·커밋·이미지를 검토했습니다. 같은 후보의 판정으로 묶을 수 없습니다.
+  </p>
+  <p v-else-if="pair.validator && pair.security" class="small muted">두 보고서가 같은 명세·커밋·이미지를 검토했습니다. 판정은 각자 따로 봅니다.</p>
   <div class="pair">
     <article v-for="[role, label] in ([['validator', '검증'], ['security', '보안']] as const)" :key="role" class="report">
       <h4>{{ label }} 보고서</h4>
