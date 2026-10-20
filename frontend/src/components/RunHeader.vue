@@ -77,9 +77,13 @@ const busy = computed(() => props.pending !== null)
 
 <style scoped>
 .run-header {
-  position: sticky; top: 0; z-index: 5;
+  /* 전체 화면 사무실 위에 떠 있는 반투명 막대. 중지·재개는 항상 보인다 */
+  position: fixed; top: 0; left: 0; right: 0; z-index: 20;
   display: grid; grid-template-columns: auto 1fr auto; gap: 8px 16px; align-items: center;
-  padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line);
+  padding: 10px 16px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
 }
 .id { display: flex; align-items: center; gap: 12px; min-width: 0; }
 h1 { font-size: 1.1rem; }
@@ -91,7 +95,11 @@ h1 { font-size: 1.1rem; }
   .status { grid-column: 1 / -1; grid-row: 2; }
 }
 @media (max-width: 640px) {
-  .run-header { grid-template-columns: 1fr; position: static; }
-  .controls { justify-content: flex-start; }
+  .run-header { grid-template-columns: auto 1fr; padding: 6px 10px; gap: 6px 8px; }
+  .id h1, .id p { display: none; }
+  .status { grid-column: 2; grid-row: 1; font-size: 0.85rem; gap: 4px 6px; }
+  .controls { grid-column: 1 / -1; justify-content: flex-start; gap: 6px; }
+  .controls :deep(.chip) { display: none; }
+  .controls .btn, .controls :deep(.btn) { min-height: 40px; padding: 0 10px; font-size: 0.85rem; }
 }
 </style>

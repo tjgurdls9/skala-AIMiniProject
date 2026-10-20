@@ -39,6 +39,29 @@
   --live: #1f6b3a;
   --live-bg: #def3e4;
 
+  /* 픽셀 사무실(위에서 내려다본 2D) */
+  --px-void: #2a2f33;
+  --px-wall: #59615f;
+  --px-wall-top: #8b9491;
+  --px-wood: #c79a63;
+  --px-wood-2: #b4864f;
+  --px-carpet: #8fa7c4;
+  --px-carpet-2: #89a1bf;
+  --px-tile: #e3e2db;
+  --px-tile-v: #dcd7e6;
+  --px-tile-s: #e5dcc6;
+  --px-concrete: #c7c9c4;
+  --px-concrete-2: #c2c4bf;
+  --px-desk: #a9774a;
+  --px-desk-edge: #7d5534;
+  --px-monitor: #2c3138;
+  --px-screen: #8fd3ff;
+  --px-plant: #4f8f4a;
+  --px-plant-2: #6fb361;
+  --px-label-bg: rgb(255 253 248 / 0.92);
+  --px-label-ink: #1d2320;
+  --px-shadow: rgb(0 0 0 / 0.18);
+
   --radius: 8px;
   --gap: 16px;
   --tap: 44px;
@@ -73,6 +96,28 @@
   --tone-warn: #f0a640;
   --tone-danger: #ff8a7f;
   --tone-wait: #aeaadf;
+
+  --px-void: #0d1013;
+  --px-wall: #2b3236;
+  --px-wall-top: #47525a;
+  --px-wood: #6d5236;
+  --px-wood-2: #5d452c;
+  --px-carpet: #34445c;
+  --px-carpet-2: #314157;
+  --px-tile: #3a3d40;
+  --px-tile-v: #3d3a47;
+  --px-tile-s: #433e35;
+  --px-concrete: #34373a;
+  --px-concrete-2: #313437;
+  --px-desk: #7a5636;
+  --px-desk-edge: #523822;
+  --px-monitor: #15181c;
+  --px-screen: #6cc4ff;
+  --px-plant: #3e7a3a;
+  --px-plant-2: #5aa04f;
+  --px-label-bg: rgb(26 31 35 / 0.9);
+  --px-label-ink: #e9e7e0;
+  --px-shadow: rgb(0 0 0 / 0.35);
 
   --example: #ffc46b;
   --example-bg: #3a2a10;

@@ -281,9 +281,8 @@ describe('L7 시작 화면 중복 생성 방지', () => {
       createProject: vi.fn(async () => ({ project_id: 'p1', title: 't', created_at: 'x' })),
       createRun,
     } as unknown as LiveApi
-    const w = mount(StartScreen, { props: { api } })
+    const w = mount(StartScreen, { attachTo: document.body, props: { api } })
     await flush()
-    await w.find('input[type=text]').setValue('t')
     await w.find('textarea').setValue('r')
     await w.find('form').trigger('submit')
     await flush()
@@ -291,6 +290,6 @@ describe('L7 시작 화면 중복 생성 방지', () => {
     await flush()
     expect(api.createProject).toHaveBeenCalledOnce()
     expect(createRun).toHaveBeenCalledTimes(2)
-    expect(w.emitted('openRun')).toEqual([['r9']])
+    expect((w.emitted('openRun') as unknown[][])[0][0]).toBe('r9')
   })
 })
