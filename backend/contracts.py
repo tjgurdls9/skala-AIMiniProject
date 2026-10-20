@@ -2,12 +2,14 @@
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 from jsonschema import Draft202012Validator, FormatChecker
 from referencing import Registry, Resource
 
 ROOT = Path(__file__).resolve().parents[1]
+SECRET = re.compile(r"(?:sk-[A-Za-z0-9_-]{20,}|AKIA[A-Z0-9]{16}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{20,})")
 BASE = "https://lifecycle.invalid/contracts/"
 SCHEMAS = {
     name: json.loads((ROOT / "docs/planning" / name).read_text())
@@ -36,8 +38,9 @@ def digest(value: object) -> str:
 
 
 class DomainError(Exception):
-    def __init__(self, code: str, message: str, status: int = 409):
+    def __init__(self, code: str, message: str, status: int = 409, current_state_version=None):
         self.code, self.message, self.status = code, message, status
+        self.current_state_version = current_state_version
 
 
 def require(condition: bool, code: str, message: str, status: int = 409) -> None:

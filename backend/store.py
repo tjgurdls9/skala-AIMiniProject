@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from backend.contracts import canonical, digest, require, validate
+from backend.contracts import DomainError, canonical, digest, require, validate
 
 
 def now():
@@ -48,6 +48,14 @@ class Store:
                     context TEXT, created_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS worker_heartbeat (
                     id INTEGER PRIMARY KEY CHECK(id=1), updated_at REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS worker_lock (
+                    id INTEGER PRIMARY KEY CHECK(id=1), owner TEXT NOT NULL, expires REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS attempts (
+                    id TEXT PRIMARY KEY, job_id TEXT NOT NULL REFERENCES jobs(id),
+                    owner TEXT NOT NULL, context TEXT NOT NULL, created_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS attempt_results (
+                    attempt_id TEXT PRIMARY KEY REFERENCES attempts(id),
+                    outcome TEXT NOT NULL, created_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS operations (
                     id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id),
                     target_digest TEXT NOT NULL, state TEXT NOT NULL, result TEXT);
@@ -64,6 +72,10 @@ class Store:
                 CREATE TRIGGER IF NOT EXISTS reviews_immutable BEFORE UPDATE ON reviews
                     BEGIN SELECT RAISE(ABORT, 'immutable review'); END;
             """)
+            for table in ("requests", "artifacts", "specs", "reviews", "events", "commands", "attempts", "attempt_results"):
+                for action in ("UPDATE", "DELETE"):
+                    db.execute(f"CREATE TRIGGER IF NOT EXISTS {table}_{action.lower()}_blocked BEFORE {action} ON {table} "
+                               f"BEGIN SELECT RAISE(ABORT, 'immutable record'); END")
 
     @contextmanager
     def transaction(self):
@@ -81,6 +93,7 @@ class Store:
             db.close()
 
     def project(self, data):
+        validate("ProjectCreate", data)
         result = {"project_id": uid(), "title": data["title"], "created_at": now()}
         with self.transaction() as db:
             db.execute("INSERT INTO projects VALUES (?, ?, ?)", tuple(result.values()))
@@ -117,6 +130,7 @@ class Store:
                    (uid(), snapshot["run_id"], snapshot["state_version"], role, now()))
 
     def create_run(self, project_id, data):
+        validate("RunCreate", data)
         with self.transaction() as db:
             project = db.execute("SELECT id FROM projects WHERE id=?", (project_id,)).fetchone()
             require(project is not None, "NOT_FOUND", "프로젝트를 찾을 수 없습니다.", 404)
@@ -155,6 +169,7 @@ class Store:
                 "SELECT body FROM events WHERE run_id=? AND seq>? ORDER BY seq LIMIT 200", (run_id, cursor))]
 
     def command(self, run_id, command):
+        validate("Command", command)
         with self.transaction() as db:
             snapshot = self.load(db, run_id)
             require(command["run_id"] == run_id, "INVALID_COMMAND", "실행 ID가 일치하지 않습니다.", 422)
@@ -164,7 +179,9 @@ class Store:
                 require(previous["body"] == canonical(command), "COMMAND_CONFLICT", "명령 ID가 다른 요청에 사용됐습니다.")
                 return json.loads(previous["receipt"])
             require(snapshot["mode"] == "live", "REPLAY_READ_ONLY", "재생은 읽기 전용입니다.")
-            require(snapshot["state_version"] == command["expected_state_version"], "VERSION_CONFLICT", "최신 스냅샷을 읽고 다시 요청하세요.")
+            if snapshot["state_version"] != command["expected_state_version"]:
+                raise DomainError("VERSION_CONFLICT", "최신 스냅샷을 읽고 다시 요청하세요.",
+                                  current_state_version=snapshot["state_version"])
             require(snapshot["state"] not in ("succeeded", "cancelled"), "INVALID_STATE", "종료된 실행에는 새 실행이 필요합니다.")
             action, payload = command["action"], command["payload"]
             event_type, summary = "run_state_changed", "실행 상태가 변경됐습니다."
@@ -190,7 +207,7 @@ class Store:
                     approval["state"] = "invalidated"
                 for task in snapshot["tasks"]:
                     task["state"] = "superseded"
-                # shortcut: scope classification is not implemented, all changes require plan reapproval.
+                # shortcut: all changes require reapproval, upgrade when scope classification is verified.
                 snapshot.update(state="planning", spec_version_id=None, reports=[], reason="변경 원문을 보존했습니다. 기획 재승인이 필요합니다.")
                 schedule, event_type, summary = True, "changes_requested", "변경 요청이 저장됐습니다."
             elif action == "decide":
@@ -202,10 +219,16 @@ class Store:
                         "STALE_APPROVAL", "최신 승인 대상을 다시 확인하세요.")
                 require(approval["target"]["gate"] == "plan" and snapshot["state"] == "awaiting_plan_approval",
                         "RUNTIME_UNAVAILABLE", "배포 실행기는 아직 활성화되지 않았습니다.")
+                spec = db.execute("SELECT package FROM specs WHERE id=? AND run_id=?",
+                                  (snapshot["spec_version_id"], run_id)).fetchone()
+                require(spec is not None and approval["target"]["plan_digest"] == digest(json.loads(spec[0])),
+                        "STALE_APPROVAL", "저장된 기획과 승인 대상이 일치하지 않습니다.")
                 approval.update(state="approved" if payload["decision"] == "approve" else "rejected",
                                 decided_by="local-operator", decided_at=now())
                 if "feedback" in payload:
                     approval["feedback"] = payload["feedback"]
+                    db.execute("INSERT INTO requests VALUES (?, ?, ?, ?, ?)",
+                               (uid(), snapshot["project_id"], run_id, payload["feedback"], now()))
                 snapshot["state"] = "building" if payload["decision"] == "approve" else "needs_input"
                 schedule = payload["decision"] == "approve"
                 event_type, summary = "approval_decided", "기획 승인 결정이 저장됐습니다."
@@ -234,3 +257,16 @@ class Store:
             content, metadata = json.loads(row[0]), json.loads(row[1])
             require(digest(content) == metadata["content_digest"], "TEMPORARILY_UNAVAILABLE", "아티팩트 무결성을 확인할 수 없습니다.", 503)
             return content
+
+    def replay_recordings(self):
+        with self.transaction() as db:
+            result = []
+            for row in db.execute("SELECT r.snapshot, p.title FROM runs r JOIN projects p ON p.id=r.project_id ORDER BY r.rowid DESC"):
+                snapshot = json.loads(row[0])
+                if snapshot["mode"] != "live":
+                    continue
+                events = [json.loads(r[0]) for r in db.execute(
+                    "SELECT body FROM events WHERE run_id=? ORDER BY seq", (snapshot["run_id"],))]
+                result.append(dict(project_id=snapshot["project_id"], title=row[1], source_run_id=snapshot["run_id"],
+                                   recorded_at=now(), manifest_digest=digest({"snapshot": snapshot, "events": events})))
+            return result

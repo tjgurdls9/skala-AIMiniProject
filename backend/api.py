@@ -1,20 +1,27 @@
 import asyncio
+import hashlib
 import hmac
 import json
 import re
+import secrets
+import sqlite3
+import time
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from jsonschema import ValidationError
+from starlette.exceptions import HTTPException
 
 from backend.config import Settings
-from backend.contracts import DomainError, SCHEMAS, require, validate
+from backend.contracts import DomainError, SCHEMAS, SECRET, require, validate
 from backend.store import Store
 from runner.model import Ollama
 
-SECRET = re.compile(r"(?:sk-[A-Za-z0-9_-]{20,}|AKIA[A-Z0-9]{16}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{20,})")
+ORIGINS = {"http://127.0.0.1:5173", "http://127.0.0.1:8000"}
+COOKIE = "lifecycle_session"
 
 
 def create_app(settings=None, store=None, model=None):
@@ -23,18 +30,35 @@ def create_app(settings=None, store=None, model=None):
         app.state.settings = settings or Settings.from_env()
         app.state.store = store or Store(app.state.settings.database)
         app.state.model = model or Ollama(app.state.settings.model, app.state.settings.ollama_url)
+        app.state.sessions = {}
         yield
 
     async def authorize(request: Request):
+        if request.url.path == "/api/session" and request.method == "POST":
+            return
         supplied = request.headers.get("authorization", "")
-        require(hmac.compare_digest(supplied.encode(), ("Bearer " + request.app.state.settings.token).encode()),
-                "UNAUTHORIZED", "운영자 인증이 필요합니다.", 401)
+        if hmac.compare_digest(supplied.encode(), ("Bearer " + request.app.state.settings.token).encode()):
+            return
+        key = hashlib.sha256(request.cookies.get(COOKIE, "").encode()).hexdigest()
+        session = request.app.state.sessions.get(key)
+        require(session is not None and session["expires"] > time.time(),
+                "UNAUTHORIZED", "로컬 세션을 연결하세요.", 401)
+        request.state.session_key = key
+        request.state.session = session
+        if request.method not in ("GET", "HEAD"):
+            require(request.headers.get("origin") in ORIGINS and
+                    hmac.compare_digest(request.headers.get("x-csrf-token", "").encode(), session["csrf_token"].encode()),
+                    "FORBIDDEN", "같은 origin의 CSRF 토큰이 필요합니다.", 403)
 
     app = FastAPI(title="Development lifecycle", version="0.1.0", lifespan=lifespan,
                   dependencies=[Depends(authorize)], docs_url=None, redoc_url=None, openapi_url=None)
 
     @app.middleware("http")
     async def request_boundary(request, call_next):
+        if (not request.client or request.client.host not in ("127.0.0.1", "::1") or
+                request.url.hostname not in ("127.0.0.1", "localhost") or
+                (request.headers.get("origin") is not None and request.headers["origin"] not in ORIGINS)):
+            return JSONResponse({"error": {"code": "FORBIDDEN", "message": "로컬 origin에서만 접근할 수 있습니다."}}, status_code=403)
         # Bound chunked bodies too; Content-Length alone is not a trust boundary.
         if request.method in ("POST", "PUT", "PATCH"):
             body = bytearray()
@@ -51,11 +75,24 @@ def create_app(settings=None, store=None, model=None):
 
     @app.exception_handler(DomainError)
     async def domain_error(request, exc):
-        return JSONResponse({"error": {"code": exc.code, "message": exc.message}}, status_code=exc.status)
+        value = {"error": {"code": exc.code, "message": exc.message}}
+        if exc.current_state_version is not None:
+            value["error"]["current_state_version"] = exc.current_state_version
+        validate("Error", value)
+        return JSONResponse(value, status_code=exc.status)
 
     @app.exception_handler(RequestValidationError)
     async def malformed(request, exc):
         return JSONResponse({"error": {"code": "INVALID_COMMAND", "message": "요청 형식을 확인하세요."}}, status_code=422)
+
+    @app.exception_handler(HTTPException)
+    async def http_error(request, exc):
+        return JSONResponse({"error": {"code": "NOT_FOUND" if exc.status_code == 404 else "INVALID_COMMAND",
+                                       "message": "지원하는 API 경로와 메서드를 확인하세요."}}, status_code=exc.status_code)
+
+    @app.exception_handler(sqlite3.Error)
+    async def storage_error(request, exc):
+        return JSONResponse({"error": {"code": "TEMPORARILY_UNAVAILABLE", "message": "저장소를 확인한 뒤 다시 연결하세요."}}, status_code=503)
 
     async def payload(request, name):
         try:
@@ -70,8 +107,8 @@ def create_app(settings=None, store=None, model=None):
         db = request.app.state.store
         with db.transaction() as connection:
             row = connection.execute("SELECT updated_at FROM worker_heartbeat WHERE id=1").fetchone()
-        import time
-        ready = bool(row and time.time() - row[0] < 15)
+            lock = connection.execute("SELECT expires FROM worker_lock WHERE id=1").fetchone()
+        ready = bool(row and lock and 0 <= time.time() - row[0] < 10 and lock[0] > time.time())
         status = await request.app.state.model.status()
         value = dict(protocol_version=1, live_available=ready and status == "ready", provider="ollama_local",
                      model=request.app.state.settings.model or None, model_status=status,
@@ -85,6 +122,41 @@ def create_app(settings=None, store=None, model=None):
         validate("Runtime", value)
         return value
 
+    @app.post("/api/session", status_code=201)
+    async def open_session(request: Request, response: Response):
+        require(request.headers.get("origin") in ORIGINS, "FORBIDDEN", "로컬 origin이 필요합니다.", 403)
+        sessions = request.app.state.sessions
+        for key in list(sessions):
+            if sessions[key]["expires"] <= time.time():
+                del sessions[key]
+        token, expires = secrets.token_urlsafe(32), time.time() + 8 * 3600
+        value = {"csrf_token": secrets.token_urlsafe(32), "expires_at": datetime.fromtimestamp(expires, timezone.utc).isoformat()}
+        sessions[hashlib.sha256(token.encode()).hexdigest()] = {**value, "expires": expires}
+        response.set_cookie(COOKIE, token, httponly=True, samesite="strict", max_age=8 * 3600, path="/api")
+        validate("Session", value)
+        return value
+
+    @app.get("/api/session")
+    def session(request: Request):
+        require(hasattr(request.state, "session"), "FORBIDDEN", "브라우저 세션이 필요합니다.", 403)
+        return {k: request.state.session[k] for k in ("csrf_token", "expires_at")}
+
+    @app.delete("/api/session", status_code=204)
+    def close_session(request: Request, response: Response):
+        require(hasattr(request.state, "session_key"), "FORBIDDEN", "브라우저 세션이 필요합니다.", 403)
+        del request.app.state.sessions[request.state.session_key]
+        response.delete_cookie(COOKIE, path="/api")
+
+    @app.get("/api/replays")
+    def replays(request: Request):
+        value = request.app.state.store.replay_recordings()
+        validate("ReplayRecordings", value)
+        return value
+
+    @app.get("/api/environments/{environment_id}")
+    def environment(environment_id: str):
+        raise DomainError("NOT_FOUND", "설정된 배포 환경이 없습니다.", 404)
+
     @app.get("/api/runtime")
     async def get_runtime(request: Request):
         return await runtime(request)
@@ -96,7 +168,7 @@ def create_app(settings=None, store=None, model=None):
 
     @app.post("/api/projects", status_code=201)
     async def project(request: Request):
-        value = request.app.state.store.project(await payload(request, "ProjectCreate"))
+        value = await asyncio.to_thread(request.app.state.store.project, await payload(request, "ProjectCreate"))
         validate("Project", value)
         return value
 
@@ -106,7 +178,9 @@ def create_app(settings=None, store=None, model=None):
         if data["mode"] == "live":
             readiness = await runtime(request)
             require(readiness["live_available"], "RUNTIME_UNAVAILABLE", "모델과 실행기를 준비한 뒤 LIVE를 생성하세요.")
-        return request.app.state.store.create_run(project_id, data)
+        value = await asyncio.to_thread(request.app.state.store.create_run, project_id, data)
+        validate("Run", value)
+        return value
 
     @app.get("/api/runs/{run_id}")
     def snapshot(run_id: str, request: Request):
@@ -116,25 +190,32 @@ def create_app(settings=None, store=None, model=None):
 
     @app.post("/api/runs/{run_id}/commands", status_code=202)
     async def command(run_id: str, request: Request):
-        value = request.app.state.store.command(run_id, await payload(request, "Command"))
+        value = await asyncio.to_thread(request.app.state.store.command, run_id, await payload(request, "Command"))
         validate("CommandReceipt", value)
         return value
 
     @app.get("/api/runs/{run_id}/events")
-    async def events(run_id: str, request: Request, after: int | None = None):
+    async def events(run_id: str, request: Request, after: str | None = None):
         header = request.headers.get("last-event-id")
         require(header is not None or after is not None, "CURSOR_INVALID", "스냅샷의 last_event_seq를 after로 지정하세요.", 422)
-        try:
-            cursor = int(header) if header is not None else after
-        except ValueError:
-            raise DomainError("CURSOR_INVALID", "올바른 이벤트 cursor가 필요합니다.", 422)
+        raw = header if header is not None else after
+        require(bool(re.fullmatch(r"[0-9]{1,16}", raw)), "CURSOR_INVALID", "올바른 이벤트 cursor가 필요합니다.", 422)
+        cursor = int(raw)
         store = request.app.state.store
-        store.events(run_id, cursor)
+        try:
+            await asyncio.to_thread(store.events, run_id, cursor)
+        except DomainError as exc:
+            if exc.code != "CURSOR_INVALID":
+                raise
+            return StreamingResponse(iter(['event: resync\ndata: {"reason":"cursor_out_of_range"}\n\n']), media_type="text/event-stream")
 
         async def stream():
             nonlocal cursor
             idle = 0
             while not await request.is_disconnected():
+                if hasattr(request.state, "session") and (request.state.session_key not in request.app.state.sessions or
+                        request.state.session["expires"] <= time.time()):
+                    break
                 batch = await asyncio.to_thread(store.events, run_id, cursor)
                 for event in batch:
                     cursor = event["seq"]
