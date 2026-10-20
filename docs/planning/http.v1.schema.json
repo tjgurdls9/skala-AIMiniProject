@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lifecycle HTTP payloads v1",
+  "$defs": {
+    "ProjectCreate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["title", "request"],
+      "properties": {
+        "title": {"type": "string", "minLength": 1, "maxLength": 200},
+        "request": {"type": "string", "minLength": 1, "maxLength": 32000}
+      }
+    },
+    "Project": {
+      "type": "object", "additionalProperties": false,
+      "required": ["project_id", "title", "created_at"],
+      "properties": {
+        "project_id": {"$ref": "protocol.v1.schema.json#/$defs/Id"},
+        "title": {"type": "string"},
+        "created_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "RunCreate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {"enum": ["live", "replay"]},
+        "source_run_id": {"$ref": "protocol.v1.schema.json#/$defs/Id"}
+      },
+      "if": {"properties": {"mode": {"const": "replay"}}},
+      "then": {"required": ["source_run_id"]},
+      "else": {"not": {"required": ["source_run_id"]}}
+    },
+    "CommandReceipt": {
+      "type": "object", "additionalProperties": false,
+      "required": ["command_id", "run_id", "status", "accepted_at"],
+      "properties": {
+        "command_id": {"$ref": "protocol.v1.schema.json#/$defs/Id"},
+        "run_id": {"$ref": "protocol.v1.schema.json#/$defs/Id"},
+        "status": {"const": "accepted"},
+        "accepted_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "Runtime": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocol_version", "live_available", "provider", "model", "model_status", "runner_status", "inference_slots", "external_api_enabled", "deployment_enabled", "reasons"],
+      "properties": {
+        "protocol_version": {"const": 1},
+        "live_available": {"type": "boolean"},
+        "provider": {"const": "ollama_local"},
+        "model": {"type": ["string", "null"]},
+        "model_status": {"enum": ["not_configured", "unavailable", "ready"]},
+        "runner_status": {"enum": ["unavailable", "ready"]},
+        "inference_slots": {"const": 1},
+        "external_api_enabled": {"const": false},
+        "deployment_enabled": {"const": false},
+        "reasons": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "Error": {
+      "type": "object", "additionalProperties": false,
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object", "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": {
+            "code": {"enum": ["UNAUTHORIZED", "FORBIDDEN", "NOT_FOUND", "VERSION_CONFLICT", "COMMAND_CONFLICT", "STALE_APPROVAL", "INVALID_COMMAND", "PROVIDER_NOT_FREE", "RUNTIME_UNAVAILABLE", "REPLAY_READ_ONLY", "TEMPORARILY_UNAVAILABLE", "CURSOR_INVALID", "INVALID_STATE", "BODY_TOO_LARGE"]},
+            "message": {"type": "string"}
+          }
+        }
+      }
+    }
+  }
+}

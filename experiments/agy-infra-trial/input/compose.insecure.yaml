@@ -1,0 +1,25 @@
+# DELIBERATELY UNSAFE SYNTHETIC INPUT. DO NOT RUN.
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.insecure
+    image: local-trial-app:latest
+    user: "0:0"
+    privileged: true
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp:unconfined
+    ports:
+      - "0.0.0.0:8080:8000"
+    volumes:
+      - /:/host
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      DATA_DIR: /app/data
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3

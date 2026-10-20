@@ -1,0 +1,18 @@
+# DELIBERATELY UNSAFE SYNTHETIC INPUT, OUTSIDE .github/workflows/.
+name: unsafe-trial-pipeline
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions: write-all
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+      - name: Echo a fictional token
+        env:
+          DEMO_TOKEN: SYNTHETIC_ONLY_NOT_A_SECRET
+        run: echo "$DEMO_TOKEN"
+      - name: Automatically apply unchecked configuration
+        run: docker compose -f compose.insecure.yaml up -d

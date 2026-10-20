@@ -1,0 +1,104 @@
+# 관제탑 → Codex CLI: 공통 준비 인계
+
+## 현재 상태
+
+`BOOTSTRAP_REQUIRED` — GitHub 비공개 저장소는 생성했다. 관제탑 환경에서는 프로젝트 `.git` 쓰기가 금지되어 `git init -b main`이 `Operation not permitted`로 실패했다. 로컬 Git·worktree가 준비됐다고 간주하지 않는다.
+
+- 원격: https://github.com/tjgurdls9/skala-AIMiniProject
+- 기본 브랜치: `main`
+- 공개 범위: Private
+- 원본 폴더: `/Users/seohyeokin/workspace/skala-AIMiniProject`
+- 로컬 Git: 관제탑의 초기화 시도 차단. Codex CLI에서 현재 상태를 다시 확인할 것.
+- 예정 worktree: `.worktrees/codex-runtime`, `.worktrees/claude-office`
+- 예정 브랜치: `work/codex-runtime`, `work/claude-office`
+- 제품 Infra 담당: Codex CLI. agy 배정 없음.
+
+이 파일의 존재는 Claude 착수 허가가 아니다. 아래 작업을 끝낸 뒤 실제 경로·기준 커밋을 기록하고 `READY_FOR_PARALLEL_IMPLEMENTATION`으로 갱신해야 한다.
+
+## Codex CLI가 먼저 할 일
+
+1. 기존 사용자 변경·로컬 Git·원격·GitHub 접근을 확인한다. 관제탑과 CLI의 권한이 같다고 가정하지 않는다. 너도 `.git` 쓰기가 막히면 정확한 실패를 보고하고 우회하지 않는다.
+2. 원본 파일을 삭제/덮어쓰지 않고 위 원격 `main`을 기준으로 로컬 Git을 연결한다. 이미 다른 원격/이력이 있으면 무단 교체하지 않는다. 원격 초기 이력을 force push로 지우지 않는다. 로컬 파일과 원격 기획의 차이는 보존하고 명시적으로 정리한다.
+3. `.gitignore`를 적용하고 필요한 새 제품 파일만 관리한다. 강의 PDF·베이스 코드·키·가중치·`.worktrees`를 업로드하지 않는다.
+4. 공유 프로토콜·요구사항·현재 스키마가 원격에 존재하는 기준 커밋을 확정한다.
+5. 해당 기준에서 두 브랜치와 별도 worktree를 만든다. 기존 같은 이름의 경로·브랜치가 있으면 상태부터 확인한다. 상대 세션의 worktree를 지우거나 재활용하지 않는다.
+6. 아래 준비 완료 항목을 채운 뒤 Claude가 자기 worktree에서 화면 작업을 시작할 수 있게 인계한다. HTTP 계약의 남은 세부 사항은 D1에서 조율하며, 프론트의 예시 기반 화면 작업 전체를 백엔드 완료까지 대기시키지 않는다.
+
+## 준비 완료 시 기록할 항목
+
+- 상태: 아직 `BOOTSTRAP_REQUIRED`
+- 확인한 원격 `main` 커밋: 미기록
+- 두 worktree의 실제 절대 경로: 미생성
+- 두 브랜치의 실제 이름: 미생성
+- 합의한 계약 버전·SHA256: 초기 v1 스키마 존재, 작업 기준 해시는 준비 완료 때 기록
+- 로컬 API/프론트 포트: 미정
+- 보존한 사용자 변경과 남은 제약: 실제 초기화 과정에서 기록
+
+## Claude에게 전달할 준비 완료 신호
+
+`READY_FOR_PARALLEL_IMPLEMENTATION`과 기준 커밋·자기 worktree 경로가 이 인계에 기록된 뒤에만 시작한다. Claude의 담당은 frontend 전체이며 Codex는 frontend 파일을 직접 수정하지 않는다. 현재 대화는 관제·범위/계약 조율에 사용한다.
+
+---
+
+## Codex 구현 세션 기록 — 2026-10-20
+
+### 세션 구분과 현재 상태
+
+- 현재 이 파일을 기록한 세션은 **Codex 구현 작업 세션**이다. 관제탑은 사용자가 별도로 운영하는 ChatGPT 대화다. 위의 관제탑 인계 원문은 보존했다.
+- 결과·요청은 이 파일에만 기록하고 사용자가 다른 세션에 전달한다. 자동 세션 전달·폴링·서브에이전트 기동은 하지 않았다.
+- Codex 소유권은 backend·runner·MCP/RAG·Infra·공유 계약·최종 통합이다. `frontend/**`는 Claude 소유이며 수정하지 않았다. agy에는 구현을 배정하지 않았다.
+- 상태는 여전히 `BOOTSTRAP_REQUIRED`다. `READY_FOR_PARALLEL_IMPLEMENTATION`을 발급하지 않았다.
+- 사용자 대기 지시 직전의 로컬 구현 초안은 보존했다. 이번 협업 방식 정정 후에는 현황 확인과 이 인계 기록만 수행했다.
+
+### 수행 내용·변경 파일
+
+신규 제품 코드가 없는 상태에서 아래 로컬 초안을 작성했다. 모두 **미검증·미커밋**이며 기능 완료나 독립 검토 PASS를 뜻하지 않는다.
+
+| 경로 | 현재 내용·한계 |
+|---|---|
+| `.gitignore` | 참고 예제·PDF·가중치·키·DB·실행 데이터·worktree 제외 초안. 관제탑의 후속 변경은 보존했으며 최종 diff 검토 전이다. |
+| `docs/planning/http.v1.schema.json` | ProjectCreate/Project/RunCreate/CommandReceipt/Runtime/Error 초안. 기존 프로토콜을 상대 `$ref`로 참조한다. HTTP 경로·인증·SSE 의미를 포함한 전체 계약 확정은 남아 있다. |
+| `backend/__init__.py`, `backend/requirements.txt` | 백엔드 패키지와 직접 의존성 버전 지정. 별도 환경 설치·전이 의존성 lock·호환성 검증 전이다. |
+| `backend/contracts.py` | 번들 JSON Schema 검증·정규 JSON 해시·도메인 오류 초안. |
+| `backend/config.py` | 운영자 토큰·DB·명시적 모델 설정. 비밀 값은 읽거나 인계에 출력하지 않았다. |
+| `backend/store.py` | SQLite 프로젝트·원문·스냅샷·명령·이벤트·명세·아티팩트·작업 등의 저장 초안. 명령 중복/버전/승인 검사, 중지·재개·수정·기록 재생 처리 코드. 작업 lease와 실제 복구 실행기·독립 검토·외부 operation 처리는 미연결이다. |
+| `backend/api.py` | 인증·프로젝트/실행 생성·스냅샷·명령·SSE·runtime·아티팩트 경로 초안. worker heartbeat와 로컬 모델 준비를 검사하도록 작성했으나 worker 자체가 아직 없다. |
+| `runner/__init__.py`, `runner/model.py` | loopback Ollama·명시적 Qwen/DeepSeek 태그·구조화 출력·단일 추론 슬롯 초안. 실제 모델 호출·정확 태그/라이선스/자원 검증 전이다. |
+
+`all_total_vue_student/**`, PDF와 참고 리소스는 수정하지 않았다. 관제탑이 추가/수정한 루트 README·기획 문서·기존 인계 내용도 되돌리지 않았다.
+
+### Git·계약 기준
+
+- 사용자 지정 원격: `https://github.com/tjgurdls9/skala-AIMiniProject`, 비공개 생성 사실은 사용자와 관제탑 인계에서 전달받았다.
+- 이 세션의 `git init -b main`: `.git: Operation not permitted`로 실패했다. 경계를 우회하지 않았다.
+- `git status --short`: 현재도 `not a git repository`다. 로컬 브랜치·worktree·커밋·원격 설정은 만들지 못했다.
+- `gh auth status`: 이 세션에서 기존 계정 토큰이 invalid로 보고됐다. 로그인/키 변경을 자동 수행하지 않았다.
+- `git ls-remote ... HEAD refs/heads/main`: `Could not resolve host: github.com`으로 실패했다. 원격 `main` 커밋과 자동 배포 트리거를 확인하지 못했다. push·merge·deploy는 수행하지 않았다.
+- 따라서 **기준 커밋은 없음**. 아래 해시는 현 로컬 파일 식별용이며 승인된 원격 계약 커밋을 대체하지 않는다.
+
+| 계약 | SHA256 |
+|---|---|
+| `protocol.v1.schema.json` — 기존 v1, 이 세션에서 변경 없음 | `ad6decc2849e1eb80af54b557c7cc61ee05e7ac2b70e92abdddeedd3990bb07d` |
+| `http.v1.schema.json` — 신규 로컬 초안 | `3e16e55ec6ff629013ceb41afa1ab94ba4378b36f583f4ab0bfd8a11d9827a1d` |
+
+HTTP 초안 추가 이유는 기존 Snapshot/Command/Event에 없던 생성 요청·접수 응답·환경 진단·오류 본문을 공통 정의하기 위해서다. 기존 v1의 필드·열거 값은 바꾸지 않았다. 소비자 영향은 새 HTTP 타입 생성과 인증/SSE 어댑터 연결이며, Claude의 프론트 파일을 대신 생성하거나 수정하지 않았다. 확정 계약/기준 커밋 전달 전에는 이 초안을 실서버의 완료된 규격으로 취급하지 않는다.
+
+### 확인한 사실과 미확인 사항
+
+- 파일 목록·기획·협업 프로토콜·상대 인계 유무를 읽었다. 현재 `docs/handoffs/claude.md`는 없다.
+- Python 3.11.15와 시스템의 FastAPI/jsonschema/httpx/LangGraph/uvicorn 설치 메타데이터를 확인했다. 실행/의존성 설치 성공 근거는 아니다.
+- Docker CLI는 있으나 데몬 연결에 실패했다. 컨테이너 격리·이미지 생성·Compose 실행은 확인하지 못했다.
+- Ollama CLI는 있으나 loopback HTTP 조회가 현재 샌드박스에서 `Operation not permitted`로 차단됐다. 서버 실행 여부나 설치 모델 유무를 확정하지 못했다.
+- 테스트 작성/실행·API 기동·모델 추론·브라우저 확인·성능 측정은 하지 않았다. 현재 초안에는 아직 자체 검사가 없으므로 실행 가능한 완료 묶음으로 보고하지 않는다.
+- 생성 앱 파일 수정·후보 커밋/이미지·독립 검증/보안·프리뷰·Git/배포·실제 기록 REPLAY 완주는 미구현/미실행이다. DB 테이블과 함수 이름만으로 이 기능들의 완료를 주장하지 않는다.
+- 관련 기준: D0 준비 제약 확인, D1 저장/계약 초안, D2/D3 일부 코드 작성. AC03/05/11/13/22 관련 경계를 작성했지만 **어느 AC도 실행 통과로 판정하지 않았다**.
+
+### 관제탑·다른 담당에게 전달할 요청
+
+1. **CODEX-BOOTSTRAP-001**: 현재 세션도 `.git` 쓰기·GitHub 인증/DNS 제약이 있다. 쓰기와 원격 접근이 가능한 Codex CLI에서 관제탑의 원격 기준 커밋을 확인하고, 이 로컬 변경을 보존한 뒤 Git 연결·작업 브랜치·두 worktree를 준비해야 한다. 허용되지 않은 경로로 Git 메타데이터를 옮겨 우회하지 않는다. 준비가 끝나면 실제 기준 커밋·경로·브랜치와 함께 이 파일에 기록할 것.
+2. **CODEX-CONTRACT-001 / Claude 전달용**: 기존 v1 프로토콜은 유지했다. HTTP 생성/runtime/접수/오류 초안은 위 경로에 있지만 확정 계약 커밋이 없다. 공통 준비 전에는 UI 착수 허가로 해석하지 않는다. 준비 후 Claude는 기존 프로토콜의 합성 예시 UI를 진행하고, 필요한 필드/동작은 `docs/handoffs/claude.md`에 요청 ID로 남겨주면 Codex가 같은 ID로 답한다.
+3. 실제 배포는 사용자 승인 후에만 수행한다. 모델 다운로드·무료 외부 API 활성화·새 호스트 생성도 이번 기록에서 실행하지 않았다.
+
+### 다음 착수점
+
+사용자의 대기 해제와 공통 준비 상태를 받은 뒤, 현재 초안을 최소 self-check로 먼저 확인한다. HTTP 경로·오류·인증·cursor를 기계 계약과 문서로 확정하고 SQLite 트랜잭션/승인/중복/재생의 누락을 고친다. 이어서 영속 worker·버전 fence·중지/복구·필수 문맥 패킷·역할 ACL 검색/MCP를 연결한다. 그 다음 격리 구현/두 검토/Infra를 진행하며 전체 완주와 출시 완료는 별도 근거로 판단한다.

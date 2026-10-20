@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Development lifecycle protocol v1 (design, not implemented)",
+  "oneOf": [
+    {"$ref": "#/$defs/Snapshot"},
+    {"$ref": "#/$defs/Command"},
+    {"$ref": "#/$defs/Event"}
+  ],
+  "$defs": {
+    "Id": {"type": "string", "minLength": 1},
+    "Digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "Commit": {"type": "string", "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"},
+    "RunState": {
+      "enum": ["planning", "awaiting_plan_approval", "building", "reviewing", "preview_ready", "awaiting_release_approval", "deploying", "succeeded", "paused", "waiting_resource", "waiting_quota", "needs_input", "failed", "cancelled"]
+    },
+    "Role": {"enum": ["supervisor", "planner", "builder", "validator", "security", "release"]},
+    "Task": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "phase_id", "sprint_id", "spec_version_id", "role", "work_kind", "title", "state", "depends_on", "acceptance_ids", "artifact_ids"],
+      "properties": {
+        "id": {"$ref": "#/$defs/Id"},
+        "phase_id": {"$ref": "#/$defs/Id"},
+        "sprint_id": {"$ref": "#/$defs/Id"},
+        "spec_version_id": {"$ref": "#/$defs/Id"},
+        "role": {"$ref": "#/$defs/Role"},
+        "work_kind": {"enum": ["planning", "contract", "infra", "backend", "frontend", "ai_data", "integration", "validation", "security", "release"]},
+        "title": {"type": "string", "minLength": 1},
+        "state": {"enum": ["pending", "ready", "running", "succeeded", "failed", "blocked", "cancelled", "superseded"]},
+        "depends_on": {"type": "array", "items": {"$ref": "#/$defs/Id"}, "uniqueItems": true},
+        "acceptance_ids": {"type": "array", "items": {"$ref": "#/$defs/Id"}, "minItems": 1, "uniqueItems": true},
+        "artifact_ids": {"type": "array", "items": {"$ref": "#/$defs/Id"}, "uniqueItems": true},
+        "reason": {"type": "string"}
+      }
+    },
+    "Phase": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "title", "order"],
+      "properties": {
+        "id": {"$ref": "#/$defs/Id"}, "title": {"type": "string", "minLength": 1},
+        "order": {"type": "integer", "minimum": 0}
+      }
+    },
+    "Sprint": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "phase_id", "title", "goal", "acceptance_ids"],
+      "properties": {
+        "id": {"$ref": "#/$defs/Id"}, "phase_id": {"$ref": "#/$defs/Id"},
+        "title": {"type": "string", "minLength": 1}, "goal": {"type": "string", "minLength": 1},
+        "acceptance_ids": {"type": "array", "items": {"$ref": "#/$defs/Id"}, "minItems": 1}
+      }
+    },
+    "PlanTarget": {
+      "type": "object", "additionalProperties": false,
+      "required": ["gate", "spec_version_id", "plan_digest"],
+      "properties": {
+        "gate": {"const": "plan"}, "spec_version_id": {"$ref": "#/$defs/Id"},
+        "plan_digest": {"$ref": "#/$defs/Digest"}
+      }
+    },
+    "ReleaseTarget": {
+      "type": "object", "additionalProperties": false,
+      "required": ["gate", "spec_version_id", "plan_digest", "commit_sha", "image_digest", "environment_id", "environment_config_digest", "rollback_manifest_digest", "review_report_ids"],
+      "properties": {
+        "gate": {"const": "release"}, "spec_version_id": {"$ref": "#/$defs/Id"},
+        "plan_digest": {"$ref": "#/$defs/Digest"}, "commit_sha": {"$ref": "#/$defs/Commit"},
+        "image_digest": {"$ref": "#/$defs/Digest"}, "environment_id": {"$ref": "#/$defs/Id"},
+        "environment_config_digest": {"$ref": "#/$defs/Digest"},
+        "rollback_manifest_digest": {"$ref": "#/$defs/Digest"},
+        "review_report_ids": {"type": "array", "items": {"$ref": "#/$defs/Id"}, "minItems": 2, "maxItems": 2, "uniqueItems": true}
+      }
+    },
+    "Approval": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "state", "target_digest", "target"],
+      "properties": {
+        "id": {"$ref": "#/$defs/Id"}, "state": {"enum": ["pending", "approved", "rejected", "invalidated"]},
+        "target_digest": {"$ref": "#/$defs/Digest"},
+        "target": {"oneOf": [{"$ref": "#/$defs/PlanTarget"}, {"$ref": "#/$defs/ReleaseTarget"}]},
+        "decided_by": {"$ref": "#/$defs/Id"}, "decided_at": {"type": "string", "format": "date-time"},
+        "feedback": {"type": "string"}
+      }
+    },
+    "ReviewReport": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "role", "spec_version_id", "commit_sha", "image_digest", "verdict", "artifact_id", "content_digest"],
+      "properties": {
+        "id": {"$ref": "#/$defs/Id"}, "role": {"enum": ["validator", "security"]},
+        "spec_version_id": {"$ref": "#/$defs/Id"}, "commit_sha": {"$ref": "#/$defs/Commit"},
+        "image_digest": {"$ref": "#/$defs/Digest"},
+        "verdict": {"enum": ["pass", "fail", "error", "not_run", "inconclusive"]},
+        "artifact_id": {"$ref": "#/$defs/Id"}, "content_digest": {"$ref": "#/$defs/Digest"}
+      }
+    },
+    "Artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "title", "kind", "content_digest", "public_summary"],
+      "properties": {
+        "id": {"$ref": "#/$defs/Id"}, "title": {"type": "string", "minLength": 1},
+        "kind": {"enum": ["request", "spec", "contract", "code_diff", "test_result", "security_result", "build", "preview", "deployment", "context", "retrieval"]},
+        "content_digest": {"$ref": "#/$defs/Digest"}, "public_summary": {"type": "string"}
+      }
+    },
+    "ReplaySource": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_run_id", "recorded_at", "manifest_digest"],
+      "properties": {
+        "source_run_id": {"$ref": "#/$defs/Id"},
+        "recorded_at": {"type": "string", "format": "date-time"},
+        "manifest_digest": {"$ref": "#/$defs/Digest"}
+      }
+    },
+    "Snapshot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "protocol_version", "project_id", "run_id", "mode", "state", "state_version", "last_event_seq", "spec_version_id", "phases", "sprints", "tasks", "approvals", "reports", "artifacts"],
+      "properties": {
+        "kind": {"const": "snapshot"}, "protocol_version": {"const": 1},
+        "project_id": {"$ref": "#/$defs/Id"}, "run_id": {"$ref": "#/$defs/Id"},
+        "mode": {"enum": ["live", "replay"]}, "state": {"$ref": "#/$defs/RunState"},
+        "state_version": {"type": "integer", "minimum": 0}, "last_event_seq": {"type": "integer", "minimum": 0},
+        "spec_version_id": {"type": ["string", "null"], "minLength": 1},
+        "phases": {"type": "array", "items": {"$ref": "#/$defs/Phase"}},
+        "sprints": {"type": "array", "items": {"$ref": "#/$defs/Sprint"}},
+        "tasks": {"type": "array", "items": {"$ref": "#/$defs/Task"}},
+        "approvals": {"type": "array", "items": {"$ref": "#/$defs/Approval"}},
+        "reports": {"type": "array", "items": {"$ref": "#/$defs/ReviewReport"}},
+        "artifacts": {"type": "array", "items": {"$ref": "#/$defs/Artifact"}},
+        "reason": {"type": "string"},
+        "replay_source": {"$ref": "#/$defs/ReplaySource"}
+      },
+      "if": {"properties": {"mode": {"const": "replay"}}},
+      "then": {"required": ["replay_source"]},
+      "else": {"not": {"required": ["replay_source"]}}
+    },
+    "EmptyPayload": {"type": "object", "additionalProperties": false},
+    "DecisionPayload": {
+      "type": "object", "additionalProperties": false,
+      "required": ["approval_id", "target_digest", "decision"],
+      "properties": {
+        "approval_id": {"$ref": "#/$defs/Id"}, "target_digest": {"$ref": "#/$defs/Digest"},
+        "decision": {"enum": ["approve", "reject"]}, "feedback": {"type": "string"}
+      }
+    },
+    "ChangePayload": {
+      "type": "object", "additionalProperties": false,
+      "required": ["scope", "feedback"],
+      "properties": {
+        "scope": {"enum": ["implementation", "spec"]},
+        "feedback": {"type": "string", "minLength": 1},
+        "artifact_ids": {"type": "array", "items": {"$ref": "#/$defs/Id"}}
+      }
+    },
+    "Command": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "protocol_version", "command_id", "run_id", "expected_state_version", "action", "payload"],
+      "properties": {
+        "kind": {"const": "command"}, "protocol_version": {"const": 1},
+        "command_id": {"$ref": "#/$defs/Id"}, "run_id": {"$ref": "#/$defs/Id"},
+        "expected_state_version": {"type": "integer", "minimum": 0},
+        "action": {"enum": ["decide", "request_changes", "pause", "resume", "cancel"]},
+        "payload": {"type": "object"}
+      },
+      "oneOf": [
+        {"properties": {"action": {"const": "decide"}, "payload": {"$ref": "#/$defs/DecisionPayload"}}},
+        {"properties": {"action": {"const": "request_changes"}, "payload": {"$ref": "#/$defs/ChangePayload"}}},
+        {"properties": {"action": {"enum": ["pause", "resume", "cancel"]}, "payload": {"$ref": "#/$defs/EmptyPayload"}}}
+      ]
+    },
+    "Event": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "protocol_version", "event_id", "seq", "run_id", "mode", "state_version", "occurred_at", "event_type", "summary", "artifact_ids"],
+      "properties": {
+        "kind": {"const": "event"}, "protocol_version": {"const": 1},
+        "event_id": {"$ref": "#/$defs/Id"}, "seq": {"type": "integer", "minimum": 1},
+        "run_id": {"$ref": "#/$defs/Id"}, "mode": {"enum": ["live", "replay"]},
+        "state_version": {"type": "integer", "minimum": 0},
+        "occurred_at": {"type": "string", "format": "date-time"},
+        "event_type": {"enum": ["run_state_changed", "plan_proposed", "approval_requested", "approval_decided", "approval_invalidated", "task_started", "task_finished", "tool_finished", "retrieval_finished", "context_saved", "review_submitted", "preview_ready", "changes_requested", "resource_wait", "quota_wait", "deployment_started", "deployment_finished", "operation_uncertain", "warning"]},
+        "summary": {"type": "string"}, "artifact_ids": {"type": "array", "items": {"$ref": "#/$defs/Id"}},
+        "task_id": {"$ref": "#/$defs/Id"}, "phase_id": {"$ref": "#/$defs/Id"},
+        "sprint_id": {"$ref": "#/$defs/Id"}, "command_id": {"$ref": "#/$defs/Id"},
+        "operation_id": {"$ref": "#/$defs/Id"}, "reason": {"type": "string"}
+      }
+    }
+  }
+}
