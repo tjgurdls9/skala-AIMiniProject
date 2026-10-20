@@ -4,7 +4,7 @@ import type { Alert, AlertAction } from '../model/alerts'
 defineProps<{ alerts: Alert[]; notices: string[] }>()
 const emit = defineEmits<{ act: [action: AlertAction] }>()
 
-const ACTION_TEXT: Record<AlertAction['kind'], string> = { plan: '기획 검토', release: '배포 대상 검토', preview: '프리뷰 보기', task: '작업 보기' }
+const ACTION_TEXT: Record<AlertAction['kind'], string> = { plan: '기획 검토', release: '배포 대상 검토', preview: '프리뷰 보기', change: '수정 요청', task: '작업 보기' }
 </script>
 
 <template>

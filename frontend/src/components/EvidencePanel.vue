@@ -25,6 +25,12 @@ const task = computed(() => (props.taskId ? tasksById.value.get(props.taskId) ??
 const artifact = computed(() => props.snapshot.artifacts.find((a) => a.id === props.artifactId) ?? null)
 const pair = computed(() => reviewPair(props.snapshot))
 const taskEvents = computed(() => (task.value ? props.events.filter((e) => e.task_id === task.value?.id).slice(-8).reverse() : []))
+const EVIDENCE_KINDS = new Set(['retrieval', 'context'])
+/** 작업에 연결된 공개 검색·문맥 근거. 없으면 없음으로 표시하고 검색 결과로 추정하지 않는다 */
+const evidenceArtifacts = computed(() =>
+  task.value ? props.snapshot.artifacts.filter((a) => task.value!.artifact_ids.includes(a.id) && EVIDENCE_KINDS.has(a.kind)) : [],
+)
+const retrievalEvents = computed(() => taskEvents.value.filter((e) => e.event_type === 'retrieval_finished'))
 const dependents = computed(() => (task.value ? props.snapshot.tasks.filter((t) => t.depends_on.includes(task.value!.id)) : []))
 
 const body = ref<unknown>(null)
@@ -98,6 +104,16 @@ watch(
           </button>
         </li>
         <li v-if="!task.artifact_ids.length" class="muted small">없음</li>
+      </ul>
+      <h4>검색·문맥 근거</h4>
+      <ul class="plain">
+        <li v-for="a in evidenceArtifacts" :key="a.id">
+          <button type="button" class="link" @click="emit('artifact', a.id)">⌕ {{ a.title }} <span class="small muted">({{ a.kind === 'retrieval' ? '검색' : '문맥' }})</span></button>
+        </li>
+        <li v-if="!evidenceArtifacts.length" class="muted small">
+          이 작업에 공개된 검색·문맥 근거가 없습니다<template v-if="retrievalEvents.length"> (검색 사건 {{ retrievalEvents.length }}건은 기록에 있음)</template>.
+          출처·버전 없는 근거를 추정해 표시하지 않습니다.
+        </li>
       </ul>
       <h4>최근 사건</h4>
       <ol class="plain small">

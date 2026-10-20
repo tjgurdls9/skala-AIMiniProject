@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import type { SourceKind } from '../api/source'
 import type { Snapshot } from '../api/types'
 import type { ConnectionState, PendingCommand } from '../composables/useRun'
-import { isStoppable } from '../model/derive'
+import { acceptsCommands, RESUMABLE_STATES } from '../model/derive'
 import { RUN_STATE } from '../model/labels'
 import SourceBadge from './SourceBadge.vue'
 import ThemeControls from './ThemeControls.vue'
@@ -29,8 +29,9 @@ const CONNECTION: Record<ConnectionState, { text: string; tone: string }> = {
 const ACTION_TEXT = { decide: '승인 결정', request_changes: '수정 요청', pause: '일시 중지', resume: '재개', cancel: '실행 취소' } as const
 
 const state = computed(() => (props.snapshot ? RUN_STATE[props.snapshot.state] : null))
-const canStop = computed(() => !!props.snapshot && !props.isReplay && isStoppable(props.snapshot.state))
-const paused = computed(() => props.snapshot?.state === 'paused')
+const canControl = computed(() => !!props.snapshot && !props.isReplay && acceptsCommands(props.snapshot.state))
+const canResume = computed(() => canControl.value && RESUMABLE_STATES.has(props.snapshot!.state))
+const canPause = computed(() => canControl.value && !['paused', 'failed'].includes(props.snapshot!.state))
 const busy = computed(() => props.pending !== null)
 </script>
 
@@ -63,9 +64,9 @@ const busy = computed(() => props.pending !== null)
 
     <div class="controls">
       <ThemeControls :motion="motion" @update:motion="emit('update:motion', $event)" />
-      <template v-if="canStop">
-        <button v-if="paused" type="button" class="btn" :disabled="busy" @click="emit('resume')">▶ 재개</button>
-        <button v-else type="button" class="btn" :disabled="busy" @click="emit('pause')">❙❙ 일시 중지</button>
+      <template v-if="canControl">
+        <button v-if="canResume" type="button" class="btn" :disabled="busy" @click="emit('resume')">▶ 재개</button>
+        <button v-if="canPause" type="button" class="btn" :disabled="busy" @click="emit('pause')">❙❙ 일시 중지</button>
         <button type="button" class="btn danger" :disabled="busy" @click="emit('cancel')">■ 실행 취소</button>
       </template>
       <span v-else-if="isReplay" class="small muted">재생은 읽기 전용</span>

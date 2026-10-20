@@ -10,6 +10,8 @@ export interface StreamHandlers {
   onOpen(): void
   /** 연결 끊김. closed=true면 브라우저가 자동 재연결하지 않는다 */
   onDown(closed: boolean): void
+  /** 계약 형식이 아닌 사건 데이터를 받아 건너뜀 */
+  onMalformed?(): void
 }
 
 /** UI는 이 경계만 소비한다. 예시와 실제 API가 같은 Snapshot/Event를 준다. */

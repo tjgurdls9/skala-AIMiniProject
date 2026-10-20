@@ -77,6 +77,7 @@ export class LiveApi {
     es.addEventListener('lifecycle', (msg) => {
       const event = parseEventData((msg as MessageEvent<string>).data, runId)
       if (event) handlers.onEvent(event)
+      else handlers.onMalformed?.()
     })
     es.addEventListener('resync', () => {
       es.close()

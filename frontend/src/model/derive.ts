@@ -20,6 +20,17 @@ export function isStoppable(state: RunState): boolean {
   return !['succeeded', 'failed', 'cancelled'].includes(state)
 }
 
+/**
+ * 서버가 재개를 받는 상태(Codex c3e11c1 backend/store.py command(): resume 허용 상태).
+ * 화면은 버튼만 보여주며 실제 가능 여부는 서버 응답(409 INVALID_STATE)이 최종 판단한다.
+ */
+export const RESUMABLE_STATES = new Set<RunState>(['paused', 'waiting_resource', 'waiting_quota', 'needs_input', 'failed'])
+
+/** 서버가 명령을 받는 실행(종료된 succeeded·cancelled 제외) */
+export function acceptsCommands(state: RunState): boolean {
+  return state !== 'succeeded' && state !== 'cancelled'
+}
+
 export function isRunActive(state: RunState): boolean {
   return ACTIVE_RUN_STATES.has(state)
 }

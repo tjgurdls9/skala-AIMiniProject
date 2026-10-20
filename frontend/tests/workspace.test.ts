@@ -22,9 +22,10 @@ afterEach(() => {
   sessionStorage.clear()
 })
 
+// 사건 목록은 100ms 묶음으로 화면에 반영된다(useRun EVENT_FLUSH_MS)
 const flush = async () => {
   await flushPromises()
-  await new Promise((r) => setTimeout(r, 0))
+  await new Promise((r) => setTimeout(r, 120))
   await flushPromises()
 }
 const byText = (w: ReturnType<typeof mount>, text: string) => w.findAll('button').find((b) => b.text().includes(text))

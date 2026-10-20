@@ -20,6 +20,15 @@ export type CommandInput =
   | { action: 'pause' | 'resume' | 'cancel'; payload: Record<string, never> }
 
 const PENDING_CONFIRM_MS = 20_000
+/** 누락 재동기화가 반복되면 재연결 간격을 늘린다(통신 제어일 뿐, 제품의 수정·실행 횟수 상한이 아님) */
+const GAP_BACKOFF_BASE_MS = 500
+const GAP_BACKOFF_MAX_MS = 30_000
+/** 사건 목록 화면 갱신을 묶는 간격. 긴 이력 수신 때 매 사건 전체 재계산을 피한다 */
+const EVENT_FLUSH_MS = 100
+
+export function gapDelay(streak: number): number {
+  return streak <= 1 ? 0 : Math.min(GAP_BACKOFF_MAX_MS, GAP_BACKOFF_BASE_MS * 2 ** (streak - 2))
+}
 
 export function newCommandId(): string {
   return crypto.randomUUID()
@@ -45,6 +54,23 @@ export function useRun(source: RunSource) {
   let disposed = false
   let pendingTimer: ReturnType<typeof setTimeout> | null = null
   let acceptanceToken = 0
+  let gapStreak = 0
+  let gapTimer: ReturnType<typeof setTimeout> | null = null
+  let flushTimer: ReturnType<typeof setTimeout> | null = null
+
+  /** 수신 원본. 제자리로 쌓고(O(1)/사건) 화면에는 묶음 간격마다 새 배열로 게시한다(자식 prop이 변경을 감지하도록) */
+  let log: RunEvent[] = []
+
+  function flushEvents(): void {
+    if (flushTimer) clearTimeout(flushTimer)
+    flushTimer = null
+    if (events.value.length !== log.length || events.value.at(-1) !== log.at(-1)) events.value = log.slice()
+  }
+
+  function appendEvent(event: RunEvent): void {
+    log.push(event)
+    if (!flushTimer) flushTimer = setTimeout(flushEvents, EVENT_FLUSH_MS)
+  }
 
   function clearPending(): void {
     if (pendingTimer) clearTimeout(pendingTimer)
@@ -106,13 +132,25 @@ export function useRun(source: RunSource) {
     const verdict = classifyEvent(lastSeq, event)
     if (verdict.kind === 'duplicate') return
     if (verdict.kind === 'gap') {
-      notice.value = `사건 ${verdict.expected}–${verdict.got - 1}번이 누락돼 다시 동기화합니다.`
-      reopen(lastSeq, 'resyncing')
-      void refreshSnapshot()
+      gapStreak += 1
+      const delay = gapDelay(gapStreak)
+      notice.value = `사건 ${verdict.expected}–${verdict.got - 1}번이 누락돼 다시 동기화합니다${delay ? ` (${Math.round(delay / 1000)}초 뒤, 반복 ${gapStreak}회)` : ''}.`
+      closeStream?.()
+      closeStream = null
+      connection.value = 'resyncing'
+      if (gapTimer) clearTimeout(gapTimer)
+      const resume = () => {
+        gapTimer = null
+        reopen(lastSeq, 'resyncing')
+        void refreshSnapshot()
+      }
+      if (delay === 0) resume()
+      else gapTimer = setTimeout(resume, delay)
       return
     }
+    gapStreak = 0
     lastSeq = event.seq
-    events.value = [...events.value, event]
+    appendEvent(event)
     const p = pending.value
     if (p && event.command_id === p.commandId) {
       clearPending()
@@ -135,6 +173,9 @@ export function useRun(source: RunSource) {
         connection.value = closed ? 'closed' : 'reconnecting'
       },
       onResync: () => void resync(),
+      onMalformed: () => {
+        notice.value = '형식이 맞지 않는 사건을 받아 건너뛰었습니다. 누락이 생기면 다시 동기화합니다.'
+      },
     })
   }
 
@@ -148,7 +189,8 @@ export function useRun(source: RunSource) {
     }
     notice.value = '서버 기록 범위 밖이라 최신 스냅샷부터 다시 연결했습니다. 이전 사건 일부는 표시되지 않을 수 있습니다.'
     lastSeq = snap.last_event_seq
-    events.value = events.value.filter((e) => e.seq <= lastSeq)
+    log = log.filter((e) => e.seq <= lastSeq)
+    flushEvents()
     reopen(lastSeq, 'connecting')
   }
 
@@ -166,6 +208,9 @@ export function useRun(source: RunSource) {
 
   /** 스냅샷(필요하면 세션 재발급 포함)을 먼저 읽고, 성공했을 때만 사건 스트림을 다시 연다 */
   async function reconnect(): Promise<void> {
+    if (gapTimer) clearTimeout(gapTimer)
+    gapTimer = null
+    gapStreak = 0
     connection.value = 'connecting'
     await refreshSnapshot()
     if (loadError.value) {
@@ -217,6 +262,8 @@ export function useRun(source: RunSource) {
   function dispose(): void {
     disposed = true
     if (pendingTimer) clearTimeout(pendingTimer)
+    if (gapTimer) clearTimeout(gapTimer)
+    if (flushTimer) clearTimeout(flushTimer)
     closeStream?.()
     closeStream = null
     liveListeners.clear()
@@ -244,6 +291,8 @@ export function useRun(source: RunSource) {
     }),
     acceptanceError,
     refreshAcceptance,
+    /** 묶음 대기 중인 사건을 즉시 화면 목록에 게시한다 */
+    flushEvents,
     start,
     reconnect,
     refreshSnapshot,

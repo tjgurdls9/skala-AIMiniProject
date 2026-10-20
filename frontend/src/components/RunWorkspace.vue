@@ -9,6 +9,7 @@ import { runAlerts, type AlertAction } from '../model/alerts'
 import { deriveCurrentSprintId, pendingApproval } from '../model/derive'
 import { RUN_STATE } from '../model/labels'
 import AlertStrip from './AlertStrip.vue'
+import ChangeDialog from './ChangeDialog.vue'
 import EventLog from './EventLog.vue'
 import EvidencePanel from './EvidencePanel.vue'
 import OfficeScene from './OfficeScene.vue'
@@ -28,7 +29,7 @@ const snapshot = run.snapshot
 
 // 화면 선택은 서버 필드가 아닌 view state. 스냅샷 교체·재연결로 초기화하지 않는다.
 const view = reactive({ sprintId: null as string | null, taskId: null as string | null, artifactId: null as string | null })
-const dialog = ref<'plan' | 'preview' | 'release' | null>(null)
+const dialog = ref<'plan' | 'preview' | 'release' | 'change' | null>(null)
 const stopAction = ref<'resume' | 'cancel' | null>(null)
 const motion = ref(true)
 const headerError = ref<ApiError | null>(null)
@@ -168,11 +169,12 @@ onBeforeUnmount(() => run.dispose())
             :subscribe="run.onLiveEvent"
             @select="selectTask"
           />
-          <div v-if="planApproval || releaseApproval || snapshot.state === 'preview_ready'" class="decisions panel">
+          <div v-if="planApproval || releaseApproval || ['preview_ready', 'needs_input', 'failed'].includes(snapshot.state)" class="decisions panel">
             <h2>내 결정</h2>
             <button v-if="planApproval" type="button" class="btn primary" @click="dialog = 'plan'">⚑ 기획 검토·승인</button>
             <button v-if="snapshot.state === 'preview_ready'" type="button" class="btn primary" @click="dialog = 'preview'">⚑ 프리뷰 확인·수정 요청</button>
             <button v-if="releaseApproval" type="button" class="btn primary" @click="dialog = 'release'">⚑ 배포 대상 검토·승인</button>
+            <button v-if="['needs_input', 'failed'].includes(snapshot.state) && !run.isReplay.value" type="button" class="btn" @click="dialog = 'change'">수정 요청으로 다시 기획</button>
             <span v-if="run.isReplay.value" class="small muted">재생 중에는 내용만 확인할 수 있고 결정을 보낼 수 없습니다.</span>
           </div>
         </div>
@@ -220,6 +222,7 @@ onBeforeUnmount(() => run.dispose())
         @close="dialog = null"
         @artifact="selectArtifact"
       />
+      <ChangeDialog v-if="!run.isReplay.value" :open="dialog === 'change'" :snapshot="snapshot" :send="send" @close="dialog = null" />
       <StopDialog :open="stopAction !== null" :action="stopAction" :send="send" @close="stopAction = null" />
     </template>
   </div>
