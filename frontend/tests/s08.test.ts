@@ -119,12 +119,14 @@ describe('전체 화면 사무실 → 스크롤 축소', () => {
     w.unmount()
   })
 
-  test('상세 작업 정보 버튼은 축소 지점까지 스크롤한다', async () => {
+  test('상세 작업 정보 버튼은 저항 없이 바로 상세로 전환한다', async () => {
     const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
     const w = mount(RunWorkspace, { attachTo: document.body, props: { source: exampleSource(findScenario('building')!) } })
     await flush()
     await w.find('.scroll-cue').trigger('click')
-    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: Math.round(window.innerHeight * 0.55) }))
+    await new Promise((r) => setTimeout(r, 600))
+    const last = scrollTo.mock.calls.at(-1) as unknown as [number, number]
+    expect(last[1]).toBe(Math.round(window.innerHeight * 0.55))
     scrollTo.mockRestore()
     w.unmount()
   })

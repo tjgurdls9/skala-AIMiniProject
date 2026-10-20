@@ -4,6 +4,7 @@ import { ApiError } from '../api/errors'
 import type { RunSource } from '../api/source'
 import type { SendResult } from '../composables/useCommandForm'
 import { useRun, type CommandInput } from '../composables/useRun'
+import { useSnapScroll } from '../composables/useSnapScroll'
 import { acIndex as indexAcceptance } from '../model/acceptance'
 import { runAlerts, type AlertAction } from '../model/alerts'
 import { deriveCurrentSprintId, pendingApproval } from '../model/derive'
@@ -109,28 +110,22 @@ function act(action: AlertAction): void {
   else dialog.value = action.kind
 }
 
-// ── 전체 화면 사무실 → 스크롤로 축소 ──
-/** 이 거리(화면 높이 비율)만큼 내리면 축소가 끝난다 */
+// ── 전체 화면 사무실 ↔ 상세: 저항 있는 두 상태 전환 ──
+/** 상세 상태의 스크롤 위치(화면 높이 비율). 축소 애니메이션의 길이이기도 하다 */
 const SHRINK_RATIO = 0.55
 const HERO_ALERT_LIMIT = 3
-const progress = ref(0)
 const headerH = ref(64)
-const shrinkPx = ref(550)
-let scrollRaf = 0
+const shrinkPx = ref(Math.max(1, Math.round(window.innerHeight * SHRINK_RATIO)))
 let headerObserver: ResizeObserver | null = null
 
-function measureScroll(): void {
-  scrollRaf = 0
-  const distance = Math.max(1, Math.round(window.innerHeight * SHRINK_RATIO))
-  shrinkPx.value = distance
-  progress.value = Math.min(1, Math.max(0, window.scrollY / distance))
-}
-function onScroll(): void {
-  if (!scrollRaf) scrollRaf = requestAnimationFrame(measureScroll)
+const snap = useSnapScroll({ distance: () => shrinkPx.value })
+const progress = snap.progress
+
+function onResize(): void {
+  shrinkPx.value = Math.max(1, Math.round(window.innerHeight * SHRINK_RATIO))
 }
 function scrollToDetails(): void {
-  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-  window.scrollTo({ top: shrinkPx.value, behavior: reduce ? 'auto' : 'smooth' })
+  snap.commit('detail')
 }
 
 /** 전체 화면일 때 사무실 위에 띄울 결정·문제 알림(고정 순서, 나머지는 패널) */
@@ -139,9 +134,7 @@ const sceneSprint = computed(() => snapshot.value?.sprints.find((sp) => sp.id ==
 
 onMounted(() => {
   void run.start()
-  window.addEventListener('scroll', onScroll, { passive: true })
-  window.addEventListener('resize', onScroll)
-  measureScroll()
+  window.addEventListener('resize', onResize)
   const header = document.querySelector<HTMLElement>('.run-header')
   if (header && 'ResizeObserver' in window) {
     headerObserver = new ResizeObserver(() => {
@@ -152,9 +145,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   run.dispose()
-  window.removeEventListener('scroll', onScroll)
-  window.removeEventListener('resize', onScroll)
-  cancelAnimationFrame(scrollRaf)
+  window.removeEventListener('resize', onResize)
   headerObserver?.disconnect()
 })
 </script>
