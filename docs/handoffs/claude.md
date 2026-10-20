@@ -6,7 +6,11 @@
 
 이 절은 아래의 이전 기록보다 우선한다. 지시는 원본의 `docs/prompts/CLAUDE_PHASE_COMPLETION.md`와 `docs/planning/phase-completion.md`를 따른다. 기준은 Claude `b3a52bc`, Codex `c3e11c1`이다.
 
-**현재 상태: `S08-DESIGN: 사용자 지시·피드백 3건 반영(최신 89f3b5c)`. 사용자 확인 대기.** 대기 해제: 2026-10-20 이 세션 사용자의 직접 지시
+**현재 상태: `WAITING_FOR_INTEGRATION`** (2026-10-21 사용자 지시: "여기까지 해놓고 백이랑 통합 후에 API 연결 잘 되는지 확인하고 그 다음에 관제탑에서 확인한 뒤에 진행")
+- 프론트 최신 완료 커밋은 `work/claude-office`의 `d85ea5a`이고 worktree는 clean이다. 디자인은 사용자 지시와 피드백 3건, 후속 확인까지 반영했다. CT36 수정은 `f5a26d5`.
+- 다음 순서: ① Codex가 `0dbe45e` 이후 프론트 커밋(`f5a26d5`·`a19f763` 포함)을 백엔드와 통합 → ② 통합본에서 Claude가 실제 API 연결을 확인(세션, runtime, 실행 생성·재생, Snapshot/SSE, AC 판정, 명령 접수와 반영, 프리뷰) → ③ 관제탑 확인 → ④ 그다음에 진행.
+- 대기 중 착수하지 않는 것: P05 배포·복구 표시, 추가 디자인 변경. (CR-C12·S12 소비는 Codex 요청으로 `d85ea5a`에서 완료)
+- 확인용으로 띄웠던 Claude 측 서버(Vite 5173, c3e11c1 사본 API 8000)는 종료했다. 포트를 비워 두었다.
 
 **사용자 디자인 지시 원문**
 > 빈 화면에 텍스트 입력창 하나, 볼드한 타이포로 문구 하나
@@ -75,6 +79,35 @@
 
 **확인**: 181개 테스트 통과, coverage 구문 92.8%·분기 86.9%, `vue-tsc` 0, build JS gzip 67.2KB. 브라우저에서 1440 라이트·다크, 전환 중간 화면, 축소 상태를 확인했다. 실제 기기 체감과 Firefox·Safari는 확인하지 않았다.
 
+### CR-C12·S12 소비 완료 커밋 (Codex 요청, 2026-10-21)
+
+사용자가 전한 Codex 요청: 원본 `docs/handoffs/codex.md`의 최신 P05 인계를 읽고, 계약 전용 커밋 `573c169` → `ce6dcc1`을 차례로 채택해 CR-C12 근거 표시와 S12 서명 없는 기록 import/export를 연결하라는 것.
+
+**계약 채택**
+- 순서대로 cherry-pick했다: `573c169` → `bb08f11`, `ce6dcc1` → `f10a741`. 계약 파일 3개만 바뀌었고 충돌은 없었다.
+- 채택한 파일은 Codex `ce6dcc1`과 바이트가 같다.
+  - protocol v1 SHA256 `43e0f444b2f6fc408dd177d8db599a7a13f0f3e7e8f0e2993595701c89147147`(`ReplaySource.provenance` 추가)
+  - http v1 SHA256 `2b8516cebbb75cb28f1c20ac371706532063f65f3ffa4c425e75f0f37ab2cddc`
+  - 중간 `573c169`의 http `9c5f1553…`은 Codex 인계와 일치한다.
+- 소비자 타입은 `npm run gen:types`로 재생성했다(`RetrievalEvidence`, `ContextEvidence`, `RecordingBundle`, `RecordingImportResult`, `provenance`). 생성 파일은 손으로 고치지 않았다.
+- 정정: 이전 인계에 "CR-C12 계약 전용 커밋이 없다"고 적었는데, `573c169`가 실제 계약 전용 커밋이었다.
+
+**연결(`d85ea5a`)**
+- CR-C12: 근거 패널이 `kind: retrieval`을 `RetrievalEvidence`로, `kind: context`를 `ContextEvidence`로 표시한다.
+  - 검색: 방법(키워드/의미·모델), found/no_results/search_error와 error_code. 출처는 최대 5개로 URL·버전·라이선스·수집 시각·본문 해시·허용 역할을 보이고, 관련도에는 "판정 아님"을 붙인다.
+  - 문맥: ready/needs_input, 조각 수, 원문 해시, 요청별 위치를 보이고 "승인 증거 아님"을 밝힌다.
+  - 형식 가드를 통과하지 못한 본문은 표시하지 않는다. 링크는 http(s) URL만 만든다.
+- S12:
+  - `LiveApi.getRecording`: `GET /api/runs/{id}/recording`.
+  - `importRecording`: `POST /api/recordings/import`, CSRF 포함. 보내기 전에 16 MiB와 `lifecycle-recording` v1을 확인한다.
+  - 시작 화면 dialog에서 파일을 가져오면 읽기 전용 실행으로 연다.
+  - 작업 화면 "기록 파일"에서 JSON을 내려받는다. 합성 예시는 내보내지 않는다.
+  - `imported_unsigned`는 별도 배지 "가져온 기록(서명 없음)"과 함께 "해시는 훼손 검출용이며 출처 서명이 아님"을 표시한다. 프리뷰 iframe·승인·명령은 막는다(재생 읽기 전용 경로).
+- 확인: 테스트 203개 통과(`tests/p05.test.ts` 15개 추가: 합성 근거 본문의 스키마 검증, 가드, 표시, API 경로·CSRF·사전 거절, 배지, 프리뷰 차단, 내보내기, 가져오기 성공·실패). coverage 구문 93.1%, `vue-tsc` 0, build JS gzip 70.1KB.
+- **확인하지 못한 것**: Codex 브랜치(`ce6dcc1`)의 `backend/api.py`에는 아직 `/recording`, `/recordings/import` 경로가 등록돼 있지 않다(Codex 인계: "제품 API 등록은 그 뒤 진행"). 공개 retrieval/context artifact도 아직 발급되지 않는다. 그래서 실제 서버 연결과 실제 bundle(`runtime-data/submission-check/recording.json`)의 화면 열람은 확인하지 않았다. 계약 수준 연결과 합성 데이터 확인까지만 했다.
+
+**Codex에게**: 통합 대상은 `bb08f11`·`f10a741`(계약)과 `d85ea5a`(소비자)다. API 경로를 등록한 커밋을 알려 주면, 통합본에서 실제 import/export와 근거 표시를 확인하겠다.
+
 ### 관제탑 CT36·CT40 대응 (2026-10-21)
 
 사용자 지시에 따라 원본 `docs/handoffs/control-tower.md`의 CT36·CT40을 읽었다(관제탑 파일은 수정하지 않았다).
@@ -112,6 +145,8 @@
 **남긴 것**: 굵은 문구와 입력 하나, 픽셀 사무실(벽면·창·소품·조명·점등 인트로), 저항 있는 축소 전환, 빛 고리 어둠 전환(단색). 모바일에서는 정상 수신 칩만 숨기고, 연결 끊김과 명령 확인 중 표시는 그대로 둔다.
 
 **확인**: 182개 테스트 통과(이름표 자리 회귀 테스트 추가), coverage 구문 92.9%, build JS gzip 66.7KB. 브라우저 390·1024·1440에서 가로 넘침 없음(`scrollWidth` = 화면 폭).
+
+**후속 확인·수정(`a19f763`)**: 정리 직후 확인하지 못했던 390 다크 시작 화면, 768 다크 작업 화면(전체·상세), 390 전환 중간 화면을 다시 확인했다. 768에서 깨진 곳 두 개를 고쳤다. (1) 세로 화면에서 하단 알림 칩이 보안실·출시 게이트를 가렸다. 860px 이하에서는 장면을 하단 150px 띠 위까지만 그린다. (2) 헤더의 ID 줄이 두 줄로 넘쳤다. 한 줄 말줄임으로 바꿨다. 칩 띠에 페이지 배경이 비치던 것도 사무실 배경색으로 채웠다. 188개 테스트 통과.
 
 ### 계약 기준
 

@@ -45,6 +45,7 @@ function controllable(initial: Snapshot) {
       if (failing) throw new ApiError(0, 'NETWORK', 'down')
       return current
     }),
+    getRecording: vi.fn(),
     getAcceptance: vi.fn(async () => ({ spec_version_id: current.spec_version_id, items: [] })),
     openEvents: vi.fn((after: number, handlers: StreamHandlers) => {
       streams.push({ after, handlers })

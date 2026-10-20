@@ -17,6 +17,7 @@ import OfficeScene from './OfficeScene.vue'
 import PlanApprovalDialog from './PlanApprovalDialog.vue'
 import PreviewDialog from './PreviewDialog.vue'
 import ReleaseApprovalDialog from './ReleaseApprovalDialog.vue'
+import RecordingExport from './RecordingExport.vue'
 import RunHeader from './RunHeader.vue'
 import SceneRoster from './SceneRoster.vue'
 import SprintBoard from './SprintBoard.vue'
@@ -252,6 +253,7 @@ onBeforeUnmount(() => {
             />
             <EventLog :events="run.events.value" :tasks="snapshot.tasks" @task="selectTask" />
           </div>
+          <RecordingExport :source="source" :run-id="snapshot.run_id" />
         </section>
       </main>
 
@@ -322,6 +324,7 @@ onBeforeUnmount(() => {
   margin-right: calc((var(--side-w) + 16px + var(--gap-p)) * (var(--p) - 1));
   border-radius: calc(14px * var(--p));
   overflow: hidden;
+  background: var(--px-void);
 }
 
 .side-cell {
@@ -399,7 +402,9 @@ onBeforeUnmount(() => {
   .scene-cell { margin-right: 0; --scene-min: 52vh; }
   .side-cell { position: static; max-height: none; overflow: visible; }
   .hud-alerts { justify-items: start; }
-  /* 작은 화면: 칩은 아래쪽에 작게, 사무실 가운데를 가리지 않게 */
+  /* 작은 화면: 칩은 아래쪽 띠에 두고, 장면은 그 위까지만 그려 방을 가리지 않는다 */
+  .scene-cell :deep(.stage) { bottom: calc(var(--hud-band) * (1 - var(--p))); }
+  .office-page { --hud-band: 150px; }
   .scene-hud { inset: auto 10px 72px 10px; flex-direction: column-reverse; align-items: stretch; }
   .hud-chip { font-size: 0.8rem; padding: 6px 10px; }
   .hud-chip.sprint span { display: none; }

@@ -24,6 +24,9 @@ const submitting = ref(false)
 const submitError = ref<ApiError | null>(null)
 const motion = ref(true)
 const moreOpen = ref(false)
+const importing = ref(false)
+const importError = ref<ApiError | null>(null)
+const fileInput = ref<HTMLInputElement | null>(null)
 const field = ref<HTMLTextAreaElement | null>(null)
 /** 프로젝트는 만들었는데 실행 생성이 실패한 경우, 재시도에서 같은 프로젝트를 다시 쓴다(중복 생성 방지) */
 const createdProject = ref<{ key: string; id: string } | null>(null)
@@ -88,6 +91,25 @@ async function startReplay(rec: ReplayRecording, e: MouseEvent): Promise<void> {
     submitError.value = error instanceof ApiError ? error : new ApiError(0, 'NETWORK', '재생을 만들지 못했습니다.')
   } finally {
     submitting.value = false
+  }
+}
+
+/** 서명 없는 기록 파일 가져오기. 같은 manifest면 같은 읽기 전용 실행을 연다 */
+async function importFile(): Promise<void> {
+  const file = fileInput.value?.files?.[0]
+  if (!file || importing.value) return
+  importing.value = true
+  importError.value = null
+  try {
+    const result = await props.api.importRecording(await file.text())
+    moreOpen.value = false
+    const r = fileInput.value?.getBoundingClientRect()
+    emit('openRun', result.run_id, r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : { x: window.innerWidth / 2, y: window.innerHeight / 2 })
+  } catch (error) {
+    importError.value = error instanceof ApiError ? error : new ApiError(0, 'NETWORK', '기록을 가져오지 못했습니다.')
+  } finally {
+    importing.value = false
+    if (fileInput.value) fileInput.value.value = ''
   }
 }
 
@@ -169,12 +191,26 @@ onMounted(async () => {
         <ul v-if="replays?.length" class="plain list">
           <li v-for="r in replays" :key="r.source_run_id">
             <button type="button" class="btn item" :disabled="submitting" @click="startReplay(r, $event)">
-              <span><strong>{{ r.title }}</strong><br /><span class="small muted">{{ formatTime(r.recorded_at) }} · manifest <code>{{ shortDigest(r.manifest_digest) }}</code></span></span>
+              <span>
+                <strong>{{ r.title }}</strong>
+                <span v-if="r.provenance === 'imported_unsigned'" class="chip">가져온 기록 · 서명 없음</span>
+                <br /><span class="small muted">{{ formatTime(r.recorded_at) }} · manifest <code>{{ shortDigest(r.manifest_digest) }}</code></span>
+              </span>
             </button>
           </li>
         </ul>
         <p v-else-if="replays" class="muted">아직 실제 기록이 없습니다.</p>
         <p v-else class="muted">서버 연결 후 표시됩니다.</p>
+      </section>
+      <section aria-labelledby="import-title">
+        <h3 id="import-title">기록 파일 가져오기 <span class="chip">서명 없음 · 읽기 전용</span></h3>
+        <p class="small muted">다른 환경에서 내보낸 기록(JSON, 최대 16 MiB)을 읽기 전용으로 엽니다. 해시는 훼손 검출용이며 출처를 보증하지 않습니다. 승인·실행·프리뷰는 열리지 않습니다.</p>
+        <label class="file">
+          <span class="sr-only">기록 파일 선택</span>
+          <input ref="fileInput" type="file" accept="application/json,.json" :disabled="importing" @change="importFile" />
+        </label>
+        <p v-if="importing" class="small muted">가져오는 중…</p>
+        <div v-if="importError" class="error-box small" role="alert">{{ importError.message }} <p>{{ errorHint(importError) }}</p></div>
       </section>
       <section aria-labelledby="ex-title">
         <h3 id="ex-title">합성 예시 <span class="chip example">실제 실행 아님</span></h3>
@@ -233,6 +269,7 @@ h3 { font-size: 0.95rem; display: flex; align-items: center; gap: 8px; margin-bo
 .list.grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 .item { width: 100%; height: auto; padding: 10px 12px; text-align: left; white-space: normal; justify-content: flex-start; }
 .reasons { margin: 8px 0 0; padding-left: 1.2em; color: var(--ink-2); }
+.file input { min-height: var(--tap); font-size: 0.9rem; }
 .chip.example { color: var(--example); background: var(--example-bg); border-color: currentColor; }
 @media (max-width: 480px) {
   .hint { font-size: 0.8rem; }

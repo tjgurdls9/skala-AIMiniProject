@@ -4,7 +4,9 @@ import { ApiError, errorHint } from '../api/errors'
 import type { RunSource } from '../api/source'
 import type { AcceptanceItem, RunEvent, Snapshot } from '../api/types'
 import { indexById, reviewPair, waitingReason } from '../model/derive'
+import { isContextEvidence, isRetrievalEvidence } from '../model/evidence'
 import { isPlanView } from '../model/planView'
+import EvidenceBody from './EvidenceBody.vue'
 import { EVENT_TYPE, formatTime, ROLE, shortDigest, TASK_STATE, WORK_KIND } from '../model/labels'
 import AcceptanceList from './AcceptanceList.vue'
 import PlanViewBody from './PlanViewBody.vue'
@@ -72,6 +74,9 @@ watch(
       <p v-if="loading" class="small muted">본문 읽는 중…</p>
       <p v-else-if="bodyError" class="small muted">{{ bodyError }}</p>
       <PlanViewBody v-else-if="isPlanView(body)" :plan="body" />
+      <EvidenceBody v-else-if="artifact.kind === 'retrieval' && isRetrievalEvidence(body)" :retrieval="body" />
+      <EvidenceBody v-else-if="artifact.kind === 'context' && isContextEvidence(body)" :context="body" />
+      <p v-else-if="(artifact.kind === 'retrieval' || artifact.kind === 'context') && body !== null" class="small tone-warn">근거 본문 형식이 계약과 맞지 않아 표시하지 않습니다.</p>
       <pre v-else-if="body !== null" class="raw">{{ JSON.stringify(body, null, 2) }}</pre>
     </section>
 

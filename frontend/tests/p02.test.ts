@@ -37,6 +37,7 @@ function fake(initial: Snapshot) {
     kind: 'live',
     runId: initial.run_id,
     getSnapshot: vi.fn(async () => initial),
+    getRecording: vi.fn(),
     getAcceptance: vi.fn(async () => ({ spec_version_id: initial.spec_version_id, items: [] })),
     openEvents: vi.fn((after: number, h: StreamHandlers) => {
       streams.push({ after, h })
@@ -171,7 +172,7 @@ describe('입력 필요·실패에서 수정 요청으로 재기획', () => {
 
 describe('검색 근거', () => {
   test('공개된 검색·문맥 근거가 없으면 없음으로 보여준다', async () => {
-    const w = mount(RunWorkspace, { attachTo: document.body, props: { source: exampleSource(findScenario('plan-approval')!) } })
+    const w = mount(RunWorkspace, { attachTo: document.body, props: { source: exampleSource(findScenario('failed')!) } })
     await flush()
     await w.findAll('nav.tree button').find((b) => b.text().includes('Sprint 1'))!.trigger('click')
     await flush()

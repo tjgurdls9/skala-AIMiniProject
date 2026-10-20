@@ -1,4 +1,4 @@
-/* 자동 생성 파일 — 수정 금지. 원본: docs/planning/http.v1.schema.json sha256:a7f384026fbde0f6dfe0c29f853c42911b000fefa0a95ee792424fb5dc909b4f. 재생성: npm run gen:types */
+/* 자동 생성 파일 — 수정 금지. 원본: docs/planning/http.v1.schema.json sha256:2b8516cebbb75cb28f1c20ac371706532063f65f3ffa4c425e75f0f37ab2cddc. 재생성: npm run gen:types */
 
 /**
  * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
@@ -225,6 +225,7 @@ export interface ReplaySource {
   source_run_id: string
   recorded_at: string
   manifest_digest: string
+  provenance?: 'local_ledger' | 'imported_unsigned'
 }
 /**
  * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
@@ -244,6 +245,7 @@ export interface ReplayRecording {
   source_run_id: string
   recorded_at: string
   manifest_digest: string
+  provenance?: 'local_ledger' | 'imported_unsigned'
 }
 /**
  * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
@@ -368,6 +370,366 @@ export interface AcceptanceStatus {
     id: string
     status: 'unmet' | 'met' | 'failed' | 'not_run'
     report_id?: string
+  }[]
+}
+/**
+ * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
+ * via the `definition` "RecordingBundle".
+ */
+export interface RecordingBundle {
+  format: 'lifecycle-recording'
+  version: 1
+  recorded_at: string
+  project: Project
+  snapshot: Snapshot
+  /**
+   * @minItems 1
+   */
+  events: [Event, ...Event[]]
+  artifacts: {
+    metadata: Artifact
+    content: unknown
+  }[]
+  exporter: {
+    revision: null | string
+    dirty: boolean
+    python: string
+    contract_digests: {
+      [k: string]: string
+    }
+  }
+  manifest_digest: string
+}
+export interface Event {
+  kind: 'event'
+  protocol_version: 1
+  event_id: string
+  seq: number
+  run_id: string
+  mode: 'live' | 'replay'
+  state_version: number
+  occurred_at: string
+  event_type:
+    | 'run_state_changed'
+    | 'plan_proposed'
+    | 'approval_requested'
+    | 'approval_decided'
+    | 'approval_invalidated'
+    | 'task_started'
+    | 'task_finished'
+    | 'tool_finished'
+    | 'retrieval_finished'
+    | 'context_saved'
+    | 'review_submitted'
+    | 'preview_ready'
+    | 'changes_requested'
+    | 'resource_wait'
+    | 'quota_wait'
+    | 'deployment_started'
+    | 'deployment_finished'
+    | 'operation_uncertain'
+    | 'warning'
+  summary: string
+  artifact_ids: string[]
+  task_id?: string
+  phase_id?: string
+  sprint_id?: string
+  command_id?: string
+  operation_id?: string
+  reason?: string
+}
+/**
+ * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
+ * via the `definition` "RecordingImportResult".
+ */
+export interface RecordingImportResult {
+  project_id: string
+  run_id: string
+  manifest_digest: string
+  read_only: true
+  provenance: 'imported_unsigned'
+}
+/**
+ * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
+ * via the `definition` "RetrievalEvidence".
+ */
+export interface RetrievalEvidence {
+  role: 'planner' | 'builder' | 'validator' | 'security'
+  method: 'keyword' | 'semantic'
+  status: 'found' | 'no_results' | 'search_error'
+  model: string | null
+  error_code?: 'MODEL_UNAVAILABLE' | 'VERSION_CONFLICT' | 'INVALID_SOURCE' | 'SEARCH_FAILED'
+  /**
+   * @maxItems 5
+   */
+  sources:
+    | []
+    | [
+        {
+          chunk_id: string
+          url: string
+          version: string
+          license: string
+          collected_at: string
+          content_digest: string
+          /**
+           * @minItems 1
+           */
+          roles: [
+            'planner' | 'builder' | 'validator' | 'security',
+            ...('planner' | 'builder' | 'validator' | 'security')[]
+          ]
+          score: number
+        }
+      ]
+    | [
+        {
+          chunk_id: string
+          url: string
+          version: string
+          license: string
+          collected_at: string
+          content_digest: string
+          /**
+           * @minItems 1
+           */
+          roles: [
+            'planner' | 'builder' | 'validator' | 'security',
+            ...('planner' | 'builder' | 'validator' | 'security')[]
+          ]
+          score: number
+        },
+        {
+          chunk_id: string
+          url: string
+          version: string
+          license: string
+          collected_at: string
+          content_digest: string
+          /**
+           * @minItems 1
+           */
+          roles: [
+            'planner' | 'builder' | 'validator' | 'security',
+            ...('planner' | 'builder' | 'validator' | 'security')[]
+          ]
+          score: number
+        }
+      ]
+    | [
+        {
+          chunk_id: string
+          url: string
+          version: string
+          license: string
+          collected_at: string
+          content_digest: string
+          /**
+           * @minItems 1
+           */
+          roles: [
+            'planner' | 'builder' | 'validator' | 'security',
+            ...('planner' | 'builder' | 'validator' | 'security')[]
+          ]
+          score: number
+        },
+        {
+          chunk_id: string
+          url: string
+          version: string
+          license: string
+          collected_at: string
+          content_digest: string
+          /**
+           * @minItems 1
+           */
+          roles: [
+            'planner' | 'builder' | 'validator' | 'security',
+            ...('planner' | 'builder' | 'validator' | 'security')[]
+          ]
+          score: number
+        },
+        {
+          chunk_id: string
+          url: string
+          version: string
+          license: string
+          collected_at: string
+          content_digest: string
+          /**
+           * @minItems 1
+           */
+          roles: [
+            'planner' | 'builder' | 'validator' | 'security',
+            ...('planner' | 'builder' | 'validator' | 'security')[]
+          ]
+          score: number
+        }
+      ]
+    | [
+        {
+          chunk_id: string
+          url: string
+          version: string
+          license: string
+          collected_at: string
+          content_digest: string
+          /**
+           * @minItems 1
+           */
+          roles: [
+            'planner' | 'builder' | 'validator' | 'security',
+            ...('planner' | 'builder' | 'validator' | 'security')[]
+          ]
+          score: number
+        },
+        {
+          chunk_id: string
+          url: string
+          version: string
+          license: string
+          collected_at: string
+          content_digest: string
+          /**
+           * @minItems 1
+           */
+          roles: [
+            'planner' | 'builder' | 'validator' | 'security',
+            ...('planner' | 'builder' | 'validator' | 'security')[]
+          ]
+          score: number
+        },
+        {
+          chunk_id: string
+          url: string
+          version: string
+          license: string
+          collected_at: string
+          content_digest: string
+          /**
+           * @minItems 1
+           */
+          roles: [
+            'planner' | 'builder' | 'validator' | 'security',
+            ...('planner' | 'builder' | 'validator' | 'security')[]
+          ]
+          score: number
+        },
+        {
+          chunk_id: string
+          url: string
+          version: string
+          license: string
+          collected_at: string
+          content_digest: string
+          /**
+           * @minItems 1
+           */
+          roles: [
+            'planner' | 'builder' | 'validator' | 'security',
+            ...('planner' | 'builder' | 'validator' | 'security')[]
+          ]
+          score: number
+        }
+      ]
+    | [
+        {
+          chunk_id: string
+          url: string
+          version: string
+          license: string
+          collected_at: string
+          content_digest: string
+          /**
+           * @minItems 1
+           */
+          roles: [
+            'planner' | 'builder' | 'validator' | 'security',
+            ...('planner' | 'builder' | 'validator' | 'security')[]
+          ]
+          score: number
+        },
+        {
+          chunk_id: string
+          url: string
+          version: string
+          license: string
+          collected_at: string
+          content_digest: string
+          /**
+           * @minItems 1
+           */
+          roles: [
+            'planner' | 'builder' | 'validator' | 'security',
+            ...('planner' | 'builder' | 'validator' | 'security')[]
+          ]
+          score: number
+        },
+        {
+          chunk_id: string
+          url: string
+          version: string
+          license: string
+          collected_at: string
+          content_digest: string
+          /**
+           * @minItems 1
+           */
+          roles: [
+            'planner' | 'builder' | 'validator' | 'security',
+            ...('planner' | 'builder' | 'validator' | 'security')[]
+          ]
+          score: number
+        },
+        {
+          chunk_id: string
+          url: string
+          version: string
+          license: string
+          collected_at: string
+          content_digest: string
+          /**
+           * @minItems 1
+           */
+          roles: [
+            'planner' | 'builder' | 'validator' | 'security',
+            ...('planner' | 'builder' | 'validator' | 'security')[]
+          ]
+          score: number
+        },
+        {
+          chunk_id: string
+          url: string
+          version: string
+          license: string
+          collected_at: string
+          content_digest: string
+          /**
+           * @minItems 1
+           */
+          roles: [
+            'planner' | 'builder' | 'validator' | 'security',
+            ...('planner' | 'builder' | 'validator' | 'security')[]
+          ]
+          score: number
+        }
+      ]
+}
+/**
+ * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
+ * via the `definition` "ContextEvidence".
+ */
+export interface ContextEvidence {
+  spec_version_id: null | string
+  status: 'ready' | 'needs_input'
+  source_digest: string
+  completed_fragments: number
+  total_fragments: number
+  sources: {
+    request_id: string
+    content_digest: string
+    offset: number
+    length: number
   }[]
 }
 /**

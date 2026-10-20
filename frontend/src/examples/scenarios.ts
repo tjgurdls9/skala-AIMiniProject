@@ -1,7 +1,7 @@
 // 합성 예시 시나리오 — 화면 상태를 보여주기 위한 것이며 실제 실행·기록 재생이 아니다.
 import type { AcceptanceState, AcceptanceStatus, Environment, ReleaseTarget, RunEvent, Snapshot } from '../api/types'
 import {
-  CANDIDATE, PLAN_APPROVAL_DONE, PLAN_APPROVAL_PENDING, PLAN_VIEW, SPEC_V1,
+  CANDIDATE, CONTEXT_BODY, PLAN_APPROVAL_DONE, PLAN_APPROVAL_PENDING, PLAN_VIEW, RETRIEVAL_BODY, SPEC_V1,
   buildEvents, buildSnapshot, buildTasks, fakeDigest, report, type SnapshotInput,
 } from './base'
 
@@ -82,7 +82,7 @@ function scenario(
   const stateVersion = last?.state_version ?? 0
   const snapshot = buildSnapshot({ ...input, stateVersion, lastSeq: last?.seq ?? 0 })
   const tailEvents = buildEvents(tail, events.length + 1, stateVersion).map((e) => ({ ...e, state_version: stateVersion }))
-  return { ...meta, snapshot, events, tail: tailEvents, artifactBodies: { 'a-spec': PLAN_VIEW, 'a-preview': PREVIEW_BODY }, environments, acceptance }
+  return { ...meta, snapshot, events, tail: tailEvents, artifactBodies: { 'a-spec': PLAN_VIEW, 'a-preview': PREVIEW_BODY, 'a-context-plan': CONTEXT_BODY, 'a-retrieval-api': RETRIEVAL_BODY }, environments, acceptance }
 }
 
 /** 합성 프리뷰 본문(http.Preview). .invalid 도메인이라 실제로 열리지 않는다 */
@@ -109,7 +109,7 @@ export const SCENARIOS: ExampleScenario[] = [
   scenario(
     { id: 'plan-approval', label: '기획 승인 대기', description: '기획안 v1을 읽고 승인하거나 수정을 요청하는 단계' },
     PLAN_EVENTS,
-    { state: 'awaiting_plan_approval', tasks: buildTasks({ 't-plan': 'succeeded' }), approvals: [PLAN_APPROVAL_PENDING], artifactIds: ['a-request', 'a-spec'] },
+    { state: 'awaiting_plan_approval', tasks: buildTasks({ 't-plan': 'succeeded' }), approvals: [PLAN_APPROVAL_PENDING], artifactIds: ['a-request', 'a-spec', 'a-context-plan'] },
   ),
   scenario(
     { id: 'building', label: '구현 중', description: 'Sprint 2 진행 중. 선행 대기·차단 이유와 근거 사건이 흐른다' },
@@ -118,7 +118,7 @@ export const SCENARIOS: ExampleScenario[] = [
       state: 'building',
       tasks: buildTasks({ 't-plan': 'succeeded', 't-contract': 'succeeded', 't-data': 'succeeded', 't-api': 'running', 't-infra': { state: 'blocked', reason: '컨테이너 실행기 미연결 — 자원 준비 필요' } }),
       approvals: [PLAN_APPROVAL_DONE],
-      artifactIds: ['a-request', 'a-spec', 'a-contract', 'a-diff-data'],
+      artifactIds: ['a-request', 'a-spec', 'a-context-plan', 'a-contract', 'a-diff-data', 'a-retrieval-api'],
     },
     [
       ['retrieval_finished', 'FastAPI 라우터 예시 문서 2건 검색', { task_id: 't-api', sprint_id: 'sp-2' }],

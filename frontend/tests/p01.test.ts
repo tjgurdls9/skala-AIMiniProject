@@ -40,6 +40,7 @@ function liveFake(initial: Snapshot, acceptance: (snap: Snapshot) => Promise<Acc
     kind: 'live',
     runId: initial.run_id,
     getSnapshot: vi.fn(async () => current),
+    getRecording: vi.fn(),
     getAcceptance: vi.fn(() => acceptance(current)),
     openEvents: vi.fn((_after: number, h: StreamHandlers) => {
       streams.push(h)

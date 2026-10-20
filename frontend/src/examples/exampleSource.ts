@@ -14,6 +14,9 @@ export function exampleSource(scenario: ExampleScenario): RunSource {
     runId: scenario.snapshot.run_id,
     getSnapshot: async () => scenario.snapshot,
     getAcceptance: async () => scenario.acceptance,
+    getRecording: async () => {
+      throw new ApiError(0, 'EXAMPLE_NOOP', '합성 예시는 실제 기록이 아니어서 내보내지 않습니다.')
+    },
     openEvents(afterSeq, handlers) {
       const timers: ReturnType<typeof setTimeout>[] = []
       timers.push(setTimeout(() => {

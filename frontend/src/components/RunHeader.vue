@@ -86,6 +86,7 @@ const busy = computed(() => props.pending !== null)
   border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
 }
 .id { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.id p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 h1 { font-size: 1.1rem; }
 .status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .id > div { min-width: 0; }

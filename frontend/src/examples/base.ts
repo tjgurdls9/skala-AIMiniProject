@@ -27,10 +27,10 @@ export const SPRINTS: Snapshot['sprints'] = [
 type TaskSeed = Omit<Task, 'state' | 'reason' | 'spec_version_id'>
 
 const TASK_SEEDS: TaskSeed[] = [
-  { id: 't-plan', phase_id: 'ph-plan', sprint_id: 'sp-1', role: 'planner', work_kind: 'planning', title: '요청 분석·기획안 작성', depends_on: [], acceptance_ids: ['AC-1'], artifact_ids: ['a-request', 'a-spec'] },
+  { id: 't-plan', phase_id: 'ph-plan', sprint_id: 'sp-1', role: 'planner', work_kind: 'planning', title: '요청 분석·기획안 작성', depends_on: [], acceptance_ids: ['AC-1'], artifact_ids: ['a-request', 'a-spec', 'a-context-plan'] },
   { id: 't-contract', phase_id: 'ph-build', sprint_id: 'sp-2', role: 'builder', work_kind: 'contract', title: '문의 API 계약 정의', depends_on: ['t-plan'], acceptance_ids: ['AC-2'], artifact_ids: ['a-contract'] },
   { id: 't-data', phase_id: 'ph-build', sprint_id: 'sp-2', role: 'builder', work_kind: 'ai_data', title: '합성 문의 CSV 적재·분류 규칙', depends_on: ['t-contract'], acceptance_ids: ['AC-2'], artifact_ids: ['a-diff-data'] },
-  { id: 't-api', phase_id: 'ph-build', sprint_id: 'sp-2', role: 'builder', work_kind: 'backend', title: '문의 조회·상태 변경 API', depends_on: ['t-contract'], acceptance_ids: ['AC-3'], artifact_ids: ['a-diff-api', 'a-test-api'] },
+  { id: 't-api', phase_id: 'ph-build', sprint_id: 'sp-2', role: 'builder', work_kind: 'backend', title: '문의 조회·상태 변경 API', depends_on: ['t-contract'], acceptance_ids: ['AC-3'], artifact_ids: ['a-retrieval-api', 'a-diff-api', 'a-test-api'] },
   { id: 't-infra', phase_id: 'ph-build', sprint_id: 'sp-2', role: 'builder', work_kind: 'infra', title: '컨테이너 이미지 빌드 구성', depends_on: ['t-api'], acceptance_ids: ['AC-5'], artifact_ids: [] },
   { id: 't-ui', phase_id: 'ph-build', sprint_id: 'sp-3', role: 'builder', work_kind: 'frontend', title: '문의 목록·상세 화면', depends_on: ['t-api'], acceptance_ids: ['AC-4'], artifact_ids: ['a-diff-ui'] },
   { id: 't-int', phase_id: 'ph-build', sprint_id: 'sp-3', role: 'builder', work_kind: 'integration', title: '화면·API 통합 확인', depends_on: ['t-ui', 't-data'], acceptance_ids: ['AC-4'], artifact_ids: ['a-build'] },
@@ -64,7 +64,34 @@ const ARTIFACT_LIST: Artifact[] = [
   { id: 'a-security', title: '보안 보고서', kind: 'security_result', content_digest: fakeDigest('b0'), public_summary: '의존성·비밀·입력 검증 점검 결과 원본' },
   { id: 'a-preview', title: '프리뷰', kind: 'preview', content_digest: fakeDigest('b2'), public_summary: '격리 프리뷰 — 합성 예시에서는 주소가 없다' },
   { id: 'a-deploy', title: '배포 결과', kind: 'deployment', content_digest: fakeDigest('b3'), public_summary: '환경 env-staging, 상태 확인 3회 정상 (합성 예시)' },
+  { id: 'a-context-plan', title: '기획 문맥 조각', kind: 'context', content_digest: fakeDigest('b4'), public_summary: '원문 2개 조각을 모두 문맥에 넣음 (합성 예시)' },
+  { id: 'a-retrieval-api', title: 'API 작업 검색 근거', kind: 'retrieval', content_digest: fakeDigest('b5'), public_summary: '의미 검색 2건 (합성 예시)' },
 ]
+
+/** 합성 예시 검색 근거(http.RetrievalEvidence). .invalid 주소라 실제 문서가 아니다 */
+export const RETRIEVAL_BODY = {
+  role: 'builder',
+  method: 'semantic',
+  status: 'found',
+  model: 'local-embedding-example',
+  sources: [
+    { chunk_id: fakeDigest('c3'), url: 'https://docs.example.invalid/fastapi/routing', version: 'v0.115', license: 'MIT', collected_at: '2026-10-19T09:00:00+09:00', content_digest: fakeDigest('c4'), roles: ['builder'], score: 0.82 },
+    { chunk_id: fakeDigest('c5'), url: 'https://docs.example.invalid/sqlite/transactions', version: '3.46', license: 'Public Domain', collected_at: '2026-10-19T09:00:00+09:00', content_digest: fakeDigest('c6'), roles: ['builder', 'validator'], score: 0.61 },
+  ],
+} as const
+
+/** 합성 예시 문맥 근거(http.ContextEvidence) */
+export const CONTEXT_BODY = {
+  spec_version_id: SPEC_V1,
+  status: 'ready',
+  source_digest: fakeDigest('c7'),
+  completed_fragments: 2,
+  total_fragments: 2,
+  sources: [
+    { request_id: 'req-original', content_digest: fakeDigest('c8'), offset: 0, length: 180 },
+    { request_id: 'req-correction', content_digest: fakeDigest('c9'), offset: 0, length: 42 },
+  ],
+} as const
 
 export function artifacts(ids: string[]): Artifact[] {
   return ARTIFACT_LIST.filter((a) => ids.includes(a.id))
