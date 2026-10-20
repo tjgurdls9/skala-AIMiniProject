@@ -19,6 +19,15 @@ REVIEW_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["
         "status": {"enum": ["met", "failed", "not_run"]}, "evidence": {"type": "array", "items": {"type": "string"}}}}}}}
 
 
+def scan_covered(report, scanner):
+    descriptor = report["descriptor"]
+    providers = descriptor["db"]["providers"]
+    return (report["source"]["type"] == "image" and descriptor["name"] == "grype" and
+            descriptor["version"] == scanner["version"] and descriptor["db"]["status"]["valid"] is True and
+            report["distro"]["name"] in providers and "github" in providers and
+            all(m["vulnerability"]["severity"].casefold() in ("negligible", "low", "medium", "high", "critical") for m in report["matches"]))
+
+
 class Reviewer:
     def __init__(self, engine, current=lambda: True):
         self.engine, self.current = engine, current
@@ -99,6 +108,7 @@ class Reviewer:
                     scanner["image_id"], "docker-archive:/scan/candidate.tar", "-o", "json", timeout=180)
                 report = json.loads(raw)
             blocking = [m for m in report["matches"] if m["vulnerability"]["severity"].casefold() in ("high", "critical")]
+            value["checks"]["scanner_coverage"] = scan_covered(report, scanner)
             value["checks"]["dependency_image"] = not blocking
             value["scanner"] = scanner
             value["vulnerability_report"] = report

@@ -54,7 +54,7 @@ class Sandbox:
             raise ModelUnavailable("Prepare the fixed runtime image first") from exc
 
     def prepare(self):
-        base = self.docker("image", "inspect", "python:3.11-slim", "--format", "{{index .RepoDigests 0}}").strip()
+        base = self.docker("image", "inspect", "python:3.11-alpine", "--format", "{{index .RepoDigests 0}}").strip()
         require(bool(re.fullmatch(r"python@sha256:[a-f0-9]{64}", base)), "RUNTIME_UNAVAILABLE", "고정 Python base digest가 필요합니다.")
         with tempfile.TemporaryDirectory(dir=self.root) as temp:
             iid = Path(temp) / "image-id"

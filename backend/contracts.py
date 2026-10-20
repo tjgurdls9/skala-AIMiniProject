@@ -37,6 +37,13 @@ def digest(value: object) -> str:
     return "sha256:" + hashlib.sha256(canonical(value).encode()).hexdigest()
 
 
+def plan_inputs():
+    files = ["docs/planning/" + name for name in SCHEMAS] + [
+        "templates/requests-v1/contract.json", "templates/requests-v1/requirements.lock",
+        "infra/Dockerfile.runtime", "infra/Dockerfile.candidate", "infra/checks/validate.py", "infra/checks/security.py"]
+    return {name: "sha256:" + hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in files}
+
+
 class DomainError(Exception):
     def __init__(self, code: str, message: str, status: int = 409, current_state_version=None):
         self.code, self.message, self.status = code, message, status

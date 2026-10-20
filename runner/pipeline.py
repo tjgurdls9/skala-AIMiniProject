@@ -184,6 +184,8 @@ class Pipeline:
                         r["image_digest"] == candidate["image_digest"] and r["spec_version_id"] == snapshot["spec_version_id"] for r in snapshot["reports"]),
                     "INVALID_STATE", "같은 후보의 두 독립 검토가 필요합니다.")
             operation_id = digest([job["run_id"], candidate_key, "preview"])
+            old_preview = db.execute("SELECT p.body, c.spec_version_id, p.candidate_digest FROM previews p JOIN candidates c ON c.id=p.candidate_digest WHERE p.run_id=?", (job["run_id"],)).fetchone()
+            old_operation = json.loads(old_preview["body"]) if old_preview else None
             previous = db.execute("SELECT result FROM operations WHERE id=?", (operation_id,)).fetchone()
             if previous:
                 operation = json.loads(previous[0])
@@ -193,6 +195,9 @@ class Pipeline:
                     port = sock.getsockname()[1]
                 operation = dict(kind="preview", network="lifecycle-" + uid(), app="lifecycle-" + uid(), proxy="lifecycle-" + uid(),
                                  port=port, url=f"http://localhost:{port}", origin=f"http://localhost:{port}", commit_sha=candidate["commit_sha"])
+                operation["data_volume"] = (old_operation.get("data_volume", old_operation["app"] + "-data")
+                    if old_preview and old_preview["spec_version_id"] == snapshot["spec_version_id"] else
+                    f"lifecycle-{job['run_id']}-{snapshot['spec_version_id']}-data")
                 db.execute("INSERT INTO operations VALUES (?, ?, ?, 'pending', ?)",
                            (operation_id, job["run_id"], candidate_key, canonical(operation)))
         published = False
@@ -223,6 +228,8 @@ class Pipeline:
                 self.store.save(db, snapshot, "preview_ready", snapshot["reason"])
                 self.completed(db, job)
                 published = True
+            if old_operation and old_operation["app"] != operation["app"]:
+                await asyncio.to_thread(self.retire_preview, old_operation, digest([job["run_id"], old_preview["candidate_digest"], "preview"]))
         finally:
             if not published:
                 await asyncio.to_thread(self.cleanup_preview, operation)
@@ -250,7 +257,7 @@ class Pipeline:
             if not container["State"]["Running"]:
                 self.engine.docker("start", operation["app"])
         except ModelUnavailable:
-            self.engine.start_candidate(candidate, operation["network"], operation["app"])
+            self.engine.start_candidate(candidate, operation["network"], operation["app"], data_volume=operation.get("data_volume"))
         active()
         try:
             container = json.loads(self.engine.docker("inspect", operation["proxy"]))[0]
@@ -271,3 +278,8 @@ class Pipeline:
                 self.engine.docker("network", "rm", network)
             except ModelUnavailable:
                 pass
+
+    def retire_preview(self, operation, operation_id):
+        self.cleanup_preview(operation)
+        with self.store.transaction() as db:
+            db.execute("UPDATE operations SET state='superseded' WHERE id=?", (operation_id,))

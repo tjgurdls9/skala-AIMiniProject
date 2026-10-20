@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from backend.contracts import DomainError, canonical, digest, require, validate
+from backend.contracts import DomainError, canonical, digest, plan_inputs, require, validate
 
 
 def now():
@@ -282,6 +282,8 @@ class Store:
                                   (snapshot["spec_version_id"], run_id)).fetchone()
                 require(spec is not None and approval["target"]["plan_digest"] == digest(json.loads(spec[0])),
                         "STALE_APPROVAL", "저장된 기획과 승인 대상이 일치하지 않습니다.")
+                require(json.loads(spec[0])["contract_digests"] == plan_inputs(),
+                        "STALE_APPROVAL", "계약·템플릿·검사 입력이 바뀌었습니다. 재기획 후 승인하세요.")
                 approval.update(state="approved" if payload["decision"] == "approve" else "rejected",
                                 decided_by="local-operator", decided_at=now())
                 if "feedback" in payload:

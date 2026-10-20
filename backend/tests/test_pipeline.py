@@ -1,11 +1,14 @@
 """Synthetic orchestration checks; mocked tools never represent product review PASS."""
 import asyncio
+import json
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
+
+import httpx
 
 from backend.contracts import DomainError, canonical, digest
 from runner.access import RoleScope, issue_grant
-from runner.review import Reviewer
+from runner.review import Reviewer, scan_covered
 from runner.worker import Worker, failure_reason
 from runner.model import ModelUnavailable, sampling_schema
 import test_runtime as fixtures
@@ -25,8 +28,8 @@ class PipelineChecks(unittest.TestCase):
         self.assertEqual(result.status_code, 202)
         return self.store.snapshot(snapshot["run_id"])
 
-    def built(self):
-        snapshot = self.approved()
+    def built(self, snapshot=None):
+        snapshot = snapshot or self.approved()
         job = self.worker.claim()
         workspace = self.worker.pipeline.engine.workspace(job["run_id"], snapshot["spec_version_id"])
         candidate = dict(commit_sha="a" * 40, image_digest="sha256:" + "b" * 64, manifest={}, path=str(workspace))
@@ -137,3 +140,50 @@ class PipelineChecks(unittest.TestCase):
         self.assertEqual(self.store.snapshot(before["run_id"])["state"], "paused")
         with self.store.transaction() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM reviews").fetchone()[0], 0)
+
+    def test_changed_protected_inputs_reject_old_approval(self):
+        snapshot = self.planned()
+        approval = snapshot["approvals"][-1]
+        with patch("backend.store.plan_inputs", return_value={"changed": "sha256:" + "0" * 64}):
+            response = self.post_command(self.command(snapshot, "decide", dict(approval_id=approval["id"], target_digest=approval["target_digest"], decision="approve")))
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["error"]["code"], "STALE_APPROVAL")
+        self.assertEqual(self.store.snapshot(snapshot["run_id"])["state"], "awaiting_plan_approval")
+
+    def test_empty_scan_needs_known_distro_and_valid_database(self):
+        report = dict(source={"type": "image"}, distro={"name": "alpine"}, matches=[],
+                      descriptor=dict(name="grype", version="test", db={"providers": {"alpine": {}, "github": {}}, "status": {"valid": True}}))
+        scanner = {"version": "test"}
+        self.assertTrue(scan_covered(report, scanner))
+        report["distro"]["name"] = "unknown"
+        self.assertFalse(scan_covered(report, scanner))
+        report["distro"]["name"] = "alpine"
+        report["matches"] = [{"vulnerability": {"severity": "Unknown"}}]
+        self.assertFalse(scan_covered(report, scanner))
+
+    def test_new_preview_preserves_same_spec_volume_and_retires_old_service(self):
+        snapshot = self.approved()
+        old_key = "sha256:" + "d" * 64
+        old = dict(app="lifecycle-" + "a" * 32, proxy="lifecycle-" + "b" * 32, network="lifecycle-" + "c" * 32)
+        with self.store.transaction() as db:
+            db.execute("INSERT INTO candidates VALUES (?, ?, ?, ?)", (old_key, snapshot["run_id"], snapshot["spec_version_id"], "{}"))
+            db.execute("INSERT INTO previews VALUES (?, ?, ?)", (snapshot["run_id"], old_key, canonical(old)))
+            db.execute("INSERT INTO operations VALUES (?, ?, ?, 'applied', ?)", (digest([snapshot["run_id"], old_key, "preview"]), snapshot["run_id"], old_key, canonical(old)))
+        self.built(snapshot)
+        self.validator()
+        with patch.object(Reviewer, "security", return_value={"verdict": "pass", "checks": {"synthetic": True}}):
+            asyncio.run(self.worker.tick())
+        job = self.worker.claim()
+        async def exercise():
+            with patch("runner.pipeline.socket.socket") as sock, patch("runner.pipeline.httpx.AsyncClient") as client, \
+                 patch.object(self.worker.pipeline, "preview_services") as services, patch.object(self.worker.pipeline, "cleanup_preview") as cleanup:
+                sock.return_value.__enter__.return_value.getsockname.return_value = ("127.0.0.1", 43111)
+                client.return_value.__aenter__.return_value.get = AsyncMock(return_value=httpx.Response(200, json={"status": "ok"}))
+                await self.worker.pipeline.release(job, self.worker)
+                self.assertEqual(services.call_args.args[1]["data_volume"], old["app"] + "-data")
+                cleanup.assert_called_once_with(old)
+        asyncio.run(exercise())
+        with self.store.transaction() as db:
+            states = {r[0] for r in db.execute("SELECT state FROM operations")}
+            self.assertEqual(states, {"applied", "superseded"})
+            self.assertEqual(json.loads(db.execute("SELECT body FROM previews").fetchone()[0])["data_volume"], old["app"] + "-data")

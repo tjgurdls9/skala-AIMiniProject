@@ -1,7 +1,6 @@
 """One leased worker; each planning attempt commits independently of inference."""
 
 import asyncio
-import hashlib
 import json
 import os
 import time
@@ -9,7 +8,7 @@ import time
 import httpx
 
 from backend.config import Settings
-from backend.contracts import ROOT, SCHEMAS, SECRET, DomainError, canonical, digest, require, validate
+from backend.contracts import ROOT, SCHEMAS, SECRET, DomainError, canonical, digest, plan_inputs, require, validate
 from backend.store import Store, now, uid
 from runner.model import ModelUnavailable, Ollama
 from runner.pipeline import Pipeline
@@ -74,12 +73,13 @@ class Worker:
                     db.execute("UPDATE jobs SET state='superseded' WHERE id=?", (row["id"],))
                     continue
                 spec = db.execute("SELECT package FROM specs WHERE run_id=? ORDER BY rowid DESC LIMIT 1", (row["run_id"],)).fetchone()
-                if snapshot["state"] == "building" and not any(
+                if snapshot["state"] != "planning" and not any(
                         a["state"] == "approved" and a["target"]["gate"] == "plan" and
                         a["target"]["spec_version_id"] == snapshot["spec_version_id"] and
                         a["target_digest"] == digest(a["target"]) and spec and
-                        a["target"]["plan_digest"] == digest(json.loads(spec[0])) for a in snapshot["approvals"]):
-                    snapshot.update(state="needs_input", reason="최신 기획 승인이 필요합니다.")
+                        a["target"]["plan_digest"] == digest(json.loads(spec[0])) and
+                        json.loads(spec[0])["contract_digests"] == plan_inputs() for a in snapshot["approvals"]):
+                    snapshot.update(state="needs_input", reason="최신 계약·템플릿·검사 입력에 대한 기획 승인이 필요합니다.")
                     self.store.save(db, snapshot, "warning", snapshot["reason"])
                     db.execute("UPDATE jobs SET state='superseded' WHERE id=?", (row["id"],))
                     continue
@@ -133,8 +133,7 @@ class Worker:
                 package = {**proposal, "spec_version_id": spec_id, "stack": ["FastAPI", "Vue 3", "SQLite"],
                            "repository": None, "deployment": None,
                            "free_policy": POLICY, "allowed_tools": ["read_file", "patch_file", "container_checks"],
-                           "contract_digests": {name: "sha256:" + hashlib.sha256((ROOT / "docs/planning" / name).read_bytes()).hexdigest()
-                                                for name in SCHEMAS}}
+                           "contract_digests": plan_inputs()}
                 validate("PlanView", package)
                 db.execute("INSERT INTO specs VALUES (?, ?, ?, ?)", (spec_id, snapshot["run_id"], canonical(package), now()))
                 self.store.artifact(db, snapshot, "spec", "승인할 기획", package)
