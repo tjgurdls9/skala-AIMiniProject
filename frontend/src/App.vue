@@ -96,9 +96,8 @@ html.warping #app > * {
   border-radius: 50%;
   pointer-events: none;
   transform: translate(-50%, -50%) scale(0.001);
-  background: radial-gradient(circle closest-side,
-    #0d1013 0%, #0d1013 86%,
-    #ffd27a 88.5%, #ff8a3d 90.5%, rgb(255 120 60 / 0.35) 94%, transparent 100%);
-  box-shadow: 0 0 120px 40px rgb(255 160 80 / 0.25);
+  background: #0d1013;
+  /* 가장자리 빛 고리: 단색 테두리 두 겹 */
+  box-shadow: 0 0 0 6px #ffd27a, 0 0 0 14px rgb(255 210 122 / 0.25);
 }
 </style>

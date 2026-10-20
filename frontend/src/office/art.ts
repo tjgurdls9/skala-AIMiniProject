@@ -4,6 +4,9 @@ import { TILE, WALL_FACE_ROWS, type Room, type TileMap } from './layout'
 
 export type Palette = Record<string, string>
 
+/** 벽면 왼쪽의 방 이름표 자리(타일). 창·화이트보드는 이 오른쪽에만 둔다 */
+export const NAMEPLATE_TILES = 5
+
 /** 타일마다 같은 값을 내는 결정적 난수(매 프레임 같은 그림) */
 export function seeded(x: number, y: number, salt = 0): number {
   let h = (x * 374761393 + y * 668265263 + salt * 2147483647) | 0
@@ -110,12 +113,6 @@ function windowOn(ctx: CanvasRenderingContext2D, p: Palette, x: number, y: numbe
   }
 }
 
-function frame(ctx: CanvasRenderingContext2D, p: Palette, x: number, y: number, color: string) {
-  rect(ctx, p['px-frame'], x, y, 12, 10)
-  rect(ctx, color, x + 2, y + 2, 8, 6)
-  rect(ctx, '#ffffff', x + 3, y + 3, 3, 2)
-}
-
 function clock(ctx: CanvasRenderingContext2D, p: Palette, x: number, y: number) {
   rect(ctx, p['px-outline'], x, y, 10, 10)
   rect(ctx, '#f4f1e6', x + 1, y + 1, 8, 8)
@@ -132,28 +129,27 @@ function wallFace(ctx: CanvasRenderingContext2D, r: Room, p: Palette) {
   rect(ctx, p['px-wallface-2'], x0, y0 + H - 9, W, 9) // 징두리판
   rect(ctx, p['px-outline'], x0, y0 + H - 9, W, 1)
   rect(ctx, p['px-shadow'], x0, y0 + H, W, 4) // 벽 아래 접촉 그림자
-  // 창은 방 폭에 맞춰 1~3개, 사이에 액자·시계
-  const count = Math.max(1, Math.min(3, Math.floor(r.w / 5)))
-  const gap = W / count
-  for (let i = 0; i < count; i++) {
-    const wx = Math.round(x0 + gap * i + gap / 2 - 13)
-    if (r.w >= 4) windowOn(ctx, p, wx, y0 + 6, 26)
-  }
+  // 왼쪽은 방 이름표 자리로 비우고, 창은 오른쪽 구간에 1~3개
+  for (const wx of windowSlots(r)) windowOn(ctx, p, wx, y0 + 6, 26)
   if (r.id === 'build') clock(ctx, p, x0 + W - 18, y0 + 8)
-  if (r.id === 'meeting' && r.w >= 6) frame(ctx, p, x0 + 6, y0 + 8, p['role-planner'])
-  if (r.id === 'release') frame(ctx, p, x0 + 4, y0 + 8, p['role-release'])
+}
+
+/** 이름표 자리(왼쪽 NAMEPLATE_TILES)를 피한 창 위치(지도 px). 좁은 방은 오른쪽 끝에 하나 */
+export function windowSlots(r: Room): number[] {
+  const free = r.w - NAMEPLATE_TILES
+  if (free < 2) return []
+  const count = Math.max(1, Math.min(3, Math.floor(free / 4)))
+  const start = (r.x + NAMEPLATE_TILES) * TILE
+  const gap = (free * TILE) / count
+  return Array.from({ length: count }, (_, i) => Math.round(start + gap * i + gap / 2 - 13))
 }
 
 /** 창에서 바닥으로 떨어지는 빛 웅덩이(사다리꼴) */
 function windowLight(ctx: CanvasRenderingContext2D, r: Room, p: Palette) {
-  const x0 = r.x * TILE
   const y0 = (r.y + WALL_FACE_ROWS) * TILE
-  const W = r.w * TILE
-  const count = Math.max(1, Math.min(3, Math.floor(r.w / 5)))
-  const gap = W / count
   ctx.fillStyle = p['px-light']
-  for (let i = 0; i < count; i++) {
-    const cx = x0 + gap * i + gap / 2
+  for (const wx of windowSlots(r)) {
+    const cx = wx + 13
     ctx.beginPath()
     ctx.moveTo(cx - 13, y0)
     ctx.lineTo(cx + 13, y0)
@@ -184,14 +180,17 @@ function chairTop(ctx: CanvasRenderingContext2D, p: Palette, x: number, y: numbe
 function meetingRoom(ctx: CanvasRenderingContext2D, r: Room, p: Palette, bottom: number) {
   const W = r.w * TILE
   const x0 = r.x * TILE
-  // 화이트보드 + 포스트잇
-  const bw = Math.min(W - 40, 64)
-  const bx = x0 + W - bw - 22
-  const by = r.y * TILE + 4
-  rect(ctx, p['px-outline'], bx - 1, by - 1, bw + 2, 18)
-  rect(ctx, '#f6f5ef', bx, by, bw, 16)
-  const notes = ['#ffd166', '#8ecae6', '#f4978e', '#b9e28c']
-  for (let i = 0; i < 4 && i * 11 + 4 < bw - 8; i++) rect(ctx, notes[i], bx + 4 + i * 11, by + 3 + (i % 2) * 5, 7, 6)
+  // 화이트보드 + 포스트잇(이름표 자리 오른쪽, 공간이 있을 때만)
+  const left = x0 + NAMEPLATE_TILES * TILE + 4
+  const bw = Math.min(64, x0 + W - 22 - left)
+  if (bw >= 30) {
+    const bx = x0 + W - bw - 22
+    const by = r.y * TILE + 4
+    rect(ctx, p['px-outline'], bx - 1, by - 1, bw + 2, 18)
+    rect(ctx, '#f6f5ef', bx, by, bw, 16)
+    const notes = ['#ffd166', '#8ecae6', '#f4978e', '#b9e28c']
+    for (let i = 0; i < 4 && i * 11 + 4 < bw - 8; i++) rect(ctx, notes[i], bx + 4 + i * 11, by + 3 + (i % 2) * 5, 7, 6)
+  }
   // 러그 + 회의 탁자 + 의자 + 노트북
   const tw = Math.min(W - 28, 100)
   const tx = x0 + (W - tw) / 2

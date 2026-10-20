@@ -290,21 +290,23 @@ function seatOverlay(ctx: CanvasRenderingContext2D, seat: Seat, task: Task, p: P
   ctx.fillText(`${state.glyph} ${state.text}`, cx, ly + fontPx + 6)
 }
 
-/** 벽면 위 명판(선명한 글자) */
+/** 방 이름표: 벽면 왼쪽(창은 오른쪽에만 둔다). 방 폭을 넘지 않게 줄인다 */
 function roomSigns(ctx: CanvasRenderingContext2D, layout: OfficeLayout, counts: Map<string, number>) {
   const px = TILE * layout.scale
-  const fontPx = Math.round(Math.min(15, Math.max(10, px * 0.42)))
+  const fontPx = Math.round(Math.min(14, Math.max(10, px * 0.4)))
   ctx.font = `800 ${fontPx}px system-ui, sans-serif`
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
   for (const z of layout.zones) {
     const n = counts.get(z.id) ?? 0
     const more = layout.overflow[z.id] ? ` +${layout.overflow[z.id]}` : ''
-    const text = n ? `${z.label}  ${n}${more}` : z.label
-    const w = ctx.measureText(text).width + 18
+    const room = layout.map.rooms.find((r) => r.id === z.id)
+    const plateW = room ? Math.min(z.w - 12, 5 * px - 8) : z.w - 12
+    const text = truncate(ctx, n ? `${z.label}  ${n}${more}` : z.label, plateW - 18)
+    const w = Math.min(plateW, ctx.measureText(text).width + 18)
     const h = fontPx + 10
     const x = z.x + 6
-    const y = z.y + WALL_FACE_ROWS * px - h - 6
+    const y = z.y + (WALL_FACE_ROWS * px - h) / 2
     ctx.fillStyle = 'rgb(0 0 0 / 0.25)'
     roundRect(ctx, x + 2, y + 2, w, h, 4)
     ctx.fill()
@@ -319,17 +321,9 @@ function roomSigns(ctx: CanvasRenderingContext2D, layout: OfficeLayout, counts: 
   }
 }
 
-/** 지도 바깥: 짙은 배경 + 점 격자 + 가장자리 비네트 */
+/** 지도 바깥은 단색 */
 function backdrop(ctx: CanvasRenderingContext2D, layout: OfficeLayout, p: Palette) {
-  const { width: W, height: H } = layout
-  rect(ctx, p['px-void'], 0, 0, W, H)
-  ctx.fillStyle = 'rgb(255 255 255 / 0.05)'
-  for (let y = 12; y < H; y += 24) for (let x = 12; x < W; x += 24) ctx.fillRect(x, y, 2, 2)
-  const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.25, W / 2, H / 2, Math.max(W, H) * 0.75)
-  g.addColorStop(0, 'rgb(120 160 255 / 0.10)')
-  g.addColorStop(1, 'rgb(0 0 0 / 0.45)')
-  ctx.fillStyle = g
-  ctx.fillRect(0, 0, W, H)
+  rect(ctx, p['px-void'], 0, 0, layout.width, layout.height)
 }
 
 export interface SceneState {
@@ -351,8 +345,6 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: SceneState, p: P
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.imageSmoothingEnabled = false
   backdrop(ctx, layout, p)
-  // 지도 그림자(떠 있는 보드처럼)
-  rect(ctx, 'rgb(0 0 0 / 0.35)', layout.ox + 10, layout.oy + 14, layout.map.w * TILE * s, layout.map.h * TILE * s)
 
   // 지도 좌표
   ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * layout.ox, dpr * layout.oy)

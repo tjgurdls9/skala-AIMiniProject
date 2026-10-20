@@ -44,7 +44,6 @@ const notices = computed(() => {
   const list: string[] = []
   if (run.loadError.value) list.push(`스냅샷을 읽지 못했습니다: ${run.loadError.value.message} (실행 상태가 바뀐 것은 아닙니다)`)
   if (run.notice.value) list.push(run.notice.value)
-  if (props.source.kind === 'example') list.push('합성 예시입니다. 명령을 보내지 않으며 외부 승인·배포가 실행되지 않습니다.')
   if (headerError.value) list.push(`${headerError.value.message}`)
   return list
 })
@@ -321,7 +320,6 @@ onBeforeUnmount(() => {
   margin-right: calc((var(--side-w) + 16px + var(--gap-p)) * (var(--p) - 1));
   border-radius: calc(14px * var(--p));
   overflow: hidden;
-  box-shadow: 0 calc(12px * var(--p)) calc(32px * var(--p)) rgb(0 0 0 / calc(0.18 * var(--p)));
 }
 
 .side-cell {
@@ -366,15 +364,12 @@ onBeforeUnmount(() => {
   pointer-events: auto;
   display: inline-flex; flex-direction: column; gap: 2px;
   max-width: min(520px, 100%);
-  padding: 10px 14px; border-radius: 14px;
-  background: color-mix(in srgb, #10141a 72%, transparent); color: #f2efe6;
-  border: 1px solid rgb(255 255 255 / 0.12);
-  backdrop-filter: blur(12px) saturate(1.2);
-  box-shadow: 0 12px 30px -12px rgb(0 0 0 / 0.6);
-  font-size: 0.9rem; text-align: left;
+  padding: 8px 12px; border-radius: 10px;
+  background: #14181d; color: #f2efe6;
+  border: 1px solid #2c333a;
+  font-size: 0.875rem; text-align: left;
 }
-.hud-chip.sprint strong { font-size: 1rem; letter-spacing: -0.01em; }
-.hud-chip.sprint strong::before { content: "▸ "; color: #ffd27a; }
+.hud-chip.sprint strong { font-size: 0.95rem; }
 .hud-chip.sprint span { font-size: 0.85rem; opacity: 0.8; }
 .hud-alerts { display: grid; gap: 6px; justify-items: end; }
 .hud-chip.alert { flex-direction: row; gap: 8px; min-height: var(--tap); align-items: center; cursor: pointer; font-weight: 650; border-left: 4px solid currentColor; }
@@ -386,15 +381,11 @@ onBeforeUnmount(() => {
 
 .scroll-cue {
   position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%);
-  min-height: var(--tap); padding: 0 20px; border-radius: 999px; border: 1px solid rgb(255 255 255 / 0.18);
-  background: color-mix(in srgb, #10141a 70%, transparent); color: #f2efe6; font-weight: 750; cursor: pointer;
-  backdrop-filter: blur(10px);
-  box-shadow: 0 10px 30px -10px rgb(0 0 0 / 0.6), 0 0 0 6px rgb(255 210 122 / 0.08);
+  min-height: var(--tap); padding: 0 18px; border-radius: 999px; border: 1px solid #2c333a;
+  background: #14181d; color: #f2efe6; font-weight: 700; cursor: pointer;
   opacity: calc(1 - var(--p) * 2);
   pointer-events: auto;
 }
-.scroll-cue span { display: inline-block; animation: nudge 1.6s ease-in-out infinite; }
-@keyframes nudge { 50% { transform: translateY(3px); } }
 
 @media (max-width: 1100px) {
   .office-page { --side-w: 320px; }

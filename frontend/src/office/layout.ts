@@ -117,7 +117,10 @@ export function seatSlots(r: Room): Array<{ tx: number; ty: number }> {
 
 export function computeLayout(width: number, height: number, tasks: readonly Task[]): OfficeLayout {
   const { map, compact } = chooseMap(width, height)
-  const { scale, ox, oy } = fitMap(map, width, height)
+  const fit = fitMap(map, width, height)
+  const { scale, ox } = fit
+  // 좁은 세로 화면은 지도를 위로 붙여 아래쪽 알림 칩과 겹치지 않게 한다
+  const oy = compact ? Math.min(fit.oy, 12) : fit.oy
   const px = TILE * scale
   const toScreen = (r: Rect): Rect => ({ x: ox + r.x * px, y: oy + r.y * px, w: r.w * px, h: r.h * px })
   const visible = tasks.filter((t) => t.state !== 'superseded')

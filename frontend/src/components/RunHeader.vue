@@ -97,9 +97,10 @@ h1 { font-size: 1.1rem; }
 @media (max-width: 640px) {
   .run-header { grid-template-columns: auto 1fr; padding: 6px 10px; gap: 6px 8px; }
   .id h1, .id p { display: none; }
-  .status { grid-column: 2; grid-row: 1; font-size: 0.85rem; gap: 4px 6px; }
-  .controls { grid-column: 1 / -1; justify-content: flex-start; gap: 6px; }
-  .controls :deep(.chip) { display: none; }
-  .controls .btn, .controls :deep(.btn) { min-height: 40px; padding: 0 10px; font-size: 0.85rem; }
+  .status { grid-column: 2; grid-row: 1; font-size: 0.8rem; gap: 4px 6px; }
+  .status :deep(.source) { padding: 2px 8px; }
+  .status .chip.tone-ok { display: none; } /* 정상 수신만 숨김. 끊김·재연결·명령 확인 중은 보인다 */
+  .controls { grid-column: 1 / -1; justify-content: flex-start; gap: 6px; flex-wrap: nowrap; overflow-x: auto; }
+  .controls .btn { min-height: 40px; padding: 0 10px; font-size: 0.85rem; }
 }
 </style>

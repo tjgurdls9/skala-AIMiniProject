@@ -124,3 +124,18 @@ describe('표시 테마', () => {
     expect(resolveTheme('dark', false)).toBe('dark')
   })
 })
+
+describe('방 이름표 자리', () => {
+  test('창은 벽면 왼쪽 이름표 자리를 피해 방 안에만 놓인다', async () => {
+    const { NAMEPLATE_TILES, windowSlots } = await import('../src/office/art')
+    for (const compact of [false, true]) {
+      const { map } = chooseMap(compact ? 390 : 1400, compact ? 760 : 800)
+      for (const room of map.rooms) {
+        for (const x of windowSlots(room)) {
+          expect(x).toBeGreaterThanOrEqual((room.x + NAMEPLATE_TILES) * TILE)
+          expect(x + 26).toBeLessThanOrEqual((room.x + room.w) * TILE)
+        }
+      }
+    }
+  })
+})

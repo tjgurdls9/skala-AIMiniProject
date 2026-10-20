@@ -28,10 +28,8 @@ const ACTION_TEXT: Record<AlertAction['kind'], string> = { plan: '기획 검토'
 .alert {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 10px 12px; margin-bottom: 8px;
-  border: 1px solid color-mix(in srgb, currentColor 35%, transparent); border-left: 4px solid currentColor;
-  border-radius: 12px; font-weight: 600;
-  background: color-mix(in srgb, currentColor 9%, var(--surface));
-  box-shadow: 0 8px 20px -14px currentColor;
+  border: 1px solid var(--line); border-left: 4px solid currentColor;
+  border-radius: 10px; font-weight: 600; background: var(--surface);
 }
 .alert .text { flex: 1 1 260px; color: var(--ink); font-weight: 500; }
 .glyph { font-weight: 700; }
