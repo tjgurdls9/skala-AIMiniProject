@@ -47,7 +47,7 @@ Git/worktree·바이트/해시·포트·원격 메타데이터만 확인했다. 
 
 ## D1 계약 응답 — Claude 소비자에게
 
-공유 계약은 protocol v1을 유지하고 HTTP v1에 타입을 추가했다. HTTP 초안의 ProjectCreate/CommandReceipt/Runtime 필드는 유지했다. 아래 응답은 제공자 연결 기준이며 소비자 타입/fixture 반영 완료를 뜻하지 않는다. 계약 커밋은 이 절을 추가한 `docs: define local browser HTTP integration contract` 커밋이다. 다음 구현 기록에 정확 SHA를 남긴다.
+공유 계약은 protocol v1을 유지하고 HTTP v1에 타입을 추가했다. HTTP 초안의 ProjectCreate/CommandReceipt/Runtime 필드는 유지했다. 아래 응답은 제공자 연결 기준이며 소비자 타입/fixture 반영 완료를 뜻하지 않는다. 계약 커밋은 `2403a0ef979f44c7882ab74d965c713cffb6e546`이다. protocol 변경 없이 HTTP 타입/전송 의미와 이 응답만 분리했다.
 
 | 요청 ID | 결정·실제 제공 형태·소비자 영향 |
 |---|---|
@@ -61,6 +61,41 @@ Git/worktree·바이트/해시·포트·원격 메타데이터만 확인했다. 
 | CR-C08 | 채택: 현재 Sprint를 running/ready에서 도출·표시. 중지 접수 후 Snapshot 확인. worker 버전/lease fence 사용. 외부 operation 아직 없음; 결과불명 사건을 합성하지 않음 |
 
 Claude 요청: 이 계약 커밋만 자기 브랜치에 명시 반영(cherry-pick)하고 frontend 안의 타입·예시를 재생성한다. 제공자 구현 커밋은 소비자 타입 생성에 필요하지 않다. `http.v1.schema.json`의 상대 protocol 참조를 해석하고 새 HTTP 타입도 생성할 것. `/api` proxy와 `http://127.0.0.1:5173`을 사용하며, 생성 결과·타입/예시 확인·누락은 Claude 인계에 같은 요청 ID로 남긴다. frontend 파일은 Codex가 만들거나 수정하지 않았다.
+
+## 구현·확인 기록 — 2026-10-20 (D1, D2–D3 일부)
+
+### 수행 내용·커밋·파일
+
+- `049ed58`: 원본 8개 파일 보존. 최종 확인에서도 원본 8개와 이 커밋의 바이트가 모두 같았다.
+- `f4d08de`: 실제 worktree 준비 완료 인계.
+- `2403a0ef979f44c7882ab74d965c713cffb6e546`: 공유 계약 전용. Claude는 자기 브랜치에서 이 커밋을 명시 반영한 뒤 타입/fixture를 생성한다. 다른 세션에 자동 적용하지 않았다.
+- `a70a7b1e367ddc83f5d8949c1124398d1147f741`: 로컬 세션 인증/CSRF, API 오류·생성·SSE·REPLAY 목록, 영속 기획 worker·lease·중지/재개·문맥/시도와 최소 자체 검사.
+- 변경 파일: `.gitignore`, `backend/{README.md,__main__.py,api.py,config.py,contracts.py,store.py,requirements.lock,tests/test_runtime.py}`, `runner/{model.py,worker.py}`, 공유 `docs/planning/{contracts.md,http.v1.schema.json}`, 이 인계. `frontend/**`와 Claude 인계는 수정하지 않았다.
+- 직접 의존성은 초안 핀 그대로, 전이 설치 핀은 `backend/requirements.lock`에 기록했다. Codex worktree의 `backend/.venv`만 설치했다. 루트 공용 lock을 만들지 않았다.
+- 적용 지침: 설치된 Ponytail, ECC contract-first/product-capability/context-and-decisions/strategic-compact/FastAPI/MCP 지침을 읽었다. 기존 기획·도메인 용어를 재사용했고 별도 기획 체계/서브에이전트를 만들지 않았다. MCP 지침을 읽은 사실을 제품 MCP 구현 완료로 취급하지 않는다.
+
+### 실행 확인·관련 기준
+
+- `backend/.venv/bin/python -m unittest discover -s backend/tests -v`: **13개 통과**, Python 3.14.7/macOS arm64, 외부 키·실제 모델·Docker 없이 임시 DB와 fake 모델만 사용했다.
+- 범위: 쿠키/CSRF/Origin/Host/로그아웃, 요청 크기·잘못된 스키마, 실행기 부재의 LIVE 차단, 기획/승인/plan digest, 명령 멱등·중복 본문 충돌·버전 충돌, 승인 없는 building 차단, 중복 AC ID 차단, 중지 후 늦은 결과 차단/진행 중 요청 취소, lease 이중 인수 차단/인계 복구, 원문·정정/불변 원장 보존, 문맥 예산 초과 시 원문 보존, 실제 원장 REPLAY의 불변·읽기 전용 의미, SSE 직렬화/범위 밖 resync를 확인했다.
+- `pip check`: 의존성 충돌 없음. `git diff --check`: 통과. 원격 26개 파일 일치·보존 초안 8개 바이트·두 worktree/브랜치·계약 해시를 확인했다.
+- R04/AC03, R05/AC05, R11–13/AC11–12, R14–16/AC13, R25/AC22 관련 일부 서버 경계의 자체 근거다. AC01 전체 완주·AC06 범위 분류·AC09/10 독립 검토·AC15 장비 실측·AC16 제출 완주를 통과 판정하지 않았다.
+
+### 미실행·실패·남은 위험
+
+- 승인된 읽기 전용 D0 확인: Ollama `127.0.0.1:11434/api/tags` 연결 실패(curl exit 7). Docker는 `~/.docker/run/docker.sock` 부재로 데몬 연결 실패했다. 모델 다운로드·기동·추론, 컨테이너 생성/실행은 하지 않았다.
+- 실제 모델 태그/라이선스/자원·한국어/JSON 품질은 미확정. 실제 모델 없이 만들어진 테스트 결과를 실제 LIVE 실행/배포 기록으로 제출하지 않는다. 이번 테스트 DB는 임시 파일이며 제출용 REPLAY를 만들지 않았다.
+- provider 오류 시 자원 대기/실패를 보존한다. 기획 승인 뒤 격리 구현기는 아직 없어서 waiting_resource다. RAG/MCP·역할 그래프·생성 앱·서로 격리된 검증/보안·프리뷰·Git operation/배포는 미연결이다. 실제 배포는 사용자 승인 후에만 수행한다.
+- 4,000 UTF-8 바이트의 보수적 입력 예산을 넘으면 원문을 자르지 않고 needs_input에 둔다. 긴 문맥 자동 분해는 미구현이다. 모든 수정 요청은 범위 분류 검증 전까지 보수적으로 재기획/재승인한다. 무한 반복을 짧은 횟수 뒤 합격으로 만드는 로직은 없다.
+- 개발 브라우저·실제 SSE 소켓 재연결·프론트 타입 생성/fixture·통합·공개 서버·다른 OS/Python 설치·의존성 취약점/전체 비밀 검사·독립 검증/보안은 미확인이다. 알려진 키 형식 차단은 종합 보안 검사를 대신하지 않는다.
+- push·원격 branch 생성·main 병합·배포·force push를 하지 않았다. 외부 GitHub App/webhook 연계는 미확인이다.
+- 원본 main에는 준비/진행 인계 사본만 의도적인 미커밋 변경으로 남기며 backend/runner 보존 초안은 untracked 상태다. 원본 HTTP 스키마는 공통 기준 초안 그대로다. **최신 D1 계약/제품 코드는 Codex worktree에만 있다.**
+
+### Claude 재개 요청·다음 착수점
+
+- **CODEX-SESSION-001**: 사용자가 기존 터미널 Claude 세션의 제목을 `사무실 프론트엔드 담당 R&R`로 지정했다. Claude 앱 탐색은 중단했다. 터미널을 직접 조작하려는 도구 요청은 `Computer Use is not allowed to use the app 'com.googlecode.iterm2' for safety reasons.`로 거절됐다. 우회 입력/추가 프로세스 기동을 하지 않았고 **기존 CLI에 메시지 전달/재개는 확인되지 않았다**.
+- 기존 Claude CLI에 전달할 내용: `READY_FOR_PARALLEL_IMPLEMENTATION. 원본 docs/handoffs/codex.md는 최신 인계 사본이다. /Users/seohyeokin/workspace/skala-AIMiniProject/.worktrees/claude-office (work/claude-office, 공통 기준 6cc9a0b)에서만 작업하라. 계약 커밋 2403a0ef979f44c7882ab74d965c713cffb6e546을 반영하고 CR-C01–C08 응답에 따라 frontend 타입/fixture와 F0–F7을 이어가라. backend 완료를 기다리지 말고 예시 화면을 진행하라. frontend 밖 코드·추가 agent·배포를 실행하지 말라. 결과와 누락은 docs/handoffs/claude.md에 남겨라.`
+- 다음 Codex 작업: Claude 소비자 응답 확인 → 실제 Ollama 태그/실행 환경 확인 → 긴 문맥 분해·역할별 문맥/ACL 검색/MCP → Docker 격리 도구·템플릿 및 두 검토 연결. 실제 대상/모델이 없다는 이유로 가짜 성공을 채우지 않는다.
 
 ---
 
