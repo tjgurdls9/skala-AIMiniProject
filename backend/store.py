@@ -244,6 +244,8 @@ class Store:
                 schedule = snapshot["state"] in ("planning", "building", "reviewing", "preview_ready", "deploying")
                 previous = db.execute("SELECT context FROM jobs WHERE run_id=? ORDER BY rowid DESC LIMIT 1", (run_id,)).fetchone()
                 options = json.loads(previous[0] or "{}").get("options", {}) if previous else {}
+                if snapshot.get("reason"):
+                    options["unresolved_failures"] = list(dict.fromkeys(options.get("unresolved_failures", []) + [snapshot["reason"]]))
                 snapshot.pop("reason", None)
             elif action == "request_changes":
                 known = {a["id"] for a in snapshot["artifacts"]}

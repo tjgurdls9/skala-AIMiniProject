@@ -12,6 +12,7 @@ from backend.contracts import ROOT, SCHEMAS, SECRET, DomainError, canonical, dig
 from backend.store import Store, now, uid
 from runner.model import ModelUnavailable, Ollama
 from runner.pipeline import Pipeline
+from runner.context import PlanningContext
 
 # This product has no permission to export prompts to a tracing service.
 os.environ["LANGSMITH_TRACING"] = "false"
@@ -35,7 +36,7 @@ def failure_reason(error):
 class Worker:
     def __init__(self, store, model, settings=None):
         self.store, self.model, self.owner = store, model, uid()
-        self.pipeline = Pipeline(store)
+        self.pipeline = Pipeline(store, settings.embedding if settings else "")
         async def role_step(state):
             return {"result": await self.model.generate(state["packet"], state["schema"])}
         graph = StateGraph(dict)
@@ -90,13 +91,14 @@ class Worker:
                 requests = [dict(r) for r in db.execute(
                     "SELECT id, content, created_at FROM requests WHERE project_id=? AND (run_id IS NULL OR run_id=?) ORDER BY rowid",
                     (snapshot["project_id"], row["run_id"]))]
+                options = json.loads(row["context"] or "{}").get("options", {})
                 packet = dict(role=row["role"], run_id=row["run_id"], state_version=row["version"],
                               spec_version_id=snapshot["spec_version_id"], requests=requests,
                               latest_spec=json.loads(spec[0]) if spec else None,
                               mandatory_policy=POLICY, permissions=["propose_plan"] if row["role"] == "planner" else [],
-                              unresolved_failures=[snapshot["reason"]] if snapshot.get("reason") else [],
+                              unresolved_failures=list(dict.fromkeys(options.get("unresolved_failures", []) + ([snapshot["reason"]] if snapshot.get("reason") else []))),
                               next_action="Propose one plan. Preserve corrections, list assumptions; never approve or execute tools.",
-                              options=json.loads(row["context"] or "{}").get("options", {}),
+                              options=options,
                               template_contract=json.loads((ROOT / "templates/requests-v1/contract.json").read_text()),
                               recheck=POLICY)
                 if row["role"] == "planner":
@@ -152,9 +154,15 @@ class Worker:
                 snapshot["tasks"].append(dict(id=uid(), phase_id=phase_id, sprint_id=sprint_id, spec_version_id=spec_id,
                                              role="builder", work_kind="integration", title="승인 명세 구현", state="pending",
                                              depends_on=[], acceptance_ids=[a["id"] for a in proposal["acceptance"]], artifact_ids=[]))
+                if job.get("context_evidence"):
+                    job["context_evidence"]["spec_version_id"] = spec_id
                 self.store.save(db, snapshot, "plan_proposed", "기획 초안이 생성됐습니다. 내용을 확인하고 승인하세요.")
             else:
                 raise ValueError("Role must finish through its pipeline step")
+            for kind in ("context", "retrieval"):
+                if job.get(kind + "_evidence"):
+                    # CR-C12 consumer adoption precedes public task/artifact connection.
+                    self.store.artifact(db, snapshot, kind, "역할별 준비 근거", job[kind + "_evidence"], public=False)
             db.execute("UPDATE jobs SET state='finished' WHERE id=?", (job["id"],))
             db.execute("INSERT INTO attempt_results VALUES (?, ?, ?)",
                        (job["attempt_id"], "failed" if failure else "finished", now()))
@@ -176,11 +184,7 @@ class Worker:
                 return True
             proposal = None
             if job["role"] == "planner":
-                # shortcut: conservative byte budget, replace with model tokenizer before longer contexts.
-                if len(canonical(job["packet"]).encode()) > 4000:
-                    await asyncio.to_thread(self.finish, job, failure=("needs_input", "문맥이 입력 예산을 초과했습니다. 필수 조건을 삭제하지 않고 작업 분해를 기다립니다."))
-                    return True
-                proposal = await self.infer(job, job["packet"], SCHEMAS["http.v1.schema.json"]["$defs"]["PlanDraft"])
+                proposal = await PlanningContext(self.store).plan(job, self, SCHEMAS["http.v1.schema.json"]["$defs"]["PlanDraft"])
                 validate("PlanDraft", proposal)
                 require(not SECRET.search(canonical(proposal)), "INVALID_COMMAND", "모델 출력에 비밀정보가 포함됐습니다.", 422)
             await asyncio.to_thread(self.finish, job, proposal)

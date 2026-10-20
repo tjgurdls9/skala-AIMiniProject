@@ -9,17 +9,20 @@ from backend.config import Settings
 from backend.store import Store
 from knowledge import Corpus
 from runner.access import RoleScope
+from runner.model import Ollama
 
 
-def create_server(scope, corpus):
+def create_server(scope, corpus, embedding=""):
     role = scope.authority()[0]["role"]
     server = FastMCP("lifecycle-" + role)
 
     @server.tool()
-    def search_documents(query: str) -> list:
+    async def search_documents(query: str) -> dict:
         """Search only the caller role's approved corpus; return cited source chunks."""
         authority, _ = scope.authority()
-        return corpus.search(authority["role"], query)
+        result = await corpus.retrieve(authority["role"], query, Ollama(embedding) if embedding else None)
+        scope.authority()
+        return result
 
     @server.resource("lifecycle://spec")
     def specification() -> str:
@@ -53,4 +56,4 @@ def create_server(scope, corpus):
 if __name__ == "__main__":
     settings = Settings.from_env()
     store = Store(settings.database)
-    create_server(RoleScope(store, os.environ["LIFECYCLE_GRANT"]), Corpus(store)).run(transport="stdio")
+    create_server(RoleScope(store, os.environ["LIFECYCLE_GRANT"]), Corpus(store), settings.embedding).run(transport="stdio")

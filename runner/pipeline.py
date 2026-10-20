@@ -17,6 +17,7 @@ from mcp.client.stdio import stdio_client
 from backend.contracts import ROOT, SECRET, canonical, digest, require
 from backend.store import now, uid
 from runner.access import WRITABLE_FILES, issue_grant
+from runner.context import implement
 from runner.model import ModelUnavailable
 from runner.sandbox import PATCH_SCHEMA, Sandbox
 from runner.review import REVIEW_SCHEMA, Reviewer
@@ -24,8 +25,8 @@ from knowledge import Corpus
 
 
 class Pipeline:
-    def __init__(self, store):
-        self.store = store
+    def __init__(self, store, embedding=""):
+        self.store, self.embedding = store, embedding
         self.engine = Sandbox(store.path.parent)
 
     def valid(self, db, job, worker):
@@ -44,7 +45,7 @@ class Pipeline:
         await asyncio.to_thread(self.engine.runtime)
         workspace = await asyncio.to_thread(self.engine.workspace, job["run_id"], job["packet"]["spec_version_id"])
         token = await asyncio.to_thread(issue_grant, self.store, job, workspace)
-        env = {"PATH": os.defpath, "LIFECYCLE_DB": str(self.store.path.resolve()), "LIFECYCLE_GRANT": token}
+        env = {"PATH": os.defpath, "LIFECYCLE_DB": str(self.store.path.resolve()), "LIFECYCLE_GRANT": token, "LIFECYCLE_EMBEDDING": self.embedding}
         params = StdioServerParameters(command=sys.executable, args=["-m", "runner.mcp_server"], env=env)
         async with stdio_client(params) as streams, ClientSession(*streams) as session:
             await session.initialize()
@@ -57,23 +58,11 @@ class Pipeline:
                 files.append(json.loads(result.content[0].text))
             retrieved = await session.call_tool("search_documents", {"query": "read-only capabilities"})
             require(not retrieved.isError, "RUNTIME_UNAVAILABLE", "허용 문서 검색을 완료하지 못했습니다.")
-            packet = dict(role="builder", mandatory_policy=job["packet"]["mandatory_policy"], spec=spec, files=files, writable_files=writable,
-                          retrieved_documents=json.loads(retrieved.content[0].text),
-                          change_requests=[r["content"] for r in job["packet"]["requests"] if r["id"]],
-                          template_contract=json.loads((ROOT / "templates/requests-v1/contract.json").read_text()),
-                          unresolved_failures=job["packet"]["unresolved_failures"],
-                          next_action="Implement the approved scope in the fixed template. Preserve its API and h-based Vue renderer; no new dependencies, external URLs, HTML injection, eval or approval. Return only necessary file replacements; empty files is allowed when already correct.",
-                          recheck=job["packet"]["mandatory_policy"])
-            require(len(canonical(packet).encode()) <= 14000, "RUNTIME_UNAVAILABLE", "구현 문맥을 작은 작업으로 분해해야 합니다.")
-            proposal = await worker.infer(job, packet, PATCH_SCHEMA)
-            Draft202012Validator(PATCH_SCHEMA).validate(proposal)
-            require(not SECRET.search(canonical(proposal)) and len({f["path"] for f in proposal["files"]}) == len(proposal["files"]),
-                    "INVALID_COMMAND", "패치 파일/비밀 형식을 확인하세요.", 422)
-            for patch in proposal["files"]:
-                require(patch["path"] in writable, "FORBIDDEN", "현재 Sprint의 쓰기 범위 밖입니다.", 403)
-                current = next(f for f in files if f["path"] == patch["path"])
-                result = await session.call_tool("patch_file", {**patch, "expected_digest": current["content_digest"]})
-                require(not result.isError, "VERSION_CONFLICT", "패치 권한 또는 파일 버전이 바뀌었습니다.")
+            require(spec["spec_version_id"] == job["packet"]["spec_version_id"], "VERSION_CONFLICT", "현재 승인 명세를 다시 확인하세요.")
+            retrieval = json.loads(retrieved.content[0].text)
+            job["retrieval_evidence"] = retrieval["evidence"]
+            require(retrieval["evidence"]["status"] != "search_error", "RUNTIME_UNAVAILABLE", "검색 근거 준비에 실패했습니다. 로컬 모델/코퍼스 버전을 확인하세요.")
+            await implement(self.store, session, job, worker, files, retrieval["documents"], writable, PATCH_SCHEMA)
         if not await asyncio.to_thread(worker.current, job):
             return
         candidate = await asyncio.to_thread(self.engine.freeze, workspace)
@@ -89,6 +78,8 @@ class Pipeline:
                        (key, snapshot["run_id"], snapshot["spec_version_id"], canonical(candidate)))
             public = {k: candidate[k] for k in ("commit_sha", "image_digest", "manifest")}
             artifact = self.store.artifact(db, snapshot, "build", "고정 구현 후보", public)
+            if job.get("retrieval_evidence"):
+                self.store.artifact(db, snapshot, "retrieval", "구현 검색 근거", job["retrieval_evidence"], public=False)
             for task in builders:
                 task.update(state="succeeded", artifact_ids=[artifact["id"]])
             for role in ("validator", "security"):

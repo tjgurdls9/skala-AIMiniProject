@@ -222,14 +222,45 @@ class RuntimeChecks(unittest.TestCase):
         self.assertFalse(self.worker.model.completed)
         self.assertFalse(self.store.snapshot(snapshot["run_id"])["artifacts"])
 
-    def test_context_budget_preserves_full_request(self):
+    def test_long_context_is_decomposed_and_preserves_full_request(self):
+        from runner.context import fragments
         self.worker.heartbeat()
         project = self.store.project({"title": "long", "request": "가" * 10000})
         snapshot = self.store.create_run(project["project_id"], {"mode": "live"})
         asyncio.run(self.worker.tick())
-        self.assertEqual(self.store.snapshot(snapshot["run_id"])["state"], "needs_input")
+        self.assertEqual(self.store.snapshot(snapshot["run_id"])["state"], "awaiting_plan_approval")
         with self.store.transaction() as db:
             self.assertEqual(len(db.execute("SELECT content FROM requests").fetchone()[0]), 10000)
+            self.assertGreater(db.execute("SELECT COUNT(*) FROM context_steps").fetchone()[0], 1)
+            requests = [dict(r) for r in db.execute("SELECT * FROM requests")]
+        self.assertEqual("".join(p["text"] for p in fragments(requests)), "가" * 10000)
+
+    def test_planning_resumes_checkpoint_and_retains_mandatory_conditions(self):
+        from runner.context import BUDGET
+        from backend.contracts import canonical
+        calls = []
+        class Interrupted(FakeModel):
+            broken = True
+            async def generate(self, packet, schema):
+                calls.append(copy.deepcopy(packet))
+                if len(calls) == 2 and self.broken:
+                    raise ModelUnavailable()
+                return copy.deepcopy(PLAN)
+        self.worker.model = Interrupted()
+        self.worker.heartbeat()
+        project = self.store.project({"title": "long", "request": "원래 조건 " * 1000})
+        snapshot = self.store.create_run(project["project_id"], {"mode": "live"})
+        asyncio.run(self.worker.tick())
+        waiting = self.store.snapshot(snapshot["run_id"])
+        self.assertEqual(waiting["state"], "waiting_resource")
+        self.worker.model.broken = False
+        self.post_command(self.command(waiting, "resume"))
+        asyncio.run(self.worker.tick())
+        self.assertEqual(self.store.snapshot(snapshot["run_id"])["state"], "awaiting_plan_approval")
+        self.assertEqual(sum(c["fragment_index"] == 0 for c in calls), 1)
+        self.assertTrue(calls[2]["unresolved_failures"])
+        self.assertTrue(all(len(canonical(c).encode()) <= BUDGET for c in calls))
+        self.assertEqual(calls[2]["accumulated_plan"]["constraints"], PLAN["constraints"])
 
     def test_sse_serialized_event_matches_contract(self):
         import json

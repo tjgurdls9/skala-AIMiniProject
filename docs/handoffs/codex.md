@@ -7,13 +7,13 @@
 | DEV-P/S | 현재 구현·근거·다음 입력 |
 |---|---|
 | P01/S01 | 원본의 검토한 계획/진입점/프롬프트 10개를 명시 반영. Git/worktree·무료 모델/실행기·소유 경계의 기존 근거 유지. 원본 제품 초안은 가져오지 않음 |
-| P01/S02 | 계약 전용 패치와 SHA256 제공. Claude `dc1407c`가 같은 제공자 계약을 이미 반영했고 reverse apply check 통과. 소비자 AC 표시·재생 iframe 차단의 완료 커밋/생성 해시·통합 확인 대기 |
+| P01/S02 | 완료 커밋 `c4941bb`로 Claude `0dbe45e`까지 통합. 소비자 AC·명령/SSE·REPLAY iframe 경계·해시 반영 확인. 통합 프론트 180 tests/타입/빌드 통과 |
 | P02/S03 | 같은 owner 만료 lease 재인수/옛 시도 fence·손상 artifact 503·프리뷰 불명 상태/새 시도 자원 분리 보완. 자체 검사 32개 통과. 실제 프로세스 강제 종료·Docker 응답 유실·취소 후 자동 청소 수용은 남음 |
-| P02/S04 | 대기 아님: 장문 입력의 영속 분해·근거 선택·최신 필수 조건 직접 제공을 구현할 차례. 기존 4,000/14,000 byte 보류는 임시 경계 |
-| P02/S05 | S04와 이어 작은 로컬 의미 검색·버전/ACL·단일 추론 자원 운용 구현. 기존 키워드 검색은 부분 근거 |
+| P02/S04 | 원문 조각/해시·중간 기획 checkpoint·재개·파일별 구현/patch 의도와 응답 유실 조정 구현 중. 긴 원문·자원 실패 후 재개 자체 검사 통과. 필수 조건 자체 초과는 원문 보존 needs_input |
+| P02/S05 | 작은 ACL 코퍼스에 Qwen3-Embedding 0.6B 의미 검색/내용 버전·벡터 cache·오류 구분·프로세스 공통 추론 lock/순차 unload 구현 중. 실제 의미 검색 6.6초·키워드 0건→semantic found 확인. 공개 연결은 CR-C12 소비자 타입 대기 |
 | P03/S06 | S03–05 뒤 분야별 Infra/Back/Front/AI/Data 필요/의존/쓰기 경계와 기존 큐 연결 |
 | P03/S07 | 같은 후보 독립 검토·원본/새 회차·실패 차단 유지. P03 말 실제 데이터/계약·대표 기록과 S08 디자인 요청 준비 신호를 인계 |
-| P04/S08 | Claude 소유 디자인은 P03 인계 뒤 사용자의 직접 지시를 받아 진행. Codex는 대리 디자인/대기 해제하지 않음. 그동안 독립 API/후속 어댑터 진행 |
+| P04/S08 | Claude가 직접 받은 사용자 디자인/전환 저항 피드백 `8d69830`/`0dbe45e`를 `c4941bb`에 통합. 사용자 시각 수용·실기기 터치/타 브라우저는 별도 미확인 |
 | P04/S09 | 실제 사용자 입력/기획 승인·프리뷰 수정·기능 변경/재승인 수용 대기. 스크립트로 사용자 승인 대행하지 않음 |
 | P05/S10 | 부작용 없는 Git·환경/배포·복구·조회 조정 어댑터 준비. 실제 대상/무료 자격/권한·push 배포 효과·정확한 배포 HITL 전 외부 실행 금지 |
 | P05/S11 | 전체 수용은 실제 사용자/대상 의존. 독립 가능한 복구·긴 이력·자원 근거는 먼저 보완 |
@@ -30,6 +30,15 @@ S01–02 경계: `docs/planning/phase-completion.md` 전체 및 최신 원본 �
 - **CR-C13 응답**: `/api/replays[].recorded_at`와 동결 `replay_source.recorded_at`는 원본에 포함된 마지막 사건의 `occurred_at`이다. 단순 조회·재생 생성 시각을 사용하지 않는다. 원본에 새 사건이 없으면 반복 GET의 시각/manifest는 같다. 새 사건이 생긴 LIVE 목록은 최신 기록 시각으로 갱신하고 이미 생성된 REPLAY는 동결한다. 필드/타입 변경 없음.
 - 자체 검사: `backend/.venv/bin/python -m unittest discover -s backend/tests -q` **32개 통과**. 임시 DB/fake 모델/mock Docker와 실제 MCP stdio 사용. 실제 Docker daemon 단절/프로세스 종료의 제품 수용을 수행했다는 뜻은 아니다.
 - Claude clean HEAD `0dbe45e`까지 확인: S02 소비자·P02/P03 UI·직접 사용자 디자인 `8d69830`와 전환 저항 피드백 `0dbe45e` 완료 커밋을 다음 통합 대상으로 확정했다. 직접 디자인을 다시 요청하지 않는다. CR-C12 검색 provenance 기계 계약을 먼저 제공할 예정이며 소비자 타입/화면 변경은 Claude 담당이다.
+
+### S02 통합·S04/S05 구현 중 근거
+
+- `c4941bb`: Claude `0dbe45e`까지 완료 커밋만 병합. frontend 소스·생성 타입을 직접 수정하지 않았다. 통합 `npm test` **180개 통과**, `npm run build`의 타입/빌드 통과(JS gzip 63.59KB). happy-dom이 iframe 로드를 막는 예상 진단을 출력했으며 실제 브라우저 프리뷰 접속 증거가 아니다.
+- CR-C12 계약 전용 `573c169`/`docs/handoffs/contracts/v1-cr-c12.patch`; HTTP SHA256 `9c5f15539411010c8216c8c116e94c26585ff59085ad904a896acefeca101662`. protocol 변경 없음. **Claude가 이 계약만 반영해 타입/해시·검색/문맥 근거 UI의 완료 커밋을 인계해야 한다.** 내부 근거 저장은 진행하며 공개 task/artifact 연결은 그 후 활성화한다. 세션 자동 전달은 하지 않았다.
+- S04: `runner/context.py`는 정확한 원문을 2,400 UTF-8 byte 이하 조각으로 나누고 request_id/코드포인트 위치/hash를 보존한다. 이전 기획·제약/AC·현재 조각·최신 승인 목표/제약/AC·미해결 오류를 직접 입력하고 14,000 byte 호출 예산 안에서 순서대로 처리한다. 중간 제약/AC를 잊은 모델 출력으로 덮지 않으며 정의 충돌/필수 집합 초과는 needs_input이다. 첫/정정 원문은 원장에 유지한다. 체크포인트는 원문·승인 명세·보호 입력 hash에 묶이고 모델의 의미 보존을 자동 보증하지 않는다. 최종 계획은 실제 사용자 승인 전 실행하지 않는다.
+- 구현은 파일별/원문 조각별로 나누고 patch 의도·expected/output digest를 먼저 저장한다. 응답 유실 뒤 실제 파일 hash가 저장된 결과와 같으면 모델 재호출/중복 패치 없이 조정한다. 한 파일/필수 명세 자체가 예산보다 크면 자동 절단하지 않고 분해 입력을 요청한다. 일반적인 대형 파일 편집기를 구현한 것은 아니다.
+- S05: 승인된 실제 다운로드 `qwen3-embedding:0.6b`, checkpoint `ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d`(639MB, 가중치 Git 제외). [공식 모델 카드](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B)의 Apache-2.0 및 [Ollama embed](https://docs.ollama.com/api/embed)의 truncate=false/keep_alive=0 경로 확인. 200선의 기존 선정 근거(`evidence.md` §5)를 사용하며 새 패키지/벡터DB·다른 저장소 통째 수집은 하지 않았다.
+- 실제 로컬 개발 측정 `runtime-data/semantic-result.json`: query `호스트비밀보호`, 키워드 0건, 의미 검색 4개 출처(계약/격리 notes), 6.6초. builder ACL 밖 검토 전용 문서가 입력/결과에 없다. threshold .35는 작은 고정 코퍼스의 후보 관련도 기준이며 일반 검색 품질/한국어 전체 평가는 아니다. 첫 수집 시각/내용 버전·본문 hash를 보존한다. 생성·임베딩은 같은 파일 lock을 MCP 프로세스까지 공유하고 keep_alive=0; 다른 상주 모델을 내리지 않고 resource wait한다. 종료 후 `/api/ps`에서 models=[] 확인. 외부 Ollama 호출자는 이 앱 lock 밖이므로 서버의 병렬 설정도 운영자가 유지해야 한다.
 
 ## 최신 진행 — 2026-10-20, D3–D8 연결
 
