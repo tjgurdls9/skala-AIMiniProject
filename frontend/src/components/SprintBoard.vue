@@ -25,7 +25,8 @@ const path = computed(() =>
 )
 const selected = computed(() => props.snapshot.sprints.find((s) => s.id === props.sprintId) ?? null)
 const tally = computed(() => (selected.value ? tallySprint(props.snapshot, selected.value) : null))
-const acTally = computed(() => (selected.value ? tallyAc(props.acIndex, selected.value.acceptance_ids) : null))
+const reportIds = computed(() => new Set(props.snapshot.reports.map((r) => r.id)))
+const acTally = computed(() => (selected.value ? tallyAc(props.acIndex, selected.value.acceptance_ids, reportIds.value) : null))
 </script>
 
 <template>
@@ -76,7 +77,7 @@ const acTally = computed(() => (selected.value ? tallyAc(props.acIndex, selected
             {{ tally.acceptanceCount }}개 중
             <span class="tone-ok">{{ AC_STATE.met.glyph }} 충족 {{ acTally.met }}</span>
             · <span :class="acTally.failed ? 'tone-danger' : ''">{{ AC_STATE.failed.glyph }} 실패 {{ acTally.failed }}</span>
-            · 미충족 {{ acTally.unmet }}<template v-if="acTally.not_run"> · 미실행 {{ acTally.not_run }}</template><template v-if="acTally.unknown"> · 판정 없음 {{ acTally.unknown }}</template>
+            · 미충족 {{ acTally.unmet }}<template v-if="acTally.not_run"> · 미실행 {{ acTally.not_run }}</template><template v-if="acTally.unknown"> · 판정 없음 {{ acTally.unknown }}</template><template v-if="acTally.stale"> · <span class="tone-warn">근거 없음 {{ acTally.stale }}</span></template>
           </span>
           <span class="small muted">· 서버 판정{{ isReplay ? '(기록 당시 동결)' : '' }}, 작업 완료 수와 별개</span>
           <p v-if="acNotice" class="small tone-warn">{{ acNotice }}</p>

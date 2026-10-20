@@ -41,7 +41,8 @@ export function useRun(source: RunSource) {
   const loadError = shallowRef<ApiError | null>(null)
   const notice = ref<string | null>(null)
   const pending = shallowRef<PendingCommand | null>(null)
-  const acceptance = shallowRef<AcceptanceStatus | null>(null)
+  /** 판정 + 조회를 시작한 시점의 스냅샷 버전. 같은 버전의 스냅샷에서만 유효하다(CT36) */
+  const acceptance = shallowRef<{ status: AcceptanceStatus; forVersion: number } | null>(null)
   const acceptanceError = shallowRef<ApiError | null>(null)
   /** 최초 연결 시점의 seq. 이보다 큰 사건만 장면에서 연출한다(기록 사건은 연출하지 않음) */
   const liveFromSeq = ref(Number.POSITIVE_INFINITY)
@@ -89,19 +90,33 @@ export function useRun(source: RunSource) {
     }
   }
 
-  /** 가장 최근 요청의 응답만 반영한다(늦게 온 옛 응답이 새 화면에 섞이지 않게) */
+  /**
+   * 가장 최근 요청의 응답만 반영한다(늦게 온 옛 응답이 새 화면에 섞이지 않게).
+   * 판정은 조회를 시작한 스냅샷 버전에 묶는다. 같은 명세에서도 회차·보고서가 바뀌면 버전이 바뀌므로
+   * 새 판정이 오기 전까지 옛 충족을 보여 주지 않는다. 조회 실패 시 옛 판정을 지운다.
+   */
   async function refreshAcceptance(): Promise<void> {
     const token = ++acceptanceToken
+    const forVersion = snapshot.value?.state_version ?? -1
     try {
-      const result = await source.getAcceptance()
+      const status = await source.getAcceptance()
       if (token !== acceptanceToken || disposed) return
-      acceptance.value = result
+      acceptance.value = { status, forVersion }
       acceptanceError.value = null
     } catch (error) {
       if (token !== acceptanceToken || disposed) return
+      acceptance.value = null
       acceptanceError.value = error instanceof ApiError ? error : new ApiError(0, 'NETWORK', 'AC 판정을 읽지 못했습니다.')
     }
   }
+
+  /** 현재 스냅샷과 같은 버전·명세의 판정만 쓴다 */
+  const validAcceptance = computed<AcceptanceStatus | null>(() => {
+    const a = acceptance.value
+    const snap = snapshot.value
+    if (!a || !snap) return null
+    return a.forVersion === snap.state_version && a.status.spec_version_id === snap.spec_version_id ? a.status : null
+  })
 
   /** 동시에 여러 번 요청돼도 한 번에 하나만 읽고, 진행 중 요청이 있었으면 한 번 더 읽는다 */
   function refreshSnapshot(): Promise<void> {
@@ -280,15 +295,16 @@ export function useRun(source: RunSource) {
     liveFromSeq,
     /** 실제 기록 재생은 읽기 전용. 합성 예시는 조작 흐름을 보여주되 명령을 보내지 않는다(EXAMPLE_NOOP). */
     isReplay: computed(() => source.kind === 'live' && snapshot.value?.mode === 'replay'),
-    /** 현재 스냅샷의 명세와 같은 판정만 화면에 쓴다. 다르면 null(명세 전환 중) */
-    acceptance: computed(() => {
-      const a = acceptance.value
-      return a && snapshot.value && a.spec_version_id === snapshot.value.spec_version_id ? a : null
-    }),
+    /** 현재 스냅샷 버전·명세와 같은 판정만. 아니면 null(갱신 중·명세 전환 중·조회 실패) */
+    acceptance: validAcceptance,
+    /** 같은 버전에서 받은 판정인데 명세가 다르다(서버가 다른 명세의 판정을 줌) */
     acceptanceMismatch: computed(() => {
       const a = acceptance.value
-      return !!a && !!snapshot.value && a.spec_version_id !== snapshot.value.spec_version_id
+      const snap = snapshot.value
+      return !!a && !!snap && a.forVersion === snap.state_version && a.status.spec_version_id !== snap.spec_version_id
     }),
+    /** 현재 스냅샷의 판정을 아직 받지 못함(오류 아님) */
+    acceptancePending: computed(() => !!snapshot.value && !validAcceptance.value && !acceptanceError.value),
     acceptanceError,
     refreshAcceptance,
     /** 묶음 대기 중인 사건을 즉시 화면 목록에 게시한다 */

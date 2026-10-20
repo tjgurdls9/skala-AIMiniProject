@@ -49,8 +49,9 @@ const notices = computed(() => {
 })
 const acIndex = computed(() => indexAcceptance(run.acceptance.value))
 const acNotice = computed(() => {
+  if (run.acceptanceError.value) return `AC 판정을 읽지 못했습니다: ${run.acceptanceError.value.message} (이전 판정은 쓰지 않음)`
   if (run.acceptanceMismatch.value) return '판정의 명세 버전이 현재와 달라 표시하지 않습니다. 최신 판정을 다시 읽는 중입니다.'
-  if (run.acceptanceError.value) return `AC 판정을 읽지 못했습니다: ${run.acceptanceError.value.message} (충족으로 추정하지 않음)`
+  if (run.acceptancePending.value) return '현재 상태의 판정을 갱신하는 중입니다. 그동안 이전 판정은 표시하지 않습니다.'
   return null
 })
 const planApproval = computed(() => (snapshot.value ? pendingApproval(snapshot.value, 'plan') : null))
@@ -220,6 +221,7 @@ onBeforeUnmount(() => {
             :task-id="view.taskId"
             :artifact-id="view.artifactId"
             :ac-index="acIndex"
+            :ac-notice="acNotice"
             @task="selectTask"
             @artifact="selectArtifact"
           />

@@ -18,6 +18,8 @@ const props = defineProps<{
   taskId: string | null
   artifactId: string | null
   acIndex: ReadonlyMap<string, AcceptanceItem>
+  /** 판정을 쓸 수 없는 이유(갱신 중·실패·명세 불일치). null이면 정상 */
+  acNotice?: string | null
 }>()
 const emit = defineEmits<{ task: [id: string]; artifact: [id: string] }>()
 
@@ -81,7 +83,10 @@ watch(
         <dt>담당</dt><dd>{{ ROLE[task.role].text }} · {{ WORK_KIND[task.work_kind] }}</dd>
         <dt>명세</dt><dd><code>{{ task.spec_version_id }}</code></dd>
         <dt>인수 기준</dt>
-        <dd><AcceptanceList :ids="task.acceptance_ids" :index="acIndex" :reports="snapshot.reports" @artifact="emit('artifact', $event)" /></dd>
+        <dd>
+          <p v-if="acNotice" class="small tone-warn">{{ acNotice }}</p>
+          <AcceptanceList :ids="task.acceptance_ids" :index="acIndex" :reports="snapshot.reports" @artifact="emit('artifact', $event)" />
+        </dd>
         <template v-if="waitingReason(task, tasksById)">
           <dt>대기·차단 이유</dt><dd>{{ waitingReason(task, tasksById) }}</dd>
         </template>

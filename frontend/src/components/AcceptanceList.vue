@@ -14,9 +14,10 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ artifact: [id: string] }>()
 
+const reportIds = computed(() => new Set(props.reports.map((r) => r.id)))
 const rows = computed(() =>
   props.ids.map((id) => {
-    const view = acView(props.index, id)
+    const view = acView(props.index, id, reportIds.value)
     const report = view.reportId ? props.reports.find((r) => r.id === view.reportId) : undefined
     return { id, ...view, label: AC_STATE[view.state], report }
   }),
@@ -34,7 +35,7 @@ const rows = computed(() =>
         class="link small"
         @click="emit('artifact', row.report.artifact_id)"
       >근거: {{ row.report.role === 'validator' ? '검증' : '보안' }} 보고서</button>
-      <span v-else-if="row.reportId" class="small muted">근거 보고서 {{ row.reportId }} (스냅샷에 없음)</span>
+      <span v-else-if="row.state === 'stale'" class="small muted">현재 회차에 근거 보고서가 없어 충족으로 보지 않음</span>
     </li>
   </ul>
 </template>
