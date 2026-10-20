@@ -143,3 +143,11 @@
 - `kind: context` → `http.ContextEvidence`. 원문 source_digest와 원장의 request_id/offset/length/chunk hash, 완료/전체 조각 수, 명세 버전 및 ready/needs_input을 제공한다. offset/length는 Unicode 코드포인트다. 원문/정정은 원장에 그대로 남고 역할별 필수 조건은 직접 입력한다. 압축 근거는 내부 사고 원문이나 승인 증거가 아니다. 공개 본문에는 raw prompt/추론/파일 내용이 없다. 완료 조각 수는 total을 넘지 않으며 source_digest 변경 시 이전 checkpoint를 새 입력으로 재사용하지 않는다.
 
 `ReplayRecording.recorded_at` 및 동결 `replay_source.recorded_at`은 포함된 원본의 마지막 사건 occurred_at이다(CR-C13). GET/재생 생성 시각이 아니며 원본에 새 사건이 없으면 조회 결과가 안정적이다. LIVE 기록의 최신 사건이 바뀌어도 생성된 REPLAY의 시각/manifest는 변하지 않는다.
+
+### S12 실제 기록 이동 (CODEX-RECORDING-001)
+
+소비자 타입 반영 후 연결할 계약: `GET /api/runs/{id}/recording` → `http.RecordingBundle`; `POST /api/recordings/import`(동일 세션/CSRF, 최대 16 MiB JSON) → `http.RecordingImportResult`. 같은 manifest의 import는 같은 읽기 전용 run을 돌려주며 원본 기록/기존 실행을 덮어쓰지 않는다. 파일/모델/키가 없는 별도 환경의 기록 열람용이다. 생성 코드·외부 URL·명령·승인·배포를 실행하지 않는다.
+
+Bundle은 동결 snapshot/events와 거기에 참조된 **공개** artifact 원본만 포함한다. jobs/attempt prompts/requests 원문/토큰/grants/환경변수/DB 파일·모델 가중치는 포함하지 않는다. `manifest_digest`는 이 필드를 제외한 bundle의 canonical digest다. metadata/report hash·명세/후보 결속·이벤트 순서와 계약을 검증하며 비밀 형식/개인 호스트 경로가 검출되면 내보내기를 거부한다. 원본 증거를 몰래 수정해 해시만 바꾸지 않는다. `exporter`는 내보내기 코드/계약/Python 버전이며 과거 원장 생성 당시 버전이라는 뜻이 아니다. 원본 계획의 contract_digests는 그대로 남는다.
+
+`ReplayRecording.provenance`, `ReplaySource.provenance`는 선택적 추가 필드다. 없으면 기존 local_ledger 기록이다. import 결과와 재생에는 `imported_unsigned`를 보존한다. UI는 **가져온 기록(서명 없음)**을 로컬 원장/새 LIVE와 구분하고 프리뷰 iframe·승인·실행을 금지한다. 해시는 훼손 검출이며 원장 출처의 서명/검토 진위 보증이 아니다. import된 승인/보고서를 LIVE 출시 권한으로 재사용하지 않는다.
