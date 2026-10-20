@@ -1,7 +1,7 @@
 import { computed, ref, shallowRef } from 'vue'
 import { ApiError } from '../api/errors'
 import type { RunSource } from '../api/source'
-import type { ChangePayload, Command, CommandReceipt, DecisionPayload, RunEvent, Snapshot } from '../api/types'
+import type { AcceptanceStatus, ChangePayload, Command, CommandReceipt, DecisionPayload, RunEvent, Snapshot } from '../api/types'
 import { classifyEvent, needsSnapshot } from '../model/eventStream'
 
 /** 실행 상태와 별개의 연결 상태. 연결 끊김을 실행 실패로 표시하지 않는다. */
@@ -20,6 +20,15 @@ export type CommandInput =
   | { action: 'pause' | 'resume' | 'cancel'; payload: Record<string, never> }
 
 const PENDING_CONFIRM_MS = 20_000
+/** 누락 재동기화가 반복되면 재연결 간격을 늘린다(통신 제어일 뿐, 제품의 수정·실행 횟수 상한이 아님) */
+const GAP_BACKOFF_BASE_MS = 500
+const GAP_BACKOFF_MAX_MS = 30_000
+/** 사건 목록 화면 갱신을 묶는 간격. 긴 이력 수신 때 매 사건 전체 재계산을 피한다 */
+const EVENT_FLUSH_MS = 100
+
+export function gapDelay(streak: number): number {
+  return streak <= 1 ? 0 : Math.min(GAP_BACKOFF_MAX_MS, GAP_BACKOFF_BASE_MS * 2 ** (streak - 2))
+}
 
 export function newCommandId(): string {
   return crypto.randomUUID()
@@ -32,6 +41,8 @@ export function useRun(source: RunSource) {
   const loadError = shallowRef<ApiError | null>(null)
   const notice = ref<string | null>(null)
   const pending = shallowRef<PendingCommand | null>(null)
+  const acceptance = shallowRef<AcceptanceStatus | null>(null)
+  const acceptanceError = shallowRef<ApiError | null>(null)
   /** 최초 연결 시점의 seq. 이보다 큰 사건만 장면에서 연출한다(기록 사건은 연출하지 않음) */
   const liveFromSeq = ref(Number.POSITIVE_INFINITY)
   const liveListeners = new Set<(event: RunEvent) => void>()
@@ -42,6 +53,24 @@ export function useRun(source: RunSource) {
   let refreshAgain = false
   let disposed = false
   let pendingTimer: ReturnType<typeof setTimeout> | null = null
+  let acceptanceToken = 0
+  let gapStreak = 0
+  let gapTimer: ReturnType<typeof setTimeout> | null = null
+  let flushTimer: ReturnType<typeof setTimeout> | null = null
+
+  /** 수신 원본. 제자리로 쌓고(O(1)/사건) 화면에는 묶음 간격마다 새 배열로 게시한다(자식 prop이 변경을 감지하도록) */
+  let log: RunEvent[] = []
+
+  function flushEvents(): void {
+    if (flushTimer) clearTimeout(flushTimer)
+    flushTimer = null
+    if (events.value.length !== log.length || events.value.at(-1) !== log.at(-1)) events.value = log.slice()
+  }
+
+  function appendEvent(event: RunEvent): void {
+    log.push(event)
+    if (!flushTimer) flushTimer = setTimeout(flushEvents, EVENT_FLUSH_MS)
+  }
 
   function clearPending(): void {
     if (pendingTimer) clearTimeout(pendingTimer)
@@ -54,6 +83,24 @@ export function useRun(source: RunSource) {
     if (current && next.state_version < current.state_version) return // 늦게 도착한 이전 버전은 무시
     // 버전 증가만으로는 내 명령의 반영인지 알 수 없다(다른 작업도 버전을 올린다). 확인 표시는 건드리지 않는다.
     snapshot.value = next
+    // 업무 상태나 명세가 바뀌었으면 AC 판정도 다시 읽는다
+    if (!current || current.state_version !== next.state_version || current.spec_version_id !== next.spec_version_id) {
+      void refreshAcceptance()
+    }
+  }
+
+  /** 가장 최근 요청의 응답만 반영한다(늦게 온 옛 응답이 새 화면에 섞이지 않게) */
+  async function refreshAcceptance(): Promise<void> {
+    const token = ++acceptanceToken
+    try {
+      const result = await source.getAcceptance()
+      if (token !== acceptanceToken || disposed) return
+      acceptance.value = result
+      acceptanceError.value = null
+    } catch (error) {
+      if (token !== acceptanceToken || disposed) return
+      acceptanceError.value = error instanceof ApiError ? error : new ApiError(0, 'NETWORK', 'AC 판정을 읽지 못했습니다.')
+    }
   }
 
   /** 동시에 여러 번 요청돼도 한 번에 하나만 읽고, 진행 중 요청이 있었으면 한 번 더 읽는다 */
@@ -85,13 +132,25 @@ export function useRun(source: RunSource) {
     const verdict = classifyEvent(lastSeq, event)
     if (verdict.kind === 'duplicate') return
     if (verdict.kind === 'gap') {
-      notice.value = `사건 ${verdict.expected}–${verdict.got - 1}번이 누락돼 다시 동기화합니다.`
-      reopen(lastSeq, 'resyncing')
-      void refreshSnapshot()
+      gapStreak += 1
+      const delay = gapDelay(gapStreak)
+      notice.value = `사건 ${verdict.expected}–${verdict.got - 1}번이 누락돼 다시 동기화합니다${delay ? ` (${Math.round(delay / 1000)}초 뒤, 반복 ${gapStreak}회)` : ''}.`
+      closeStream?.()
+      closeStream = null
+      connection.value = 'resyncing'
+      if (gapTimer) clearTimeout(gapTimer)
+      const resume = () => {
+        gapTimer = null
+        reopen(lastSeq, 'resyncing')
+        void refreshSnapshot()
+      }
+      if (delay === 0) resume()
+      else gapTimer = setTimeout(resume, delay)
       return
     }
+    gapStreak = 0
     lastSeq = event.seq
-    events.value = [...events.value, event]
+    appendEvent(event)
     const p = pending.value
     if (p && event.command_id === p.commandId) {
       clearPending()
@@ -114,6 +173,9 @@ export function useRun(source: RunSource) {
         connection.value = closed ? 'closed' : 'reconnecting'
       },
       onResync: () => void resync(),
+      onMalformed: () => {
+        notice.value = '형식이 맞지 않는 사건을 받아 건너뛰었습니다. 누락이 생기면 다시 동기화합니다.'
+      },
     })
   }
 
@@ -127,7 +189,8 @@ export function useRun(source: RunSource) {
     }
     notice.value = '서버 기록 범위 밖이라 최신 스냅샷부터 다시 연결했습니다. 이전 사건 일부는 표시되지 않을 수 있습니다.'
     lastSeq = snap.last_event_seq
-    events.value = events.value.filter((e) => e.seq <= lastSeq)
+    log = log.filter((e) => e.seq <= lastSeq)
+    flushEvents()
     reopen(lastSeq, 'connecting')
   }
 
@@ -145,6 +208,9 @@ export function useRun(source: RunSource) {
 
   /** 스냅샷(필요하면 세션 재발급 포함)을 먼저 읽고, 성공했을 때만 사건 스트림을 다시 연다 */
   async function reconnect(): Promise<void> {
+    if (gapTimer) clearTimeout(gapTimer)
+    gapTimer = null
+    gapStreak = 0
     connection.value = 'connecting'
     await refreshSnapshot()
     if (loadError.value) {
@@ -196,6 +262,8 @@ export function useRun(source: RunSource) {
   function dispose(): void {
     disposed = true
     if (pendingTimer) clearTimeout(pendingTimer)
+    if (gapTimer) clearTimeout(gapTimer)
+    if (flushTimer) clearTimeout(flushTimer)
     closeStream?.()
     closeStream = null
     liveListeners.clear()
@@ -212,6 +280,19 @@ export function useRun(source: RunSource) {
     liveFromSeq,
     /** 실제 기록 재생은 읽기 전용. 합성 예시는 조작 흐름을 보여주되 명령을 보내지 않는다(EXAMPLE_NOOP). */
     isReplay: computed(() => source.kind === 'live' && snapshot.value?.mode === 'replay'),
+    /** 현재 스냅샷의 명세와 같은 판정만 화면에 쓴다. 다르면 null(명세 전환 중) */
+    acceptance: computed(() => {
+      const a = acceptance.value
+      return a && snapshot.value && a.spec_version_id === snapshot.value.spec_version_id ? a : null
+    }),
+    acceptanceMismatch: computed(() => {
+      const a = acceptance.value
+      return !!a && !!snapshot.value && a.spec_version_id !== snapshot.value.spec_version_id
+    }),
+    acceptanceError,
+    refreshAcceptance,
+    /** 묶음 대기 중인 사건을 즉시 화면 목록에 게시한다 */
+    flushEvents,
     start,
     reconnect,
     refreshSnapshot,

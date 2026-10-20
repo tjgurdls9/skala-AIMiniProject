@@ -17,6 +17,7 @@ function controllableSource(initial: Snapshot) {
     kind: 'live',
     runId: initial.run_id,
     getSnapshot: vi.fn(async () => current),
+    getAcceptance: vi.fn(async () => ({ spec_version_id: current.spec_version_id, items: [] })),
     openEvents: vi.fn((after: number, handlers: StreamHandlers) => {
       const stream = { after, handlers, closed: false }
       streams.push(stream)
@@ -50,6 +51,7 @@ describe('useRun 스트림 처리', () => {
     streams[0].handlers.onEvent(a)
     streams[0].handlers.onEvent(a)
     streams[0].handlers.onEvent(b)
+    run.flushEvents()
     expect(run.events.value.map((e) => e.seq)).toEqual([1, 2])
   })
 
@@ -74,6 +76,7 @@ describe('useRun 스트림 처리', () => {
     expect(streams[1].after).toBe(1)
     expect(run.connection.value).toBe('resyncing')
     expect(run.notice.value).toContain('누락')
+    run.flushEvents()
     expect(run.events.value).toHaveLength(1)
   })
 
@@ -190,8 +193,10 @@ describe('합성 예시 출처', () => {
     const run = useRun(exampleSource(scenario))
     await run.start()
     await vi.advanceTimersByTimeAsync(1)
+    run.flushEvents()
     expect(run.events.value).toHaveLength(scenario.events.length)
     await vi.advanceTimersByTimeAsync(2600 * scenario.tail.length)
+    run.flushEvents()
     expect(run.events.value).toHaveLength(scenario.events.length + scenario.tail.length)
     run.dispose()
   })

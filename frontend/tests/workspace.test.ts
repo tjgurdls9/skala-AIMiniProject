@@ -22,9 +22,10 @@ afterEach(() => {
   sessionStorage.clear()
 })
 
+// 사건 목록은 100ms 묶음으로 화면에 반영된다(useRun EVENT_FLUSH_MS)
 const flush = async () => {
   await flushPromises()
-  await new Promise((r) => setTimeout(r, 0))
+  await new Promise((r) => setTimeout(r, 120))
   await flushPromises()
 }
 const byText = (w: ReturnType<typeof mount>, text: string) => w.findAll('button').find((b) => b.text().includes(text))
@@ -110,7 +111,8 @@ describe('작업 공간 (합성 예시)', () => {
     const preview = await workspace('preview')
     await byText(preview, '프리뷰 보기')!.trigger('click')
     await flush()
-    expect(document.querySelector('dialog[open]')?.textContent).toContain('프리뷰 주소가 제공되지 않았습니다')
+    expect(document.querySelector('dialog[open]')?.textContent).toContain('기록된 프리뷰 — 지금 실행 중인 앱이 아닙니다')
+    expect(document.querySelector('dialog[open] iframe')).toBeNull()
     preview.unmount()
 
     const release = await workspace('release-approval')
@@ -172,25 +174,31 @@ function fakeApi(overrides: Partial<Record<keyof LiveApi, unknown>> = {}): LiveA
 describe('시작 화면', () => {
   test('실행 가능하면 원문을 그대로 보내 프로젝트와 LIVE 실행을 만든다', async () => {
     const api = fakeApi()
-    const w = mount(StartScreen, { props: { api } })
+    const w = mount(StartScreen, { attachTo: document.body, props: { api } })
     await flush()
-    expect(w.text()).toContain('qwen:test')
-    await w.find('input[type=text]').setValue('문의 대시보드')
-    await w.find('textarea').setValue('고객 문의를 분류해 주세요')
-    await w.find('form').trigger('submit')
+    expect(w.text()).toContain('무엇을 만들까요?')
+    expect(w.findAll('textarea')).toHaveLength(1)
+    await w.find('textarea').setValue('문의 대시보드\n고객 문의를 분류해 주세요')
+    await w.find('textarea').trigger('keydown', { key: 'Enter' })
     await flush()
-    expect(api.createProject).toHaveBeenCalledWith({ title: '문의 대시보드', request: '고객 문의를 분류해 주세요' })
+    expect(api.createProject).toHaveBeenCalledWith({ title: '문의 대시보드', request: '문의 대시보드\n고객 문의를 분류해 주세요' })
     expect(api.createRun).toHaveBeenCalledWith('p-new', { mode: 'live' })
-    expect(w.emitted('openRun')).toEqual([['run-new']])
+    const [[runId, origin]] = w.emitted('openRun') as Array<[string, { x: number; y: number }]>
+    expect(runId).toBe('run-new')
+    expect(typeof origin.x).toBe('number')
+    w.unmount()
   })
 
   test('실제 기록 재생은 원본 실행 ID로 replay 실행을 만든다', async () => {
     const api = fakeApi()
-    const w = mount(StartScreen, { props: { api } })
+    const w = mount(StartScreen, { attachTo: document.body, props: { api } })
+    await flush()
+    await byText(w, '실제 기록 재생')!.trigger('click')
     await flush()
     await byText(w, '지난 실행')!.trigger('click')
     await flush()
     expect(api.createRun).toHaveBeenCalledWith('p1', { mode: 'replay', source_run_id: 'run-old' })
+    w.unmount()
   })
 
   test('LIVE 불가 이유를 보여주고 시작 버튼을 막는다. 서버 오류에서 예시로 자동 전환하지 않는다', async () => {
@@ -198,13 +206,20 @@ describe('시작 화면', () => {
       getRuntime: vi.fn(async () => ({ protocol_version: 1, live_available: false, provider: 'ollama_local', model: null, model_status: 'not_configured', runner_status: 'unavailable', inference_slots: 1, external_api_enabled: false, deployment_enabled: false, reasons: ['모델 미설정'] })),
       listReplays: vi.fn(async () => []),
     })
-    const w = mount(StartScreen, { props: { api } })
+    const w = mount(StartScreen, { attachTo: document.body, props: { api } })
     await flush()
-    expect(w.text()).toContain('지금은 LIVE 실행을 시작할 수 없습니다. 모델 미설정')
+    expect(w.text()).toContain('지금은 LIVE 실행을 시작할 수 없습니다 — 모델 미설정')
+    await w.find('textarea').setValue('무언가')
+    expect(w.find('button.send').attributes('disabled')).toBeDefined()
+    await w.find('textarea').trigger('keydown', { key: 'Enter' })
+    await flush()
+    expect(api.createProject).not.toHaveBeenCalled()
+    await byText(w, '실제 기록 재생')!.trigger('click')
+    await flush()
     expect(w.text()).toContain('아직 실제 기록이 없습니다')
-    expect(byText(w, '새 LIVE 실행 시작')!.attributes('disabled')).toBeDefined()
+    w.unmount()
 
-    const down = mount(StartScreen, { props: { api: fakeApi({ connect: vi.fn().mockRejectedValue(new ApiError(502, 'NETWORK', 'API 서버에 연결하지 못했습니다 (502)')) }) } })
+    const down = mount(StartScreen, { attachTo: document.body, props: { api: fakeApi({ connect: vi.fn().mockRejectedValue(new ApiError(502, 'NETWORK', 'API 서버에 연결하지 못했습니다 (502)')) }) } })
     await flush()
     expect(down.text()).toContain('API 서버에 연결하지 못했습니다')
     expect(down.emitted('openExample')).toBeUndefined()
@@ -212,16 +227,18 @@ describe('시작 화면', () => {
 
   test('실행 생성 실패는 원인과 다음 행동을 보여준다', async () => {
     const api = fakeApi({ createRun: vi.fn().mockRejectedValue(new ApiError(409, 'RUNTIME_UNAVAILABLE', '실행기 없음')) })
-    const w = mount(StartScreen, { props: { api } })
+    const w = mount(StartScreen, { attachTo: document.body, props: { api } })
     await flush()
-    await w.find('input[type=text]').setValue('t')
     await w.find('textarea').setValue('r')
     await w.find('form').trigger('submit')
     await flush()
     expect(w.text()).toContain('실행기 없음')
     expect(w.text()).toContain('실행 환경이 준비되지 않았습니다')
+    await byText(w, '실제 기록 재생')!.trigger('click')
+    await flush()
     await byText(w, '[예시] 구현 중')!.trigger('click')
-    expect(w.emitted('openExample')).toEqual([['building']])
+    expect((w.emitted('openExample') as unknown[][])[0][0]).toBe('building')
+    w.unmount()
   })
 })
 
@@ -235,7 +252,7 @@ describe('App 라우팅', () => {
     await byText(w, '← 처음')!.trigger('click')
     await flush()
     expect(window.location.search).toBe('')
-    expect(w.text()).toContain('새 요청 · LIVE 실행')
+    expect(w.text()).toContain('무엇을 만들까요?')
     window.dispatchEvent(new PopStateEvent('popstate'))
     w.unmount()
     vi.unstubAllGlobals()
@@ -250,7 +267,7 @@ describe('장면 그리기', () => {
       set: () => true,
     })
     const tasks = findScenario('building')!.snapshot.tasks.filter((t) => t.sprint_id === 'sp-2')
-    const layout = computeLayout(1000, 360, tasks)
+    const layout = computeLayout(1600, 900, tasks)
     const palette = readPalette(document.body)
     drawScene(ctx, {
       layout,
@@ -261,8 +278,11 @@ describe('장면 그리기', () => {
       now: 450,
     }, palette)
     expect(calls).toContain('fillText:명세 회의실')
+    expect(calls).toContain('fillText:구현 구역 · 4')
     expect(calls).toContain('fillText:● 진행 중')
     expect(calls).toContain('fillText:⊘ 차단')
-    expect(calls.filter((c) => c.startsWith('strokeRect')).length).toBeGreaterThan(layout.zones.length)
+    expect(calls).toContain('fillText:!') // 차단 말풍선
+    expect(calls).toContain('fillText:✓') // 완료 말풍선
+    expect(calls.filter((c) => c.startsWith('stroke')).length).toBeGreaterThan(0) // 선택 테두리
   })
 })

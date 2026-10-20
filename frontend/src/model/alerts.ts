@@ -2,7 +2,7 @@ import type { Snapshot } from '../api/types'
 import { pendingApproval, reviewPair } from './derive'
 import { VERDICT, type Tone } from './labels'
 
-export type AlertAction = { kind: 'plan' } | { kind: 'release' } | { kind: 'preview' } | { kind: 'task'; taskId: string }
+export type AlertAction = { kind: 'plan' } | { kind: 'release' } | { kind: 'preview' } | { kind: 'change' } | { kind: 'task'; taskId: string }
 
 export interface Alert {
   key: string
@@ -36,8 +36,8 @@ export function runAlerts(snapshot: Snapshot): Alert[] {
   }
   if (snapshot.state === 'waiting_quota') alerts.push({ key: 'quota', tone: 'wait', glyph: '◷', text: `무료 한도 대기 — 유료 전환 없음${snapshot.reason ? ` · ${snapshot.reason}` : ''}` })
   if (snapshot.state === 'waiting_resource') alerts.push({ key: 'resource', tone: 'wait', glyph: '◷', text: `자원 대기${snapshot.reason ? ` · ${snapshot.reason}` : ''}` })
-  if (snapshot.state === 'needs_input') alerts.push({ key: 'input', tone: 'warn', glyph: '?', text: `입력 필요${snapshot.reason ? ` · ${snapshot.reason}` : ''}` })
-  if (snapshot.state === 'failed') alerts.push({ key: 'failed', tone: 'danger', glyph: '✕', text: `실행 실패${snapshot.reason ? ` · ${snapshot.reason}` : ''}` })
+  if (snapshot.state === 'needs_input') alerts.push({ key: 'input', tone: 'warn', glyph: '?', text: `입력 필요${snapshot.reason ? ` · ${snapshot.reason}` : ''}`, action: { kind: 'change' } })
+  if (snapshot.state === 'failed') alerts.push({ key: 'failed', tone: 'danger', glyph: '✕', text: `실행 실패${snapshot.reason ? ` · ${snapshot.reason}` : ''}`, action: { kind: 'change' } })
   for (const task of snapshot.tasks) {
     if (task.state === 'failed' || task.state === 'blocked') {
       alerts.push({

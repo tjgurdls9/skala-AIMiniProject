@@ -3,8 +3,8 @@ import { computed } from 'vue'
 import type { SourceKind } from '../api/source'
 import type { Snapshot } from '../api/types'
 import type { ConnectionState, PendingCommand } from '../composables/useRun'
-import { isStoppable } from '../model/derive'
-import { RUN_STATE } from '../model/labels'
+import { acceptsCommands, RESUMABLE_STATES } from '../model/derive'
+import { RUN_STATE, shortId } from '../model/labels'
 import SourceBadge from './SourceBadge.vue'
 import ThemeControls from './ThemeControls.vue'
 
@@ -29,8 +29,9 @@ const CONNECTION: Record<ConnectionState, { text: string; tone: string }> = {
 const ACTION_TEXT = { decide: '승인 결정', request_changes: '수정 요청', pause: '일시 중지', resume: '재개', cancel: '실행 취소' } as const
 
 const state = computed(() => (props.snapshot ? RUN_STATE[props.snapshot.state] : null))
-const canStop = computed(() => !!props.snapshot && !props.isReplay && isStoppable(props.snapshot.state))
-const paused = computed(() => props.snapshot?.state === 'paused')
+const canControl = computed(() => !!props.snapshot && !props.isReplay && acceptsCommands(props.snapshot.state))
+const canResume = computed(() => canControl.value && RESUMABLE_STATES.has(props.snapshot!.state))
+const canPause = computed(() => canControl.value && !['paused', 'failed'].includes(props.snapshot!.state))
 const busy = computed(() => props.pending !== null)
 </script>
 
@@ -41,8 +42,9 @@ const busy = computed(() => props.pending !== null)
       <div>
         <h1>개발 사무실</h1>
         <p class="small muted">
-          프로젝트 <code>{{ snapshot?.project_id ?? '—' }}</code> · 실행 <code>{{ snapshot?.run_id ?? '—' }}</code>
-          · 명세 <code>{{ snapshot?.spec_version_id ?? '미확정' }}</code>
+          프로젝트 <code :title="snapshot?.project_id">{{ shortId(snapshot?.project_id) }}</code>
+          · 실행 <code :title="snapshot?.run_id">{{ shortId(snapshot?.run_id) }}</code>
+          · 명세 <code :title="snapshot?.spec_version_id ?? undefined">{{ snapshot?.spec_version_id ? shortId(snapshot.spec_version_id) : '미확정' }}</code>
         </p>
       </div>
     </div>
@@ -63,9 +65,9 @@ const busy = computed(() => props.pending !== null)
 
     <div class="controls">
       <ThemeControls :motion="motion" @update:motion="emit('update:motion', $event)" />
-      <template v-if="canStop">
-        <button v-if="paused" type="button" class="btn" :disabled="busy" @click="emit('resume')">▶ 재개</button>
-        <button v-else type="button" class="btn" :disabled="busy" @click="emit('pause')">❙❙ 일시 중지</button>
+      <template v-if="canControl">
+        <button v-if="canResume" type="button" class="btn" :disabled="busy" @click="emit('resume')">▶ 재개</button>
+        <button v-if="canPause" type="button" class="btn" :disabled="busy" @click="emit('pause')">❙❙ 일시 중지</button>
         <button type="button" class="btn danger" :disabled="busy" @click="emit('cancel')">■ 실행 취소</button>
       </template>
       <span v-else-if="isReplay" class="small muted">재생은 읽기 전용</span>
@@ -75,20 +77,29 @@ const busy = computed(() => props.pending !== null)
 
 <style scoped>
 .run-header {
-  position: sticky; top: 0; z-index: 5;
+  /* 전체 화면 사무실 위에 떠 있는 반투명 막대. 중지·재개는 항상 보인다 */
+  position: fixed; top: 0; left: 0; right: 0; z-index: 20;
   display: grid; grid-template-columns: auto 1fr auto; gap: 8px 16px; align-items: center;
-  padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line);
+  padding: 10px 16px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
 }
 .id { display: flex; align-items: center; gap: 12px; min-width: 0; }
 h1 { font-size: 1.1rem; }
 .status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.id > div { min-width: 0; }
 .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: flex-end; }
 @media (max-width: 1100px) {
   .run-header { grid-template-columns: 1fr auto; }
   .status { grid-column: 1 / -1; grid-row: 2; }
 }
 @media (max-width: 640px) {
-  .run-header { grid-template-columns: 1fr; position: static; }
-  .controls { justify-content: flex-start; }
+  .run-header { grid-template-columns: auto 1fr; padding: 6px 10px; gap: 6px 8px; }
+  .id h1, .id p { display: none; }
+  .status { grid-column: 2; grid-row: 1; font-size: 0.85rem; gap: 4px 6px; }
+  .controls { grid-column: 1 / -1; justify-content: flex-start; gap: 6px; }
+  .controls :deep(.chip) { display: none; }
+  .controls .btn, .controls :deep(.btn) { min-height: 40px; padding: 0 10px; font-size: 0.85rem; }
 }
 </style>

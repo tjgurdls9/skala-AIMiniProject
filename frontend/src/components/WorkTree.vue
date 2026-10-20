@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import type { Snapshot } from '../api/types'
 import { orderedPhases, sprintsOf, tallySprint, tasksOf } from '../model/derive'
-import { TASK_STATE } from '../model/labels'
+import { shortId, TASK_STATE } from '../model/labels'
 
 /** 프로젝트 → Phase → Sprint → 작업 → 아티팩트 탐색. 선택은 부모의 view state이며 서버 상태가 아니다. */
 const props = defineProps<{
@@ -26,7 +26,7 @@ const phases = computed(() =>
 <template>
   <nav class="tree panel" aria-label="작업 지도">
     <header><h2>작업 지도</h2><span class="small muted">{{ snapshot.tasks.length }}개 작업</span></header>
-    <p class="small muted project">프로젝트 <code>{{ snapshot.project_id }}</code></p>
+    <p class="small muted project">프로젝트 <code :title="snapshot.project_id">{{ shortId(snapshot.project_id) }}</code></p>
     <ol class="plain phases">
       <li v-for="{ phase, sprints } in phases" :key="phase.id">
         <h3 class="phase">{{ phase.order + 1 }}. {{ phase.title }}</h3>

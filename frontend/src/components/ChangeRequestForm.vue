@@ -15,11 +15,12 @@ const props = defineProps<{
   artifactIds: string[]
   artifactTitles: Record<string, string>
   disabled: boolean
+  defaultScope?: 'implementation' | 'spec'
   send: (input: CommandInput, commandId: string) => Promise<SendResult>
 }>()
 const emit = defineEmits<{ sent: [] }>()
 
-const scope = ref<'implementation' | 'spec'>('implementation')
+const scope = ref<'implementation' | 'spec'>(props.defaultScope ?? 'implementation')
 const { text: feedback, clear } = useDraft(`draft:${props.runId}:change-feedback`)
 const attach = ref(true)
 const form = useCommandForm()

@@ -41,6 +41,21 @@ describe('합성 예시는 공유 계약을 따른다', () => {
     expect(check('http.v1.schema.json#/$defs/PlanView', PLAN_VIEW)).toEqual([])
   })
 
+  test.each(SCENARIOS.map((s) => [s.id, s]))('%s AC 판정이 http.AcceptanceStatus에 맞고 근거는 검증 보고서만 가리킨다', (_id, s) => {
+    expect(check('http.v1.schema.json#/$defs/AcceptanceStatus', s.acceptance)).toEqual([])
+    expect(s.acceptance.spec_version_id).toBe(s.snapshot.spec_version_id)
+    s.acceptance.items.forEach((item) => {
+      if (!item.report_id) return
+      expect(s.snapshot.reports.find((r) => r.id === item.report_id)?.role).toBe('validator')
+    })
+  })
+
+  test('프리뷰 예시 본문은 http.Preview에 맞고 실제로 열리지 않는 .invalid 주소다', () => {
+    const body = SCENARIOS[0].artifactBodies['a-preview'] as { url: string }
+    expect(check('http.v1.schema.json#/$defs/Preview', body)).toEqual([])
+    expect(new URL(body.url).hostname.endsWith('.invalid')).toBe(true)
+  })
+
   test('환경 예시는 http.Environment에 맞는다', () => {
     SCENARIOS.flatMap((s) => Object.values(s.environments)).forEach((env) => {
       expect(check('http.v1.schema.json#/$defs/Environment', env)).toEqual([])

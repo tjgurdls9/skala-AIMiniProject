@@ -1,5 +1,5 @@
 // 합성 예시 시나리오 — 화면 상태를 보여주기 위한 것이며 실제 실행·기록 재생이 아니다.
-import type { Environment, ReleaseTarget, RunEvent, Snapshot } from '../api/types'
+import type { AcceptanceState, AcceptanceStatus, Environment, ReleaseTarget, RunEvent, Snapshot } from '../api/types'
 import {
   CANDIDATE, PLAN_APPROVAL_DONE, PLAN_APPROVAL_PENDING, PLAN_VIEW, SPEC_V1,
   buildEvents, buildSnapshot, buildTasks, fakeDigest, report, type SnapshotInput,
@@ -15,7 +15,25 @@ export interface ExampleScenario {
   tail: RunEvent[]
   artifactBodies: Record<string, unknown>
   environments: Record<string, Environment>
+  /** 합성 AC 판정(CR-C09 형식). 근거는 공개된 검증 보고서만 가리킨다 */
+  acceptance: AcceptanceStatus
 }
+
+const AC_IDS = ['AC-1', 'AC-2', 'AC-3', 'AC-4', 'AC-5']
+type AcMap = Partial<Record<string, AcceptanceState>>
+
+function acceptanceOf(states: AcMap, reportId?: string): AcceptanceStatus {
+  return {
+    spec_version_id: SPEC_V1,
+    items: AC_IDS.map((id) => {
+      const status = states[id] ?? 'unmet'
+      return status !== 'unmet' && reportId ? { id, status, report_id: reportId } : { id, status }
+    }),
+  }
+}
+
+// 검증 통과로 기능 AC는 충족. AC-5(검토·배포)는 배포 전이라 미충족 — 보안 결과와 별개로 표시한다
+const FUNCTIONAL_MET: AcMap = { 'AC-2': 'met', 'AC-3': 'met', 'AC-4': 'met' }
 
 type Seeds = Parameters<typeof buildEvents>[0]
 
@@ -57,14 +75,18 @@ function scenario(
   input: Omit<SnapshotInput, 'stateVersion' | 'lastSeq'>,
   tail: Seeds = [],
   environments: Record<string, Environment> = {},
+  acceptance: AcceptanceStatus = acceptanceOf({}),
 ): ExampleScenario {
   const events = buildEvents(seeds)
   const last = events.at(-1)
   const stateVersion = last?.state_version ?? 0
   const snapshot = buildSnapshot({ ...input, stateVersion, lastSeq: last?.seq ?? 0 })
   const tailEvents = buildEvents(tail, events.length + 1, stateVersion).map((e) => ({ ...e, state_version: stateVersion }))
-  return { ...meta, snapshot, events, tail: tailEvents, artifactBodies: { 'a-spec': PLAN_VIEW }, environments }
+  return { ...meta, snapshot, events, tail: tailEvents, artifactBodies: { 'a-spec': PLAN_VIEW, 'a-preview': PREVIEW_BODY }, environments, acceptance }
 }
+
+/** 합성 프리뷰 본문(http.Preview). .invalid 도메인이라 실제로 열리지 않는다 */
+const PREVIEW_BODY = { url: 'http://preview.invalid/', origin: 'http://preview.invalid', commit_sha: CANDIDATE.commit }
 
 const STAGING: Environment = { id: 'env-staging', label: '스테이징 (합성)', exposure: 'private' }
 
@@ -132,6 +154,9 @@ export const SCENARIOS: ExampleScenario[] = [
       reports: [report('validator', 'pass'), report('security', 'fail')],
       artifactIds: [...BUILD_ARTIFACTS, 'a-validation', 'a-security'],
     },
+    [],
+    {},
+    acceptanceOf(FUNCTIONAL_MET, 'rp-validator'),
   ),
   scenario(
     { id: 'preview', label: '프리뷰 확인', description: '두 검토 통과 후 프리뷰. 구현 수정 또는 기획 변경을 요청할 수 있다' },
@@ -148,6 +173,9 @@ export const SCENARIOS: ExampleScenario[] = [
       reports: [report('validator', 'pass'), report('security', 'pass')],
       artifactIds: [...BUILD_ARTIFACTS, 'a-validation', 'a-security', 'a-preview'],
     },
+    [],
+    {},
+    acceptanceOf(FUNCTIONAL_MET, 'rp-validator'),
   ),
   scenario(
     { id: 'release-approval', label: '배포 승인 대기', description: '커밋·이미지·환경·두 보고서·복구 계획이 묶인 대상. 이전 대상은 무효화됨' },
@@ -172,6 +200,7 @@ export const SCENARIOS: ExampleScenario[] = [
     },
     [],
     { 'env-staging': STAGING },
+    acceptanceOf(FUNCTIONAL_MET, 'rp-validator'),
   ),
   scenario(
     { id: 'failed', label: '실패', description: '통합 단계 실패. 근거와 실패 이유를 보존한다' },
@@ -183,6 +212,9 @@ export const SCENARIOS: ExampleScenario[] = [
       approvals: [PLAN_APPROVAL_DONE],
       artifactIds: BUILD_ARTIFACTS,
     },
+    [],
+    {},
+    acceptanceOf({ 'AC-4': 'not_run' }),
   ),
   scenario(
     { id: 'paused', label: '일시 중지', description: '사용자가 중지했다. 새 작업은 생기지 않으며 재개 전 최신 명세를 다시 확인한다' },
@@ -213,6 +245,7 @@ export const SCENARIOS: ExampleScenario[] = [
     },
     [],
     { 'env-staging': STAGING },
+    acceptanceOf({ ...FUNCTIONAL_MET, 'AC-5': 'met' }, 'rp-validator'),
   ),
 ]
 

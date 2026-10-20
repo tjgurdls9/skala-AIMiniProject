@@ -4,10 +4,13 @@ import { ApiError } from '../api/errors'
 import type { RunSource } from '../api/source'
 import type { SendResult } from '../composables/useCommandForm'
 import { useRun, type CommandInput } from '../composables/useRun'
+import { useSnapScroll } from '../composables/useSnapScroll'
+import { acIndex as indexAcceptance } from '../model/acceptance'
 import { runAlerts, type AlertAction } from '../model/alerts'
 import { deriveCurrentSprintId, pendingApproval } from '../model/derive'
 import { RUN_STATE } from '../model/labels'
 import AlertStrip from './AlertStrip.vue'
+import ChangeDialog from './ChangeDialog.vue'
 import EventLog from './EventLog.vue'
 import EvidencePanel from './EvidencePanel.vue'
 import OfficeScene from './OfficeScene.vue'
@@ -15,6 +18,7 @@ import PlanApprovalDialog from './PlanApprovalDialog.vue'
 import PreviewDialog from './PreviewDialog.vue'
 import ReleaseApprovalDialog from './ReleaseApprovalDialog.vue'
 import RunHeader from './RunHeader.vue'
+import SceneRoster from './SceneRoster.vue'
 import SprintBoard from './SprintBoard.vue'
 import StopDialog from './StopDialog.vue'
 import WorkTree from './WorkTree.vue'
@@ -27,7 +31,7 @@ const snapshot = run.snapshot
 
 // 화면 선택은 서버 필드가 아닌 view state. 스냅샷 교체·재연결로 초기화하지 않는다.
 const view = reactive({ sprintId: null as string | null, taskId: null as string | null, artifactId: null as string | null })
-const dialog = ref<'plan' | 'preview' | 'release' | null>(null)
+const dialog = ref<'plan' | 'preview' | 'release' | 'change' | null>(null)
 const stopAction = ref<'resume' | 'cancel' | null>(null)
 const motion = ref(true)
 const headerError = ref<ApiError | null>(null)
@@ -43,6 +47,12 @@ const notices = computed(() => {
   if (props.source.kind === 'example') list.push('합성 예시입니다. 명령을 보내지 않으며 외부 승인·배포가 실행되지 않습니다.')
   if (headerError.value) list.push(`${headerError.value.message}`)
   return list
+})
+const acIndex = computed(() => indexAcceptance(run.acceptance.value))
+const acNotice = computed(() => {
+  if (run.acceptanceMismatch.value) return '판정의 명세 버전이 현재와 달라 표시하지 않습니다. 최신 판정을 다시 읽는 중입니다.'
+  if (run.acceptanceError.value) return `AC 판정을 읽지 못했습니다: ${run.acceptanceError.value.message} (충족으로 추정하지 않음)`
+  return null
 })
 const planApproval = computed(() => (snapshot.value ? pendingApproval(snapshot.value, 'plan') : null))
 const releaseApproval = computed(() => (snapshot.value ? pendingApproval(snapshot.value, 'release') : null))
@@ -100,12 +110,48 @@ function act(action: AlertAction): void {
   else dialog.value = action.kind
 }
 
-onMounted(() => void run.start())
-onBeforeUnmount(() => run.dispose())
+// ── 전체 화면 사무실 ↔ 상세: 저항 있는 두 상태 전환 ──
+/** 상세 상태의 스크롤 위치(화면 높이 비율). 축소 애니메이션의 길이이기도 하다 */
+const SHRINK_RATIO = 0.55
+const HERO_ALERT_LIMIT = 3
+const headerH = ref(64)
+const shrinkPx = ref(Math.max(1, Math.round(window.innerHeight * SHRINK_RATIO)))
+let headerObserver: ResizeObserver | null = null
+
+const snap = useSnapScroll({ distance: () => shrinkPx.value })
+const progress = snap.progress
+
+function onResize(): void {
+  shrinkPx.value = Math.max(1, Math.round(window.innerHeight * SHRINK_RATIO))
+}
+function scrollToDetails(): void {
+  snap.commit('detail')
+}
+
+/** 전체 화면일 때 사무실 위에 띄울 결정·문제 알림(고정 순서, 나머지는 패널) */
+const heroAlerts = computed(() => alerts.value.filter((a) => a.action).slice(0, HERO_ALERT_LIMIT))
+const sceneSprint = computed(() => snapshot.value?.sprints.find((sp) => sp.id === view.sprintId) ?? null)
+
+onMounted(() => {
+  void run.start()
+  window.addEventListener('resize', onResize)
+  const header = document.querySelector<HTMLElement>('.run-header')
+  if (header && 'ResizeObserver' in window) {
+    headerObserver = new ResizeObserver(() => {
+      headerH.value = Math.round(header.getBoundingClientRect().height)
+    })
+    headerObserver.observe(header)
+  }
+})
+onBeforeUnmount(() => {
+  run.dispose()
+  window.removeEventListener('resize', onResize)
+  headerObserver?.disconnect()
+})
 </script>
 
 <template>
-  <div class="workspace-root">
+  <div class="workspace-root" :style="{ '--p': progress.toFixed(3), '--header-h': `${headerH}px`, '--shrink-px': `${shrinkPx}px` }">
     <RunHeader
       v-model:motion="motion"
       :kind="source.kind"
@@ -130,21 +176,8 @@ onBeforeUnmount(() => run.dispose())
     </div>
 
     <template v-else>
-      <AlertStrip :alerts="alerts" :notices="notices" @act="act" />
-      <main id="workspace-main" class="workspace" tabindex="-1" aria-label="작업 공간">
-        <WorkTree
-          class="area-tree"
-          :snapshot="snapshot"
-          :sprint-id="view.sprintId"
-          :task-id="view.taskId"
-          :artifact-id="view.artifactId"
-          :current-sprint-id="currentSprintId"
-          @sprint="selectSprint"
-          @task="selectTask"
-          @artifact="selectArtifact"
-        />
-        <div class="area-center">
-          <SprintBoard :snapshot="snapshot" :sprint-id="view.sprintId" :current-sprint-id="currentSprintId" @sprint="selectSprint" />
+      <main id="workspace-main" class="office-page" tabindex="-1" aria-label="작업 공간">
+        <section class="scene-cell" aria-label="사무실 장면">
           <OfficeScene
             :tasks="sceneTasks"
             :selected-task-id="view.taskId"
@@ -152,25 +185,73 @@ onBeforeUnmount(() => run.dispose())
             :subscribe="run.onLiveEvent"
             @select="selectTask"
           />
-          <div v-if="planApproval || releaseApproval || snapshot.state === 'preview_ready'" class="decisions panel">
+          <div class="scene-hud" :class="{ gone: progress > 0.6 }" :aria-hidden="progress > 0.6">
+            <p v-if="sceneSprint" class="hud-chip sprint">
+              <strong>{{ sceneSprint.title }}</strong>
+              <span>{{ sceneSprint.goal }}</span>
+            </p>
+            <ul v-if="heroAlerts.length" class="plain hud-alerts" aria-label="결정·문제 알림">
+              <li v-for="a in heroAlerts" :key="a.key">
+                <button type="button" :class="['hud-chip', 'alert', `tone-${a.tone}`]" @click="a.action && act(a.action)">
+                  <span aria-hidden="true">{{ a.glyph }}</span> {{ a.text }}
+                </button>
+              </li>
+              <li v-if="alerts.length > heroAlerts.length" class="hud-chip more">외 {{ alerts.length - heroAlerts.length }}건 · 아래 패널</li>
+            </ul>
+          </div>
+          <button type="button" class="scroll-cue" :tabindex="progress > 0.5 ? -1 : 0" @click="scrollToDetails">
+            상세 작업 정보 <span aria-hidden="true">↓</span>
+          </button>
+        </section>
+
+        <aside class="side-cell" aria-label="결정·근거 패널">
+          <AlertStrip :alerts="alerts" :notices="notices" @act="act" />
+          <div v-if="planApproval || releaseApproval || ['preview_ready', 'needs_input', 'failed'].includes(snapshot.state)" class="decisions panel">
             <h2>내 결정</h2>
             <button v-if="planApproval" type="button" class="btn primary" @click="dialog = 'plan'">⚑ 기획 검토·승인</button>
             <button v-if="snapshot.state === 'preview_ready'" type="button" class="btn primary" @click="dialog = 'preview'">⚑ 프리뷰 확인·수정 요청</button>
             <button v-if="releaseApproval" type="button" class="btn primary" @click="dialog = 'release'">⚑ 배포 대상 검토·승인</button>
+            <button v-if="['needs_input', 'failed'].includes(snapshot.state) && !run.isReplay.value" type="button" class="btn" @click="dialog = 'change'">수정 요청으로 다시 기획</button>
             <span v-if="run.isReplay.value" class="small muted">재생 중에는 내용만 확인할 수 있고 결정을 보낼 수 없습니다.</span>
           </div>
-        </div>
-        <EvidencePanel
-          class="area-evidence"
-          :snapshot="snapshot"
-          :events="run.events.value"
-          :source="source"
-          :task-id="view.taskId"
-          :artifact-id="view.artifactId"
-          @task="selectTask"
-          @artifact="selectArtifact"
-        />
-        <EventLog class="area-log" :events="run.events.value" :tasks="snapshot.tasks" @task="selectTask" />
+          <EvidencePanel
+            :snapshot="snapshot"
+            :events="run.events.value"
+            :source="source"
+            :task-id="view.taskId"
+            :artifact-id="view.artifactId"
+            :ac-index="acIndex"
+            @task="selectTask"
+            @artifact="selectArtifact"
+          />
+        </aside>
+
+        <section class="below-cell" aria-label="상세 작업 정보">
+          <SprintBoard
+            :snapshot="snapshot"
+            :sprint-id="view.sprintId"
+            :current-sprint-id="currentSprintId"
+            :ac-index="acIndex"
+            :ac-notice="acNotice"
+            :is-replay="run.isReplay.value"
+            @sprint="selectSprint"
+            @artifact="selectArtifact"
+          />
+          <SceneRoster :tasks="sceneTasks" :selected-task-id="view.taskId" @select="selectTask" />
+          <div class="below-split">
+            <WorkTree
+              :snapshot="snapshot"
+              :sprint-id="view.sprintId"
+              :task-id="view.taskId"
+              :artifact-id="view.artifactId"
+              :current-sprint-id="currentSprintId"
+              @sprint="selectSprint"
+              @task="selectTask"
+              @artifact="selectArtifact"
+            />
+            <EventLog :events="run.events.value" :tasks="snapshot.tasks" @task="selectTask" />
+          </div>
+        </section>
       </main>
 
       <PlanApprovalDialog
@@ -203,37 +284,124 @@ onBeforeUnmount(() => run.dispose())
         @close="dialog = null"
         @artifact="selectArtifact"
       />
+      <ChangeDialog v-if="!run.isReplay.value" :open="dialog === 'change'" :snapshot="snapshot" :send="send" @close="dialog = null" />
       <StopDialog :open="stopAction !== null" :action="stopAction" :send="send" @close="stopAction = null" />
     </template>
   </div>
 </template>
 
 <style scoped>
-.loading { padding: 32px 16px; }
-.workspace {
-  display: grid; gap: var(--gap); padding: 12px 16px 24px;
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(280px, 380px);
-  grid-template-areas:
-    "tree center evidence"
-    "tree log evidence";
+.loading { padding: calc(var(--header-h) + 32px) 16px 32px; }
+
+/*
+ * 처음에는 사무실이 화면 전체를 채운다. 스크롤 진행도 --p(0→1)에 따라 사무실이 줄어들고
+ * 오른쪽 패널(고정 폭, 내용이 찌그러지지 않음)과 아래 상세 정보가 드러난다.
+ */
+.office-page {
+  --side-w: 380px;
+  --gap-p: calc(16px * var(--p));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--side-w);
+  grid-template-areas: "scene side" "below side";
+  column-gap: 16px;
+  row-gap: 16px;
   align-items: start;
+  /* 축소 구간에서는 스크롤만큼 위 여백을 늘려 사무실을 화면에 고정한다(축소가 끝나면 함께 스크롤) */
+  padding: calc((var(--shrink-px) + var(--header-h) + 12px) * var(--p)) var(--gap-p) 32px;
+  overflow-anchor: none;
 }
-.area-tree { grid-area: tree; position: sticky; top: 84px; max-height: calc(100dvh - 100px); }
-.area-center { grid-area: center; display: grid; gap: var(--gap); min-width: 0; }
-.area-evidence { grid-area: evidence; position: sticky; top: 84px; max-height: calc(100dvh - 100px); }
-.area-log { grid-area: log; }
+.office-page:focus { outline: none; }
+
+.scene-cell {
+  grid-area: scene;
+  position: relative;
+  z-index: 2;
+  height: calc(100dvh - (100dvh - var(--scene-min, 60vh)) * var(--p));
+  /* p=0이면 오른쪽 패널 위까지 덮어 화면 전체를 채운다 */
+  margin-right: calc((var(--side-w) + 16px + var(--gap-p)) * (var(--p) - 1));
+  border-radius: calc(14px * var(--p));
+  overflow: hidden;
+  box-shadow: 0 calc(12px * var(--p)) calc(32px * var(--p)) rgb(0 0 0 / calc(0.18 * var(--p)));
+}
+
+.side-cell {
+  grid-area: side;
+  position: sticky;
+  top: calc(var(--header-h) + 12px);
+  max-height: calc(100dvh - var(--header-h) - 24px);
+  overflow: auto;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  z-index: 1;
+  opacity: clamp(0, calc(var(--p) * 1.6 - 0.4), 1);
+}
+.side-cell :deep(.alerts) { padding: 0; }
+
+.below-cell {
+  grid-area: below;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  opacity: clamp(0, calc(var(--p) * 2 - 0.6), 1);
+}
+.below-split { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: 16px; align-items: start; }
+
 .decisions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border-left: 4px solid var(--tone-warn); }
 .decisions h2 { margin-right: 8px; }
-@media (max-width: 1240px) {
-  .workspace {
-    grid-template-columns: minmax(200px, 250px) minmax(0, 1fr);
-    grid-template-areas: "tree center" "tree evidence" "log log";
-  }
-  .area-evidence { position: static; max-height: none; }
+
+/* 사무실 위 정보(전체 화면일 때 특히 중요) */
+.scene-hud {
+  position: absolute;
+  inset: calc(var(--header-h) * (1 - var(--p)) + 12px) 12px auto 12px;
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; justify-content: space-between;
+  pointer-events: none;
+  /* 축소되면 같은 정보가 오른쪽 패널에 있으므로 사라진다 */
+  opacity: clamp(0, calc(1 - var(--p) * 1.6), 1);
 }
-/* 작은 화면: 장면 → 현재 작업·결정 → 근거 → 지도 → 기록 */
-@media (max-width: 820px) {
-  .workspace { grid-template-columns: minmax(0, 1fr); grid-template-areas: "center" "evidence" "tree" "log"; padding: 8px 16px 24px; }
-  .area-tree { position: static; max-height: none; }
+.scene-hud.gone { visibility: hidden; }
+/* 전체 화면일 때 장면은 떠 있는 헤더 아래부터 그린다 */
+.scene-cell :deep(.stage) { top: calc(var(--header-h) * (1 - var(--p))); }
+.hud-chip {
+  pointer-events: auto;
+  display: inline-flex; flex-direction: column; gap: 2px;
+  max-width: min(520px, 100%);
+  padding: 8px 12px; border-radius: 10px;
+  background: var(--px-label-bg); color: var(--px-label-ink);
+  border: 1px solid rgb(0 0 0 / 0.08);
+  backdrop-filter: blur(6px);
+  font-size: 0.9rem; text-align: left;
+}
+.hud-chip.sprint span { font-size: 0.85rem; opacity: 0.8; }
+.hud-alerts { display: grid; gap: 6px; justify-items: end; }
+.hud-chip.alert { flex-direction: row; gap: 6px; min-height: var(--tap); align-items: center; cursor: pointer; font-weight: 600; border-left: 4px solid currentColor; }
+.hud-chip.alert:hover { filter: brightness(1.05); }
+.hud-chip.more { font-size: 0.8rem; }
+
+.scroll-cue {
+  position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%);
+  min-height: var(--tap); padding: 0 18px; border-radius: 999px; border: 0;
+  background: var(--px-label-bg); color: var(--px-label-ink); font-weight: 700; cursor: pointer;
+  opacity: calc(1 - var(--p) * 2);
+  pointer-events: auto;
+}
+.scroll-cue span { display: inline-block; animation: nudge 1.6s ease-in-out infinite; }
+@keyframes nudge { 50% { transform: translateY(3px); } }
+
+@media (max-width: 1100px) {
+  .office-page { --side-w: 320px; }
+  .below-split { grid-template-columns: minmax(0, 1fr); }
+}
+/* 작은 화면: 장면 → 결정·근거 → 상세 */
+@media (max-width: 860px) {
+  .office-page { grid-template-columns: minmax(0, 1fr); grid-template-areas: "scene" "side" "below"; }
+  .scene-cell { margin-right: 0; --scene-min: 52vh; }
+  .side-cell { position: static; max-height: none; overflow: visible; }
+  .hud-alerts { justify-items: start; }
+  /* 작은 화면: 칩은 아래쪽에 작게, 사무실 가운데를 가리지 않게 */
+  .scene-hud { inset: auto 10px 72px 10px; flex-direction: column-reverse; align-items: stretch; }
+  .hud-chip { font-size: 0.8rem; padding: 6px 10px; }
+  .hud-chip.sprint span { display: none; }
+  .hud-alerts li:nth-child(n + 2):not(.more) { display: none; }
 }
 </style>

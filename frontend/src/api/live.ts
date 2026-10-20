@@ -2,6 +2,7 @@ import { ApiError, toApiError } from './errors'
 import { parseEventData } from '../model/eventStream'
 import type { RunSource, StreamHandlers } from './source'
 import type {
+  AcceptanceStatus,
   Command, CommandReceipt, Environment, Project, ProjectCreate, ReplayRecording, RunCreate, Runtime, Session, Snapshot,
 } from './types'
 
@@ -54,6 +55,10 @@ export class LiveApi {
     return this.request('GET', `/api/runs/${encodeURIComponent(runId)}`)
   }
 
+  getAcceptance(runId: string): Promise<AcceptanceStatus> {
+    return this.request('GET', `/api/runs/${encodeURIComponent(runId)}/acceptance`)
+  }
+
   sendCommand(runId: string, command: Command): Promise<CommandReceipt> {
     return this.request('POST', `/api/runs/${encodeURIComponent(runId)}/commands`, command)
   }
@@ -72,6 +77,7 @@ export class LiveApi {
     es.addEventListener('lifecycle', (msg) => {
       const event = parseEventData((msg as MessageEvent<string>).data, runId)
       if (event) handlers.onEvent(event)
+      else handlers.onMalformed?.()
     })
     es.addEventListener('resync', () => {
       es.close()
@@ -122,6 +128,7 @@ export function liveSource(api: LiveApi, runId: string): RunSource {
     kind: 'live',
     runId,
     getSnapshot: () => api.getSnapshot(runId),
+    getAcceptance: () => api.getAcceptance(runId),
     openEvents: (after, handlers) => api.openEvents(runId, after, handlers),
     sendCommand: (command) => api.sendCommand(runId, command),
     getArtifact: (id) => api.getArtifact(id),

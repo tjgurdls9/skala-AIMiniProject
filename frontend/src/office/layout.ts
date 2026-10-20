@@ -4,9 +4,33 @@ import type { Role, Task } from '../api/types'
 export type ZoneId = 'meeting' | 'build' | 'validate' | 'security' | 'release'
 
 export interface Rect { x: number; y: number; w: number; h: number }
+/** 타일 단위 방(벽 안쪽) */
+export interface Room extends Rect { id: ZoneId; label: string }
 export interface Zone extends Rect { id: ZoneId; label: string }
-export interface Seat { taskId: string; zone: ZoneId; x: number; y: number; w: number; h: number }
-export interface OfficeLayout { width: number; height: number; zones: Zone[]; seats: Seat[]; compact: boolean }
+/** 좌석: tx/ty는 타일 좌표(지도), x/y/w/h는 화면 좌표(클릭·라벨) */
+export interface Seat extends Rect { taskId: string; zone: ZoneId; tx: number; ty: number }
+export interface Door { x: number; y: number; vertical: boolean; length: number }
+export interface TileMap { w: number; h: number; rooms: Room[]; doors: Door[] }
+
+export interface OfficeLayout {
+  width: number
+  height: number
+  compact: boolean
+  map: TileMap
+  /** 지도 1px → 화면 px 배율과 화면상의 지도 시작점 */
+  scale: number
+  ox: number
+  oy: number
+  zones: Zone[]
+  seats: Seat[]
+  /** 방 크기를 넘어 장면에 못 놓은 작업 수(DOM 목록에는 모두 있음) */
+  overflow: Partial<Record<ZoneId, number>>
+}
+
+export const TILE = 16
+/** 좌석 한 칸: 사람(2타일) + 책상(1타일), 가로 3타일 */
+const CELL_W = 3
+const CELL_H = 3
 
 export const ZONE_LABEL: Record<ZoneId, string> = {
   meeting: '명세 회의실',
@@ -25,85 +49,86 @@ export const ROLE_ZONE: Record<Role, ZoneId> = {
   release: 'release',
 }
 
-const COMPACT_BELOW = 560
-const PAD = 10
-const LABEL_H = 26
-const SEAT_W = 64
-const SEAT_H = 66
+const room = (id: ZoneId, x: number, y: number, w: number, h: number): Room => ({ id, label: ZONE_LABEL[id], x, y, w, h })
 
-/** 넓은 화면은 한 줄 흐름, 좁은 화면은 두 줄(위: 회의실·구현 / 아래: 검증·보안·출시) */
-export function zoneRects(width: number, height: number): { zones: Zone[]; compact: boolean } {
-  const compact = width < COMPACT_BELOW
-  const z = (id: ZoneId, x: number, y: number, w: number, h: number): Zone => ({ id, label: ZONE_LABEL[id], x, y, w, h })
-  if (compact) {
-    const topH = Math.round(height * 0.55)
-    const botH = height - topH
-    const meetW = Math.round(width * 0.36)
-    const third = width / 3
-    return {
-      compact,
-      zones: [
-        z('meeting', 0, 0, meetW, topH),
-        z('build', meetW, 0, width - meetW, topH),
-        z('validate', 0, topH, third, botH),
-        z('security', third, topH, third, botH),
-        z('release', third * 2, topH, width - third * 2, botH),
-      ],
-    }
-  }
-  const unit = width / 10
-  const half = height / 2
-  return {
-    compact,
-    zones: [
-      z('meeting', 0, 0, unit * 2, height),
-      z('build', unit * 2, 0, unit * 4.4, height),
-      z('validate', unit * 6.4, 0, unit * 1.9, half),
-      z('security', unit * 6.4, half, unit * 1.9, height - half),
-      z('release', unit * 8.3, 0, width - unit * 8.3, height),
-    ],
-  }
+/** 가로 화면: 한 줄 흐름. 검증실과 보안실은 벽으로 분리한다 */
+const WIDE: TileMap = {
+  w: 40,
+  h: 22,
+  rooms: [room('meeting', 1, 1, 9, 20), room('build', 11, 1, 15, 20), room('validate', 27, 1, 7, 9), room('security', 27, 11, 7, 10), room('release', 35, 1, 4, 20)],
+  doors: [
+    { x: 10, y: 9, vertical: true, length: 3 },
+    { x: 26, y: 4, vertical: true, length: 2 },
+    { x: 26, y: 15, vertical: true, length: 2 },
+    { x: 34, y: 4, vertical: true, length: 2 },
+    { x: 34, y: 15, vertical: true, length: 2 },
+  ],
 }
 
-const MAX_SCALE = 1.7
-const MIN_SCALE = 0.45
-
-/** 가장 큰 배율부터 줄여 가며 구역 안에 겹치지 않게 들어가는 격자를 찾는다. */
-export function fitGrid(count: number, innerW: number, innerH: number): { cols: number; scale: number } {
-  for (let scale = MAX_SCALE; scale > MIN_SCALE; scale -= 0.05) {
-    const cols = Math.max(1, Math.floor(innerW / (SEAT_W * scale)))
-    if (Math.ceil(count / cols) * SEAT_H * scale <= innerH) return { cols, scale }
-  }
-  return { cols: Math.max(1, Math.floor(innerW / (SEAT_W * MIN_SCALE))), scale: MIN_SCALE }
+/** 세로·좁은 화면: 위(회의실·구현) / 아래(검증·보안·출시) */
+const TALL: TileMap = {
+  w: 22,
+  h: 30,
+  rooms: [room('meeting', 1, 1, 8, 13), room('build', 10, 1, 11, 13), room('validate', 1, 15, 6, 14), room('security', 8, 15, 6, 14), room('release', 15, 15, 6, 14)],
+  doors: [
+    { x: 9, y: 6, vertical: true, length: 2 },
+    { x: 3, y: 14, vertical: false, length: 2 },
+    { x: 10, y: 14, vertical: false, length: 2 },
+    { x: 17, y: 14, vertical: false, length: 2 },
+  ],
 }
 
-/** 구역 안에 좌석을 격자로, 가운데 정렬해 배치한다. */
-function placeSeats(zone: Zone, tasks: readonly Task[]): Seat[] {
-  if (tasks.length === 0) return []
-  const innerW = zone.w - PAD * 2
-  const innerH = zone.h - LABEL_H - PAD * 2
-  const { cols, scale } = fitGrid(tasks.length, innerW, innerH)
-  const w = SEAT_W * scale
-  const h = SEAT_H * scale
-  const rows = Math.ceil(tasks.length / cols)
-  const usedCols = Math.min(cols, tasks.length)
-  const offsetX = zone.x + PAD + (innerW - usedCols * w) / 2
-  const offsetY = zone.y + LABEL_H + PAD + Math.max(0, (innerH - rows * h) / 2)
-  return tasks.map((t, i) => ({
-    taskId: t.id,
-    zone: zone.id,
-    x: offsetX + (i % cols) * w,
-    y: offsetY + Math.floor(i / cols) * h,
-    w,
-    h,
-  }))
+const COMPACT_ASPECT = 1.15
+
+export function chooseMap(width: number, height: number): { map: TileMap; compact: boolean } {
+  const compact = height > 0 && width / height < COMPACT_ASPECT
+  return { map: compact ? TALL : WIDE, compact }
+}
+
+/** 지도를 화면에 맞춘다. 1배 이상이면 0.25 단위로 내려 픽셀 경계를 덜 흐리게 한다 */
+export function fitMap(map: TileMap, width: number, height: number): { scale: number; ox: number; oy: number } {
+  const raw = Math.min(width / (map.w * TILE), height / (map.h * TILE))
+  const scale = raw >= 1 ? Math.floor(raw * 4) / 4 : Math.max(raw, 0.01)
+  return { scale, ox: (width - map.w * TILE * scale) / 2, oy: (height - map.h * TILE * scale) / 2 }
+}
+
+/** 방 위쪽은 표지판, 큰 방의 아래쪽은 가구 자리로 비우고 그 사이에 좌석 격자를 둔다 */
+const SIGN_ROWS = 1.6
+const FURNITURE_SHARE = 0.25
+const FURNITURE_MIN_ROOM_H = 10
+
+export function seatSlots(r: Room): Array<{ tx: number; ty: number }> {
+  const reserve = r.h >= FURNITURE_MIN_ROOM_H ? Math.floor(r.h * FURNITURE_SHARE) : 0
+  const cols = Math.max(1, Math.floor(r.w / CELL_W))
+  const rows = Math.max(1, Math.floor((r.h - SIGN_ROWS - reserve) / CELL_H))
+  const offX = r.x + Math.floor((r.w - cols * CELL_W) / 2)
+  const slots: Array<{ tx: number; ty: number }> = []
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) slots.push({ tx: offX + col * CELL_W, ty: r.y + SIGN_ROWS + row * CELL_H })
+  }
+  return slots
 }
 
 export function computeLayout(width: number, height: number, tasks: readonly Task[]): OfficeLayout {
-  const { zones, compact } = zoneRects(width, height)
+  const { map, compact } = chooseMap(width, height)
+  const { scale, ox, oy } = fitMap(map, width, height)
+  const px = TILE * scale
+  const toScreen = (r: Rect): Rect => ({ x: ox + r.x * px, y: oy + r.y * px, w: r.w * px, h: r.h * px })
   const visible = tasks.filter((t) => t.state !== 'superseded')
-  const seats = zones.flatMap((zone) => placeSeats(zone, visible.filter((t) => ROLE_ZONE[t.role] === zone.id)))
-  return { width, height, zones, seats, compact }
+  const seats: Seat[] = []
+  const overflow: Partial<Record<ZoneId, number>> = {}
+  for (const r of map.rooms) {
+    const here = visible.filter((t) => ROLE_ZONE[t.role] === r.id)
+    const slots = seatSlots(r)
+    const fits = here.length <= slots.length ? here : here.slice(0, slots.length - 1)
+    if (fits.length < here.length) overflow[r.id] = here.length - fits.length
+    fits.forEach((t, i) => {
+      const { tx, ty } = slots[i]
+      seats.push({ taskId: t.id, zone: r.id, tx, ty, ...toScreen({ x: tx, y: ty, w: CELL_W, h: CELL_H }) })
+    })
+  }
+  const zones = map.rooms.map((r) => ({ id: r.id, label: r.label, ...toScreen(r) }))
+  return { width, height, compact, map, scale, ox, oy, zones, seats, overflow }
 }
 
 export function hitSeat(layout: OfficeLayout, x: number, y: number): string | null {
@@ -111,7 +136,8 @@ export function hitSeat(layout: OfficeLayout, x: number, y: number): string | nu
   return seat?.taskId ?? null
 }
 
+/** 방 표지판 위치(지도 좌표, 픽셀) — 근거 패킷이 향하는 곳 */
 export function zoneCenter(layout: OfficeLayout, id: ZoneId): { x: number; y: number } {
-  const zone = layout.zones.find((z) => z.id === id)
-  return zone ? { x: zone.x + zone.w / 2, y: zone.y + LABEL_H / 2 + 4 } : { x: 0, y: 0 }
+  const r = layout.map.rooms.find((z) => z.id === id)
+  return r ? { x: (r.x + r.w / 2) * TILE, y: (r.y + 0.5) * TILE } : { x: 0, y: 0 }
 }

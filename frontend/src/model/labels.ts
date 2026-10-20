@@ -112,7 +112,14 @@ export function shortDigest(value: string | null | undefined): string {
 
 export function formatClock(iso: string): string {
   const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleTimeString('ko-KR', { hour12: false })
+  if (Number.isNaN(d.getTime())) return iso
+  return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':')
+}
+
+/** 긴 서버 ID는 앞 8자만 보이고 전체는 title로 제공한다 */
+export function shortId(id: string | null | undefined): string {
+  if (!id) return '—'
+  return id.length > 12 ? `${id.slice(0, 8)}…` : id
 }
 
 export function formatTime(iso: string): string {

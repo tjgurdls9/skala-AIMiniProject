@@ -3,25 +3,48 @@ import { buildEvents } from '../src/examples/base'
 import { findScenario } from '../src/examples/scenarios'
 import { runAlerts } from '../src/model/alerts'
 import { packetFor } from '../src/office/draw'
-import { computeLayout, fitGrid, hitSeat, zoneCenter, zoneRects } from '../src/office/layout'
+import { chooseMap, computeLayout, fitMap, hitSeat, seatSlots, TILE, zoneCenter } from '../src/office/layout'
 import { resolveTheme } from '../src/composables/theme'
 
 const snap = (id: string) => findScenario(id)!.snapshot
 const inside = (s: { x: number; y: number; w: number; h: number }, z: { x: number; y: number; w: number; h: number }) =>
   s.x >= z.x - 0.01 && s.y >= z.y - 0.01 && s.x + s.w <= z.x + z.w + 0.01 && s.y + s.h <= z.y + z.h + 0.01
 
-describe('사무실 배치', () => {
-  test('넓은 화면은 회의실→구현→검증·보안→출시 한 줄, 좁은 화면은 두 줄', () => {
-    expect(zoneRects(1000, 360).compact).toBe(false)
-    expect(zoneRects(390, 340).compact).toBe(true)
-    const wide = zoneRects(1000, 360).zones
-    expect(wide.map((z) => z.id)).toEqual(['meeting', 'build', 'validate', 'security', 'release'])
-    expect(wide.find((z) => z.id === 'validate')!.y).toBeLessThan(wide.find((z) => z.id === 'security')!.y)
+describe('사무실 배치(타일 지도)', () => {
+  test('가로 화면은 회의실→구현→검증·보안→출시 한 줄, 세로·좁은 화면은 두 줄 지도', () => {
+    const wide = chooseMap(1400, 800)
+    expect(wide.compact).toBe(false)
+    expect(wide.map.rooms.map((r) => r.id)).toEqual(['meeting', 'build', 'validate', 'security', 'release'])
+    const v = wide.map.rooms.find((r) => r.id === 'validate')!
+    const sec = wide.map.rooms.find((r) => r.id === 'security')!
+    expect(v.y + v.h).toBeLessThan(sec.y) // 검증실과 보안실 사이에 벽
+    expect(chooseMap(390, 760).compact).toBe(true)
   })
 
-  test.each([[1000, 360], [700, 300], [390, 340]])('%ix%i: 좌석이 역할 구역 안에 겹치지 않게 놓인다', (w, h) => {
+  test('지도를 화면에 맞추고 1배 이상은 0.25 단위로 내린다', () => {
+    const { map } = chooseMap(1400, 800)
+    const fit = fitMap(map, 1400, 800)
+    expect(fit.scale % 0.25).toBe(0)
+    expect(map.w * TILE * fit.scale).toBeLessThanOrEqual(1400)
+    expect(map.h * TILE * fit.scale).toBeLessThanOrEqual(800)
+    expect(fitMap(map, 300, 200).scale).toBeLessThan(1)
+  })
+
+  test('좌석은 표지판 아래, 큰 방의 가구 자리 위에 놓인다', () => {
+    const { map } = chooseMap(1400, 800)
+    for (const room of map.rooms) {
+      for (const slot of seatSlots(room)) {
+        expect(slot.ty).toBeGreaterThan(room.y + 1)
+        expect(slot.ty + 3).toBeLessThanOrEqual(room.y + room.h)
+        expect(slot.tx + 3).toBeLessThanOrEqual(room.x + room.w)
+      }
+    }
+  })
+
+  test.each([[1400, 800], [1000, 600], [390, 760]])('%ix%i: 좌석이 역할 구역 안에 겹치지 않게 놓인다', (w, h) => {
     const tasks = snap('building').tasks.filter((t) => t.sprint_id === 'sp-2')
     const layout = computeLayout(w, h, [...tasks, ...snap('review-split').tasks.filter((t) => t.sprint_id === 'sp-4')])
+    expect(layout.seats.length).toBe(6)
     for (const seat of layout.seats) {
       expect(inside(seat, layout.zones.find((z) => z.id === seat.zone)!)).toBe(true)
     }
@@ -35,19 +58,18 @@ describe('사무실 배치', () => {
     }
   })
 
-  test('대체된 작업은 장면에 놓지 않는다', () => {
+  test('방에 다 못 놓은 작업 수를 남기고, 대체된 작업은 놓지 않는다', () => {
     const [t] = snap('building').tasks
+    const many = Array.from({ length: 30 }, (_, i) => ({ ...t, id: `t${i}`, role: 'validator' as const }))
+    const layout = computeLayout(1400, 800, many)
+    expect(layout.overflow.validate).toBeGreaterThan(0)
+    expect(layout.seats.length + (layout.overflow.validate ?? 0)).toBe(30)
     expect(computeLayout(800, 300, [{ ...t, state: 'superseded' }]).seats).toHaveLength(0)
   })
 
-  test('좌석이 많으면 배율을 줄여 맞춘다', () => {
-    expect(fitGrid(1, 400, 300).scale).toBeGreaterThan(1.5)
-    expect(fitGrid(40, 200, 100).scale).toBeLessThan(0.5)
-  })
-
-  test('클릭 좌표로 좌석을 찾는다', () => {
+  test('클릭 좌표로 좌석을 찾고, 표지판 위치는 지도 좌표다', () => {
     const tasks = snap('building').tasks.filter((t) => t.sprint_id === 'sp-2')
-    const layout = computeLayout(1000, 360, tasks)
+    const layout = computeLayout(1400, 800, tasks)
     const seat = layout.seats[0]
     expect(hitSeat(layout, seat.x + 2, seat.y + 2)).toBe(seat.taskId)
     expect(hitSeat(layout, 1, 1)).toBeNull()
@@ -57,7 +79,7 @@ describe('사무실 배치', () => {
 
 describe('사건 연출', () => {
   const tasks = snap('building').tasks.filter((t) => t.sprint_id === 'sp-2')
-  const layout = computeLayout(1000, 360, tasks)
+  const layout = computeLayout(1400, 800, tasks)
   const byId = new Map(tasks.map((t) => [t.id, t]))
   const ev = (type: Parameters<typeof buildEvents>[0][0][0], taskId?: string) =>
     buildEvents([[type, 's', taskId ? { task_id: taskId } : {}]])[0]

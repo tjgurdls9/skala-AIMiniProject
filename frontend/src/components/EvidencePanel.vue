@@ -2,12 +2,14 @@
 import { computed, ref, watch } from 'vue'
 import { ApiError, errorHint } from '../api/errors'
 import type { RunSource } from '../api/source'
-import type { RunEvent, Snapshot } from '../api/types'
+import type { AcceptanceItem, RunEvent, Snapshot } from '../api/types'
 import { indexById, reviewPair, waitingReason } from '../model/derive'
 import { isPlanView } from '../model/planView'
 import { EVENT_TYPE, formatTime, ROLE, shortDigest, TASK_STATE, WORK_KIND } from '../model/labels'
+import AcceptanceList from './AcceptanceList.vue'
 import PlanViewBody from './PlanViewBody.vue'
 import ReviewPair from './ReviewPair.vue'
+import ReviewRounds from './ReviewRounds.vue'
 
 const props = defineProps<{
   snapshot: Snapshot
@@ -15,6 +17,7 @@ const props = defineProps<{
   source: RunSource
   taskId: string | null
   artifactId: string | null
+  acIndex: ReadonlyMap<string, AcceptanceItem>
 }>()
 const emit = defineEmits<{ task: [id: string]; artifact: [id: string] }>()
 
@@ -23,6 +26,12 @@ const task = computed(() => (props.taskId ? tasksById.value.get(props.taskId) ??
 const artifact = computed(() => props.snapshot.artifacts.find((a) => a.id === props.artifactId) ?? null)
 const pair = computed(() => reviewPair(props.snapshot))
 const taskEvents = computed(() => (task.value ? props.events.filter((e) => e.task_id === task.value?.id).slice(-8).reverse() : []))
+const EVIDENCE_KINDS = new Set(['retrieval', 'context'])
+/** 작업에 연결된 공개 검색·문맥 근거. 없으면 없음으로 표시하고 검색 결과로 추정하지 않는다 */
+const evidenceArtifacts = computed(() =>
+  task.value ? props.snapshot.artifacts.filter((a) => task.value!.artifact_ids.includes(a.id) && EVIDENCE_KINDS.has(a.kind)) : [],
+)
+const retrievalEvents = computed(() => taskEvents.value.filter((e) => e.event_type === 'retrieval_finished'))
 const dependents = computed(() => (task.value ? props.snapshot.tasks.filter((t) => t.depends_on.includes(task.value!.id)) : []))
 
 const body = ref<unknown>(null)
@@ -71,7 +80,8 @@ watch(
       <dl class="kv small">
         <dt>담당</dt><dd>{{ ROLE[task.role].text }} · {{ WORK_KIND[task.work_kind] }}</dd>
         <dt>명세</dt><dd><code>{{ task.spec_version_id }}</code></dd>
-        <dt>인수 기준</dt><dd>{{ task.acceptance_ids.join(', ') }}</dd>
+        <dt>인수 기준</dt>
+        <dd><AcceptanceList :ids="task.acceptance_ids" :index="acIndex" :reports="snapshot.reports" @artifact="emit('artifact', $event)" /></dd>
         <template v-if="waitingReason(task, tasksById)">
           <dt>대기·차단 이유</dt><dd>{{ waitingReason(task, tasksById) }}</dd>
         </template>
@@ -96,6 +106,16 @@ watch(
         </li>
         <li v-if="!task.artifact_ids.length" class="muted small">없음</li>
       </ul>
+      <h4>검색·문맥 근거</h4>
+      <ul class="plain">
+        <li v-for="a in evidenceArtifacts" :key="a.id">
+          <button type="button" class="link" @click="emit('artifact', a.id)">⌕ {{ a.title }} <span class="small muted">({{ a.kind === 'retrieval' ? '검색' : '문맥' }})</span></button>
+        </li>
+        <li v-if="!evidenceArtifacts.length" class="muted small">
+          이 작업에 공개된 검색·문맥 근거가 없습니다<template v-if="retrievalEvents.length"> (검색 사건 {{ retrievalEvents.length }}건은 기록에 있음)</template>.
+          출처·버전 없는 근거를 추정해 표시하지 않습니다.
+        </li>
+      </ul>
       <h4>최근 사건</h4>
       <ol class="plain small">
         <li v-for="e in taskEvents" :key="e.seq">
@@ -110,11 +130,16 @@ watch(
     <section class="block" aria-label="독립 검토">
       <h3>독립 검토 (각자 판정)</h3>
       <ReviewPair :pair="pair" @artifact="emit('artifact', $event)" />
+      <details class="rounds-box">
+        <summary>검토 회차 {{ snapshot.reports.length ? '' : '(없음)' }}</summary>
+        <ReviewRounds :snapshot="snapshot" @artifact="emit('artifact', $event)" />
+      </details>
     </section>
   </aside>
 </template>
 
 <style scoped>
+.rounds-box summary { min-height: 36px; cursor: pointer; display: flex; align-items: center; }
 .evidence { display: grid; gap: 14px; align-content: start; overflow: auto; }
 .block { display: grid; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .block:last-child { border-bottom: 0; }
