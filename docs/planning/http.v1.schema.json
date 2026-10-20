@@ -118,7 +118,8 @@
         },
         "manifest_digest": {
           "$ref": "protocol.v1.schema.json#/$defs/Digest"
-        }
+        },
+        "provenance": {"enum": ["local_ledger", "imported_unsigned"]}
       }
     },
     "ReplayRecordings": {
@@ -422,6 +423,40 @@
             }
           }
         }
+      }
+    },
+    "RecordingBundle": {
+      "type": "object", "additionalProperties": false,
+      "required": ["format", "version", "recorded_at", "project", "snapshot", "events", "artifacts", "exporter", "manifest_digest"],
+      "properties": {
+        "format": {"const": "lifecycle-recording"}, "version": {"const": 1},
+        "recorded_at": {"type": "string", "format": "date-time"},
+        "project": {"$ref": "#/$defs/Project"},
+        "snapshot": {"$ref": "protocol.v1.schema.json#/$defs/Snapshot"},
+        "events": {"type": "array", "minItems": 1, "items": {"$ref": "protocol.v1.schema.json#/$defs/Event"}},
+        "artifacts": {"type": "array", "items": {
+          "type": "object", "additionalProperties": false, "required": ["metadata", "content"],
+          "properties": {"metadata": {"$ref": "protocol.v1.schema.json#/$defs/Artifact"}, "content": {}}
+        }},
+        "exporter": {
+          "type": "object", "additionalProperties": false, "required": ["revision", "dirty", "python", "contract_digests"],
+          "properties": {
+            "revision": {"oneOf": [{"type": "null"}, {"$ref": "protocol.v1.schema.json#/$defs/Commit"}]},
+            "dirty": {"type": "boolean"}, "python": {"type": "string", "minLength": 1},
+            "contract_digests": {"type": "object", "additionalProperties": {"$ref": "protocol.v1.schema.json#/$defs/Digest"}, "minProperties": 2}
+          }
+        },
+        "manifest_digest": {"$ref": "protocol.v1.schema.json#/$defs/Digest"}
+      }
+    },
+    "RecordingImportResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["project_id", "run_id", "manifest_digest", "read_only", "provenance"],
+      "properties": {
+        "project_id": {"$ref": "protocol.v1.schema.json#/$defs/Id"},
+        "run_id": {"$ref": "protocol.v1.schema.json#/$defs/Id"},
+        "manifest_digest": {"$ref": "protocol.v1.schema.json#/$defs/Digest"},
+        "read_only": {"const": true}, "provenance": {"const": "imported_unsigned"}
       }
     },
     "RetrievalEvidence": {

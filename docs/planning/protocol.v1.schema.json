@@ -106,7 +106,8 @@
       "properties": {
         "source_run_id": {"$ref": "#/$defs/Id"},
         "recorded_at": {"type": "string", "format": "date-time"},
-        "manifest_digest": {"$ref": "#/$defs/Digest"}
+        "manifest_digest": {"$ref": "#/$defs/Digest"},
+        "provenance": {"enum": ["local_ledger", "imported_unsigned"]}
       }
     },
     "Snapshot": {
