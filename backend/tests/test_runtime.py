@@ -5,6 +5,9 @@ import copy
 import sqlite3
 import tempfile
 import unittest
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -88,7 +91,7 @@ class RuntimeChecks(unittest.TestCase):
     def test_plan_approval_idempotency_and_version_conflict(self):
         snapshot = self.planned()
         self.assertEqual(snapshot["state"], "awaiting_plan_approval")
-        plan = self.client.get("/api/artifacts/" + snapshot["artifacts"][-1]["id"]).json()
+        plan = self.client.get("/api/artifacts/" + next(a["id"] for a in snapshot["artifacts"] if a["kind"] == "spec")).json()
         validate("PlanView", plan)
         approval = snapshot["approvals"][-1]
         self.assertEqual(approval["target"]["plan_digest"], digest(plan))
@@ -166,6 +169,23 @@ class RuntimeChecks(unittest.TestCase):
         self.assertTrue(self.worker.current(fresh))
         self.assertTrue(self.worker.finish(fresh, PLAN))
         self.assertEqual(self.store.snapshot(snapshot["run_id"])["state"], "awaiting_plan_approval")
+
+    def test_process_exit_leaves_durable_job_for_lease_successor(self):
+        project = self.store.project(dict(title="synthetic restart", request="문의 목록"))
+        snapshot = self.store.create_run(project["project_id"], dict(mode="live"))
+        script = "from pathlib import Path; import sys; from backend.store import Store; from runner.worker import Worker; w=Worker(Store(Path(sys.argv[1])),None); assert w.heartbeat(); assert w.claim()"
+        subprocess.run([sys.executable, "-c", script, str(self.store.path)], check=True, timeout=15)
+        self.assertFalse(self.worker.heartbeat())
+        with self.store.transaction() as db:
+            expires = db.execute("SELECT expires FROM worker_lock").fetchone()[0]
+            self.assertEqual(db.execute("SELECT state FROM jobs").fetchone()[0], "running")
+        time.sleep(max(0, expires - time.time()) + .02)
+        self.assertTrue(self.worker.heartbeat())
+        job = self.worker.claim()
+        self.assertEqual(job["run_id"], snapshot["run_id"])
+        self.assertTrue(self.worker.finish(job, PLAN))
+        with self.store.transaction() as db:
+            self.assertEqual([r[0] for r in db.execute("SELECT outcome FROM attempt_results ORDER BY rowid")], ["superseded", "finished"])
 
     def test_corrupt_artifact_is_contract_error(self):
         snapshot = self.live()

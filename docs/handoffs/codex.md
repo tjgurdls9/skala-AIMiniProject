@@ -7,11 +7,11 @@
 | DEV-P/S | 현재 구현·근거·다음 입력 |
 |---|---|
 | P01/S01 | 원본의 검토한 계획/진입점/프롬프트 10개를 명시 반영. Git/worktree·무료 모델/실행기·소유 경계의 기존 근거 유지. 원본 제품 초안은 가져오지 않음 |
-| P01/S02 | 완료 커밋 `c4941bb`로 Claude `0dbe45e`까지 통합. 소비자 AC·명령/SSE·REPLAY iframe 경계·해시 반영 확인. 통합 프론트 180 tests/타입/빌드 통과 |
+| P01/S02 | `c4941bb`로 Claude `0dbe45e`까지 통합, 기존 180 tests/타입/빌드 통과. **CT36 잔존으로 해당 수용 완료를 취소/보류**. Claude 수정 `f5a26d5` 통합·새 검증 필요 |
 | P02/S03 | 같은 owner 만료 lease 재인수/옛 시도 fence·손상 artifact 503·프리뷰 불명 상태/새 시도 자원 분리 보완. 자체 검사 32개 통과. 실제 프로세스 강제 종료·Docker 응답 유실·취소 후 자동 청소 수용은 남음 |
 | P02/S04 | 원문 조각/해시·중간 기획 checkpoint·재개·파일별 구현/patch 의도와 응답 유실 조정 구현 중. 긴 원문·자원 실패 후 재개 자체 검사 통과. 필수 조건 자체 초과는 원문 보존 needs_input |
 | P02/S05 | 작은 ACL 코퍼스에 Qwen3-Embedding 0.6B 의미 검색/내용 버전·벡터 cache·오류 구분·프로세스 공통 추론 lock/순차 unload 구현 중. 실제 의미 검색 6.6초·키워드 0건→semantic found 확인. 공개 연결은 CR-C12 소비자 타입 대기 |
-| P03/S06 | S03–05 뒤 분야별 Infra/Back/Front/AI/Data 필요/의존/쓰기 경계와 기존 큐 연결 |
+| P03/S06 | Infra 준비→Backend·Data(API/SQLite)→Frontend→후보 통합의 작업/DAG/불변 쓰기 scope·큐 연결 구현. 별도 AI/분리 Data 생략 이유를 승인 입력/contract artifact에 명시. 자체 검사 43개 통과, 실제 모델 분야별 완주는 별도 |
 | P03/S07 | 같은 후보 독립 검토·원본/새 회차·실패 차단 유지. P03 말 실제 데이터/계약·대표 기록과 S08 디자인 요청 준비 신호를 인계 |
 | P04/S08 | Claude가 직접 받은 사용자 디자인/전환 저항 피드백 `8d69830`/`0dbe45e`를 `c4941bb`에 통합. 사용자 시각 수용·실기기 터치/타 브라우저는 별도 미확인 |
 | P04/S09 | 실제 사용자 입력/기획 승인·프리뷰 수정·기능 변경/재승인 수용 대기. 스크립트로 사용자 승인 대행하지 않음 |
@@ -39,6 +39,15 @@ S01–02 경계: `docs/planning/phase-completion.md` 전체 및 최신 원본 �
 - 구현은 파일별/원문 조각별로 나누고 patch 의도·expected/output digest를 먼저 저장한다. 응답 유실 뒤 실제 파일 hash가 저장된 결과와 같으면 모델 재호출/중복 패치 없이 조정한다. 한 파일/필수 명세 자체가 예산보다 크면 자동 절단하지 않고 분해 입력을 요청한다. 일반적인 대형 파일 편집기를 구현한 것은 아니다.
 - S05: 승인된 실제 다운로드 `qwen3-embedding:0.6b`, checkpoint `ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d`(639MB, 가중치 Git 제외). [공식 모델 카드](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B)의 Apache-2.0 및 [Ollama embed](https://docs.ollama.com/api/embed)의 truncate=false/keep_alive=0 경로 확인. 200선의 기존 선정 근거(`evidence.md` §5)를 사용하며 새 패키지/벡터DB·다른 저장소 통째 수집은 하지 않았다.
 - 실제 로컬 개발 측정 `runtime-data/semantic-result.json`: query `호스트비밀보호`, 키워드 0건, 의미 검색 4개 출처(계약/격리 notes), 6.6초. builder ACL 밖 검토 전용 문서가 입력/결과에 없다. threshold .35는 작은 고정 코퍼스의 후보 관련도 기준이며 일반 검색 품질/한국어 전체 평가는 아니다. 첫 수집 시각/내용 버전·본문 hash를 보존한다. 생성·임베딩은 같은 파일 lock을 MCP 프로세스까지 공유하고 keep_alive=0; 다른 상주 모델을 내리지 않고 resource wait한다. 종료 후 `/api/ps`에서 models=[] 확인. 외부 Ollama 호출자는 이 앱 lock 밖이므로 서버의 병렬 설정도 운영자가 유지해야 한다.
+
+### CT36·CT40 실제 수신 / S06–S07 보완
+
+- 사용자 지시로 원본 `docs/handoffs/control-tower.md`의 CT36·CT40·CT42를 찾아 실제 읽었다. 관제탑/Claude 소유 파일을 수정하지 않는다. 남은 항목을 수용 완료로 표시하지 않는다.
+- **CT40 수정**: `177d6ce`의 배열 합집합/동일 AC ID 변경 거절을 제거했다. 가변 목표·기능·비범위·제약·가정·AC의 삭제/대체는 현재 원문 조각의 정확한 인용과 이전 값 digest에 연결한다. 현재 계획에는 새 유효 집합만 남고, 원문·옛 계획·정정 관계/request_id/위치·해시는 불변 checkpoint에 보존한다. 무료/도구 정책은 서버 소유이며 가변 사용자 요구와 구분한다. build는 최신 승인 명세가 유효 범위이고 옛 원문으로 철회 조건을 재도입하면 안 된다고 지시한다. 해시/인용 검증을 모델의 의미 이해에 대한 자동 증명으로 주장하지 않는다.
+- 회귀: 같은 요청의 뒤 조각·후속 정정에서 목표/제약 대체·기능/비범위 철회·동일 AC ID 정의 교체, 원문/관계 유지·옛 승인 무효·최신 실행 입력을 확인한다. 근거 없는 모델 누락은 새 승인 명세가 되지 않는다. fake 모델 fixture이며 실제 Qwen의 모든 정정 문장에 대한 품질 수용은 아니다.
+- **CT36**: 제공자는 같은 명세의 reports=[]인 수정 회차에 `/acceptance`가 `unmet`/report_id 없음으로 응답하며 옛 원본을 보존하는 회귀를 추가했다. Claude `f5a26d5`는 버전/명세·현재 보고서에 묶어 표시·조회 실패 시 삭제·근거 패널 안내를 수정했다. 아직 통합/재검증 전이므로 해소 완료로 보고하지 않는다. `573c169`는 실제 존재하는 CR-C12 계약 전용 커밋이다(Claude 인계의 '전용 커밋 없음'은 현 제공자 상태와 다름).
+- S06: 템플릿의 분야별 scope가 기획 승인 `contract_digests`에 묶인다. 선행 작업 완료 후 claim하며 Infra는 모델 없이 runtime lock 확인, Backend/Data·Frontend는 담당 파일만 MCP patch, 통합만 candidate를 freeze한다. 단계별 실제 diff/hash를 보존한다. 재개는 미완료 작업을 잇고 검토 실패 뒤에는 새 Sprint/task/scope로 새 후보·독립 검토 회차를 만든다. 추가 추론 슬롯/CLI agent를 기동하지 않았다.
+- 새 자체 검사 **43개 통과**: CT40 세 경우, 분야별 DAG/쓰기 거부, 같은 명세 AC 무효화, 실제 자식 worker 프로세스 종료 후 10초 lease 만료/후속 프로세스 인계 포함. 나머지 fake 모델/mock Docker·실제 MCP stdio와 구분한다. 실제 Docker 응답 유실·사용자 HITL·CT36 최신 LIVE 화면 수용은 남았다.
 
 ## 최신 진행 — 2026-10-20, D3–D8 연결
 

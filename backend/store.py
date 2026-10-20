@@ -17,6 +17,17 @@ def uid():
     return uuid4().hex
 
 
+def artifact_content(row):
+    require(row is not None, "TEMPORARILY_UNAVAILABLE", "아티팩트 원본을 확인할 수 없습니다.", 503)
+    try:
+        content, metadata = json.loads(row["content"]), json.loads(row["metadata"])
+        valid = digest(content) == metadata["content_digest"]
+    except (ValueError, KeyError, TypeError):
+        valid = False
+    require(valid, "TEMPORARILY_UNAVAILABLE", "아티팩트 무결성을 확인할 수 없습니다.", 503)
+    return content
+
+
 def style_change(payload):
     text = payload["feedback"].casefold()
     # shortcut: only explicit CSS feedback reuses approval; ambiguous changes replan.
@@ -55,6 +66,8 @@ class Store:
                     id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id),
                     version INTEGER NOT NULL, role TEXT NOT NULL, state TEXT NOT NULL,
                     context TEXT, created_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS task_scopes (
+                    task_id TEXT PRIMARY KEY, mode TEXT NOT NULL, files TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS worker_heartbeat (
                     id INTEGER PRIMARY KEY CHECK(id=1), updated_at REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS worker_lock (
@@ -92,7 +105,7 @@ class Store:
             """)
             if "attempt_id" not in {row[1] for row in db.execute("PRAGMA table_info(grants)")}:
                 db.execute("ALTER TABLE grants ADD COLUMN attempt_id TEXT REFERENCES attempts(id)")
-            for table in ("requests", "artifacts", "specs", "reviews", "events", "commands", "attempts", "attempt_results", "candidates"):
+            for table in ("requests", "artifacts", "specs", "reviews", "events", "commands", "attempts", "attempt_results", "candidates", "task_scopes"):
                 for action in ("UPDATE", "DELETE"):
                     db.execute(f"CREATE TRIGGER IF NOT EXISTS {table}_{action.lower()}_blocked BEFORE {action} ON {table} "
                                f"BEGIN SELECT RAISE(ABORT, 'immutable record'); END")
@@ -141,8 +154,8 @@ class Store:
             report = next((r for r in snapshot["reports"] if r["role"] == "validator" and r["spec_version_id"] == snapshot["spec_version_id"]), None)
             statuses = {}
             if report:
-                content = json.loads(db.execute("SELECT content FROM artifacts WHERE id=? AND public=1", (report["artifact_id"],)).fetchone()[0])
-                require(digest(content) == report["content_digest"] and all(content.get(k) == report[k] for k in ("spec_version_id", "commit_sha", "image_digest", "role")),
+                content = artifact_content(db.execute("SELECT content,metadata FROM artifacts WHERE id=? AND public=1", (report["artifact_id"],)).fetchone())
+                require(isinstance(content, dict) and digest(content) == report["content_digest"] and all(content.get(k) == report[k] for k in ("spec_version_id", "commit_sha", "image_digest", "role")),
                         "TEMPORARILY_UNAVAILABLE", "판정 근거 무결성을 확인할 수 없습니다.", 503)
                 if report["verdict"] in ("pass", "fail"):
                     statuses = {item["id"]: item["status"] for item in content.get("judgement", {}).get("acceptance", [])}
@@ -247,6 +260,22 @@ class Store:
                 if snapshot.get("reason"):
                     options["unresolved_failures"] = list(dict.fromkeys(options.get("unresolved_failures", []) + [snapshot["reason"]]))
                 snapshot.pop("reason", None)
+                builders = [t for t in snapshot["tasks"] if t["role"] == "builder" and t["spec_version_id"] == snapshot["spec_version_id"] and t["state"] != "superseded"]
+                if snapshot["state"] == "building" and builders and all(t["state"] == "succeeded" for t in builders):
+                    # A completed review round is immutable; rebuild/review in a fresh sprint.
+                    previous_sprint = builders[-1]["sprint_id"]
+                    originals = [t for t in builders if t["sprint_id"] == previous_sprint]
+                    mapping = {t["id"]: uid() for t in originals}
+                    sprint_id = uid()
+                    snapshot["sprints"].append(dict(id=sprint_id, phase_id=originals[0]["phase_id"], title="검토 수정·재검사",
+                        goal="미충족 근거를 수정하고 새 후보로 독립 검토", acceptance_ids=originals[0]["acceptance_ids"]))
+                    for task in originals:
+                        clone = {**task, "id": mapping[task["id"]], "sprint_id": sprint_id, "state": "pending", "artifact_ids": [],
+                                 "depends_on": [mapping[d] for d in task["depends_on"] if d in mapping]}
+                        clone.pop("reason", None)
+                        snapshot["tasks"].append(clone)
+                        db.execute("INSERT INTO task_scopes SELECT ?, mode,files FROM task_scopes WHERE task_id=?", (clone["id"], task["id"]))
+                    options = {"unresolved_failures": options.get("unresolved_failures", [])}
             elif action == "request_changes":
                 known = {a["id"] for a in snapshot["artifacts"]}
                 require(set(payload.get("artifact_ids", [])).issubset(known), "INVALID_COMMAND", "연결된 아티팩트가 필요합니다.", 422)
@@ -318,13 +347,7 @@ class Store:
         with self.transaction() as db:
             row = db.execute("SELECT content, metadata FROM artifacts WHERE id=? AND public=1", (artifact_id,)).fetchone()
             require(row is not None, "NOT_FOUND", "아티팩트를 찾을 수 없습니다.", 404)
-            try:
-                content, metadata = json.loads(row[0]), json.loads(row[1])
-                valid = digest(content) == metadata["content_digest"]
-            except (ValueError, KeyError, TypeError):
-                valid = False
-            require(valid, "TEMPORARILY_UNAVAILABLE", "아티팩트 무결성을 확인할 수 없습니다.", 503)
-            return content
+            return artifact_content(row)
 
     def replay_recordings(self):
         with self.transaction() as db:

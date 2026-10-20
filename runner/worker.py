@@ -92,6 +92,22 @@ class Worker:
                     "SELECT id, content, created_at FROM requests WHERE project_id=? AND (run_id IS NULL OR run_id=?) ORDER BY rowid",
                     (snapshot["project_id"], row["run_id"]))]
                 options = json.loads(row["context"] or "{}").get("options", {})
+                if row["role"] == "builder":
+                    tasks = [t for t in snapshot["tasks"] if t["role"] == "builder" and t["spec_version_id"] == snapshot["spec_version_id"] and t["state"] in ("ready", "pending", "running", "blocked")]
+                    succeeded = {t["id"] for t in snapshot["tasks"] if t["state"] == "succeeded"}
+                    task = next((t for t in tasks if set(t["depends_on"]).issubset(succeeded)), None)
+                    if task is None:
+                        snapshot.update(state="needs_input", reason="실행 가능한 구현 작업이 없습니다. 기획/작업 의존성을 확인하세요.")
+                        self.store.save(db, snapshot, "warning", snapshot["reason"])
+                        db.execute("UPDATE jobs SET state='superseded' WHERE id=?", (row["id"],))
+                        continue
+                    scope = db.execute("SELECT mode,files FROM task_scopes WHERE task_id=?", (task["id"],)).fetchone()
+                    options["task_id"] = task["id"]
+                    if scope:
+                        options.update(task_mode=scope["mode"], writable_files=json.loads(scope["files"]))
+                    task["state"] = "running"
+                    task.pop("reason", None)
+                    self.store.save(db, snapshot, "task_started", task["title"], bump=False, task_id=task["id"])
                 packet = dict(role=row["role"], run_id=row["run_id"], state_version=row["version"],
                               spec_version_id=snapshot["spec_version_id"], requests=requests,
                               latest_spec=json.loads(spec[0]) if spec else None,
@@ -128,6 +144,9 @@ class Worker:
                 return False
             if failure:
                 state, reason = failure
+                for task in snapshot["tasks"]:
+                    if task["id"] == job["packet"]["options"].get("task_id"):
+                        task.update(state="blocked", reason=reason)
                 db.execute("UPDATE runs SET resume_state=? WHERE id=?", (snapshot["state"], snapshot["run_id"]))
                 snapshot.update(state=state, reason=reason)
                 self.store.save(db, snapshot, "resource_wait" if state == "waiting_resource" else "warning", reason)
@@ -151,9 +170,17 @@ class Worker:
                 snapshot["phases"].append(dict(id=phase_id, title="설계·구현", order=len(snapshot["phases"])))
                 snapshot["sprints"].append(dict(id=sprint_id, phase_id=phase_id, title="승인 기획 구현", goal=proposal["goal"],
                                                acceptance_ids=[a["id"] for a in proposal["acceptance"]]))
-                snapshot["tasks"].append(dict(id=uid(), phase_id=phase_id, sprint_id=sprint_id, spec_version_id=spec_id,
-                                             role="builder", work_kind="integration", title="승인 명세 구현", state="pending",
-                                             depends_on=[], acceptance_ids=[a["id"] for a in proposal["acceptance"]], artifact_ids=[]))
+                template = job["packet"]["template_contract"]
+                boundaries = self.store.artifact(db, snapshot, "contract", "분야별 작업·쓰기 경계", dict(
+                    tasks=template["implementation_tasks"], omitted_work=template["omitted_work"], spec_version_id=spec_id))
+                predecessor = []
+                for scope in template["implementation_tasks"]:
+                    task_id = uid()
+                    snapshot["tasks"].append(dict(id=task_id, phase_id=phase_id, sprint_id=sprint_id, spec_version_id=spec_id,
+                        role="builder", work_kind=scope["kind"], title=scope["title"], state="pending" if predecessor else "ready",
+                        depends_on=predecessor, acceptance_ids=[a["id"] for a in proposal["acceptance"]], artifact_ids=[boundaries["id"]]))
+                    db.execute("INSERT INTO task_scopes VALUES (?, ?, ?)", (task_id, scope["mode"], canonical(scope["files"])))
+                    predecessor = [task_id]
                 if job.get("context_evidence"):
                     job["context_evidence"]["spec_version_id"] = spec_id
                 self.store.save(db, snapshot, "plan_proposed", "기획 초안이 생성됐습니다. 내용을 확인하고 승인하세요.")

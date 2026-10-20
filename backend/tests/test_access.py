@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -66,6 +67,8 @@ class AccessChecks(unittest.TestCase):
         approval = snapshot["approvals"][-1]
         command = fixtures.RuntimeChecks.command(self, snapshot, "decide", {"approval_id": approval["id"], "target_digest": approval["target_digest"], "decision": "approve"})
         self.store.command(snapshot["run_id"], command)
+        with patch.object(self.worker.pipeline.engine, "runtime", return_value="sha256:" + "a" * 64):
+            asyncio.run(self.worker.tick())  # Infrastructure prepares before the backend owns writes.
         job = self.worker.claim()
         scope = RoleScope(self.store, issue_grant(self.store, job, self.temp))
         created = scope.patch("app_backend/main.py", "print('safe')", None)

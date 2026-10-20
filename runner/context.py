@@ -7,6 +7,39 @@ from backend.store import now
 
 BUDGET = 14000
 FRAGMENT_BYTES = 2400
+FIELDS = ('goal', 'features', 'non_goals', 'constraints', 'assumptions', 'acceptance')
+
+
+def plan_step_schema(schema):
+    result = copy.deepcopy(schema)
+    result['properties']['revisions'] = dict(type='array', items=dict(type='object', additionalProperties=False,
+        required=['field', 'previous_digest', 'quote'], properties=dict(
+            field={'enum': list(FIELDS)}, previous_digest=dict(type='string', pattern='^sha256:[a-f0-9]{64}$'),
+            quote=dict(type='string', minLength=1, maxLength=2400))))
+    return result
+
+
+def revise(previous, proposal, revisions, part):
+    """Mutable requirements may be retired; policy and original source records are separate."""
+    changed = set()
+    for field in FIELDS:
+        before = previous[field] if isinstance(previous[field], list) else [previous[field]]
+        after = proposal[field] if isinstance(proposal[field], list) else [proposal[field]]
+        changed.update((field, digest(value)) for value in before if value not in after)
+    proofs = set()
+    resolved = []
+    for revision in revisions:
+        key = revision['field'], revision['previous_digest']
+        quote = revision['quote']
+        require(key in changed and quote in part['text'], 'INVALID_COMMAND', '정정 근거는 현재 원문의 해당 조건 철회/대체 인용이어야 합니다.', 422)
+        require(key not in proofs, 'INVALID_COMMAND', '같은 요구의 정정 근거가 중복됐습니다.', 422)
+        proofs.add(key)
+        resolved.append(dict(revision, request_id=part['request_id'], offset=part['offset'] + part['text'].index(quote), length=len(quote)))
+    require(changed == proofs, 'INVALID_COMMAND', '기존 요구가 정정 근거 없이 누락됐습니다. 현재 원문의 명시 정정에 연결하거나 기존 유효 요구를 유지하세요.', 422)
+    # This is a change log, never an active requirement union.
+    proposal['changes'] = list(dict.fromkeys(proposal['changes'] + [
+        f"정정 이력({r['field']}, {r['previous_digest']}): {r['quote']}" for r in resolved]))
+    return resolved
 
 
 def fragments(requests):
@@ -51,7 +84,7 @@ class PlanningContext:
         packet = job['packet']
         parts = fragments(packet['requests'])
         inputs = mandatory(packet)
-        source = digest(dict(version=1, run_id=job['run_id'], requests=packet['requests'], policy=inputs['mandatory_policy'], approved=inputs['approved_spec'], inputs=plan_inputs()))
+        source = digest(dict(version=2, run_id=job['run_id'], requests=packet['requests'], policy=inputs['mandatory_policy'], approved=inputs['approved_spec'], inputs=plan_inputs()))
         job['context_evidence'] = dict(spec_version_id=packet['spec_version_id'], status='needs_input', source_digest=source,
                                       completed_fragments=0, total_fragments=len(parts),
                                       sources=[{k: v for k, v in p.items() if k != 'text'} for p in parts])
@@ -60,35 +93,32 @@ class PlanningContext:
             with self.store.transaction() as db:
                 row = db.execute('SELECT body FROM context_steps WHERE source_digest=? AND step=?', (source, index)).fetchone()
             if row:
-                previous = json.loads(row[0])
+                previous = json.loads(row[0])['plan']
                 validate('PlanDraft', previous)
                 job['context_evidence']['completed_fragments'] = index + 1
                 continue
             call = bounded(dict(role='planner', **mandatory(packet), original_or_correction=part,
                                 accumulated_plan=previous, source_digest=source, fragment_index=index, total_fragments=len(parts),
                                 template_contract=packet['template_contract'], instructions=packet['next_action'] +
-                                ' Read this exact original/correction fragment in order. Merge it into accumulated_plan. Retain prior requirements and identify conflicts/unsupported requests in assumptions and changes. Never silently drop requirements. All fragments are reviewed before proposing approval.'))
-            proposal = await worker.infer(job, call, schema)
+                                ' Read this exact original/correction fragment in chronological order. Produce the CURRENT effective plan, not a union of history. Only mandatory_policy is immutable. approved_spec and accumulated_plan are prior versions; explicit later corrections may remove/replace their goals, features, constraints and AC definitions (including the same AC ID). For EACH removed/replaced prior value, return revisions with field, previous_digest=the JSON value digest provided in prior_values, and an exact quote from this fragment explicitly authorizing that correction. Otherwise keep that value. Never revive superseded requirements. Preserve history in changes and source records. No revision is needed for additions. All fragments are read before plan approval.',
+                                prior_values={field: [{'value': value, 'digest': digest(value)} for value in (previous[field] if isinstance(previous[field], list) else [previous[field]])] for field in FIELDS} if previous else {}))
+            step_schema = plan_step_schema(schema)
+            proposal = await worker.infer(job, call, step_schema)
+            from jsonschema import Draft202012Validator
+            Draft202012Validator(step_schema).validate(proposal)
+            revisions = proposal.pop('revisions', [])
             validate('PlanDraft', proposal)
             require(not SECRET.search(canonical(proposal)), 'INVALID_COMMAND', '모델 출력에 비밀 형식이 포함됐습니다.', 422)
-            # Retain earlier requirements even when a later model forgets them; operator resolves conflicts.
             if previous:
-                for key in ('features', 'non_goals', 'constraints', 'assumptions', 'changes'):
-                    proposal[key] = list(dict.fromkeys(previous[key] + proposal[key]))
-                criteria = {a['id']: a for a in previous['acceptance']}
-                for item in proposal['acceptance']:
-                    require(item['id'] not in criteria or item == criteria[item['id']], 'INVALID_COMMAND',
-                            '문맥 조각 사이 AC 정의가 충돌합니다. 원문/정정을 확인하고 기획 범위를 나누세요.', 422)
-                    criteria[item['id']] = item
-                proposal['acceptance'] = list(criteria.values())
-                if previous['goal'] != proposal['goal']:
-                    proposal['changes'] = list(dict.fromkeys(proposal['changes'] + ['이전 조각 목표: ' + previous['goal']]))
+                revisions = revise(previous, proposal, revisions, part)
                 validate('PlanDraft', proposal)
+            else:
+                require(not revisions, 'INVALID_COMMAND', '최초 조각에는 이전 요구 정정 대상을 만들 수 없습니다.', 422)
             with self.store.transaction() as db:
                 require(worker.attempt_active(db, job) and worker.owns(db), 'TEMPORARILY_UNAVAILABLE', '문맥 인계 시도가 만료됐습니다.', 503)
                 current = self.store.load(db, job['run_id'])
                 require(current['state_version'] == job['version'] and current['state'] == 'planning', 'INVALID_STATE', '문맥 준비 중 상태가 변경됐습니다.')
-                db.execute('INSERT INTO context_steps VALUES (?, ?, ?, ?)', (source, index, canonical(proposal), now()))
+                db.execute('INSERT INTO context_steps VALUES (?, ?, ?, ?)', (source, index, canonical(dict(plan=proposal, revisions=revisions)), now()))
             previous = copy.deepcopy(proposal)
             job['context_evidence']['completed_fragments'] = index + 1
         require(previous is not None, 'INVALID_COMMAND', '보존된 요청 원문이 필요합니다.', 422)
@@ -100,7 +130,7 @@ class PlanningContext:
 async def implement(store, session, job, worker, files, evidence, writable, schema):
     """Read one file and exact request fragment per call; reconcile persisted patch intent."""
     parts = fragments(job['packet']['requests'])
-    source = digest([1, job['run_id'], job['packet']['spec_version_id'], parts, writable, plan_inputs()])
+    source = digest([1, job['run_id'], job['packet']['spec_version_id'], job['packet']['options'].get('task_id'), parts, writable, plan_inputs()])
     with store.transaction() as db:
         db.execute('CREATE TABLE IF NOT EXISTS build_steps (source TEXT NOT NULL, step INTEGER NOT NULL, path TEXT NOT NULL, expected TEXT NOT NULL, content TEXT NOT NULL, state TEXT NOT NULL, PRIMARY KEY(source,step))')
         db.execute("CREATE TRIGGER IF NOT EXISTS build_steps_content_immutable BEFORE UPDATE ON build_steps WHEN OLD.source!=NEW.source OR OLD.step!=NEW.step OR OLD.path!=NEW.path OR OLD.expected!=NEW.expected OR OLD.content!=NEW.content BEGIN SELECT RAISE(ABORT, 'immutable patch intent'); END")
@@ -116,7 +146,7 @@ async def implement(store, session, job, worker, files, evidence, writable, sche
                 packet = bounded(dict(role='builder', **mandatory(job['packet']), file=current,
                     original_or_correction=part, source_digest=source, fragment_index=part_index, total_fragments=len(parts),
                     retrieved_documents=evidence[:1], template_contract=job['packet']['template_contract'],
-                    next_action='Implement the approved spec using this exact original/correction fragment as supporting input. Return only this assigned file as a whole replacement when needed, or empty files when already correct. Preserve existing implementation/data/API and h-based Vue renderer. No new dependencies, external URLs, HTML injection, eval or approval.'))
+                    next_action='The latest approved_spec is the CURRENT effective scope. Original/correction fragments are historical evidence: NEVER reintroduce superseded requirements, old constraints or old AC definitions from them. Implement only the approved spec. Return only this assigned file as a whole replacement when needed, or empty files when already correct. Preserve existing implementation/data/API and h-based Vue renderer. No new dependencies, external URLs, HTML injection, eval or approval.'))
                 proposal = await worker.infer(job, packet, schema)
                 from jsonschema import Draft202012Validator
                 Draft202012Validator(schema).validate(proposal)

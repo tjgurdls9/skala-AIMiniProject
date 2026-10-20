@@ -2,6 +2,7 @@
 
 import asyncio
 import copy
+import difflib
 import json
 import os
 from pathlib import Path
@@ -42,8 +43,73 @@ class Pipeline:
         db.execute("INSERT INTO attempt_results VALUES (?, 'finished', ?)", (job["attempt_id"], now()))
 
     async def build(self, job, worker):
-        await asyncio.to_thread(self.engine.runtime)
+        runtime_image = await asyncio.to_thread(self.engine.runtime)
         workspace = await asyncio.to_thread(self.engine.workspace, job["run_id"], job["packet"]["spec_version_id"])
+        mode = job["packet"]["options"].get("task_mode", "edit")
+        writable = job["packet"]["options"].get("writable_files", WRITABLE_FILES)
+        before = {path: (workspace / path).read_text() for path in writable}
+        if mode == "edit":
+            await self.edit(job, worker, workspace)
+        with self.store.transaction() as db:
+            snapshot = self.valid(db, job, worker)
+            if snapshot is None:
+                return
+            task = next(t for t in snapshot["tasks"] if t["id"] == job["packet"]["options"]["task_id"])
+            if mode != "freeze":
+                changes = [{"path": path, "before_digest": digest(content), "after_digest": digest((workspace / path).read_text()),
+                            "diff": "".join(difflib.unified_diff(content.splitlines(True), (workspace / path).read_text().splitlines(True), fromfile=path, tofile=path))}
+                           for path, content in before.items() if content != (workspace / path).read_text()]
+                body = dict(spec_version_id=snapshot["spec_version_id"], task_id=task["id"], mode=mode,
+                            writable_files=list(writable), changes=changes, runtime_image=runtime_image)
+                artifact = self.store.artifact(db, snapshot, "contract" if mode == "prepare" else "code_diff", task["title"] + " 결과", body)
+                task["artifact_ids"].append(artifact["id"])
+                if job.get("retrieval_evidence"):
+                    self.store.artifact(db, snapshot, "retrieval", "구현 검색 근거", job["retrieval_evidence"], public=False)
+            remaining = [t for t in snapshot["tasks"] if t["id"] != task["id"] and t["role"] == "builder" and
+                         t["spec_version_id"] == snapshot["spec_version_id"] and t["state"] in ("pending", "ready", "running")]
+            if remaining:
+                task["state"] = "succeeded"
+                succeeded = {t["id"] for t in snapshot["tasks"] if t["state"] == "succeeded"}
+                for following in remaining:
+                    if set(following["depends_on"]).issubset(succeeded):
+                        following["state"] = "ready"
+                self.store.save(db, snapshot, "task_finished", task["title"] + " 완료. 다음 의존 작업을 준비합니다.", task_id=task["id"])
+                self.completed(db, job)
+                self.store.schedule(db, snapshot, "builder")
+                return
+            if mode != "freeze":
+                self.store.save(db, snapshot, "tool_finished", "담당 파일 변경을 보존했습니다. 후보 고정이 필요합니다.", bump=False, task_id=task["id"])
+        if not await asyncio.to_thread(worker.current, job):
+            return
+        candidate = await asyncio.to_thread(self.engine.freeze, workspace)
+        with self.store.transaction() as db:
+            snapshot = self.valid(db, job, worker)
+            if snapshot is None:
+                return
+            key = digest([job["attempt_id"], {k: candidate[k] for k in ("commit_sha", "image_digest", "manifest")}])
+            builders = [t for t in snapshot["tasks"] if t["spec_version_id"] == snapshot["spec_version_id"] and t["role"] == "builder" and t["state"] != "superseded"]
+            require(bool(builders), "INVALID_STATE", "활성 구현 작업이 필요합니다.")
+            candidate["sprint_id"] = builders[-1]["sprint_id"]
+            db.execute("INSERT OR IGNORE INTO candidates VALUES (?, ?, ?, ?)",
+                       (key, snapshot["run_id"], snapshot["spec_version_id"], canonical(candidate)))
+            public = {k: candidate[k] for k in ("commit_sha", "image_digest", "manifest")}
+            artifact = self.store.artifact(db, snapshot, "build", "고정 구현 후보", public)
+            if job.get("retrieval_evidence"):
+                self.store.artifact(db, snapshot, "retrieval", "구현 검색 근거", job["retrieval_evidence"], public=False)
+            for task in builders:
+                task.update(state="succeeded", artifact_ids=task["artifact_ids"] + [artifact["id"]])
+            for role in ("validator", "security"):
+                snapshot["tasks"].append(dict(id=uid(), phase_id=builders[-1]["phase_id"], sprint_id=builders[-1]["sprint_id"],
+                    spec_version_id=snapshot["spec_version_id"], role=role, work_kind="validation" if role == "validator" else "security",
+                    title="독립 기능 검증" if role == "validator" else "독립 보안 검사", state="ready", depends_on=[t["id"] for t in builders],
+                    acceptance_ids=builders[-1]["acceptance_ids"], artifact_ids=[]))
+            snapshot.update(state="reviewing", reports=[])
+            snapshot.pop("reason", None)
+            self.store.save(db, snapshot, "task_finished", "구현 후보 커밋과 이미지를 고정했습니다. 독립 검토가 필요합니다.")
+            self.store.schedule(db, snapshot, "validator")
+            self.completed(db, job)
+
+    async def edit(self, job, worker, workspace):
         token = await asyncio.to_thread(issue_grant, self.store, job, workspace)
         env = {"PATH": os.defpath, "LIFECYCLE_DB": str(self.store.path.resolve()), "LIFECYCLE_GRANT": token, "LIFECYCLE_EMBEDDING": self.embedding}
         params = StdioServerParameters(command=sys.executable, args=["-m", "runner.mcp_server"], env=env)
@@ -63,35 +129,6 @@ class Pipeline:
             job["retrieval_evidence"] = retrieval["evidence"]
             require(retrieval["evidence"]["status"] != "search_error", "RUNTIME_UNAVAILABLE", "검색 근거 준비에 실패했습니다. 로컬 모델/코퍼스 버전을 확인하세요.")
             await implement(self.store, session, job, worker, files, retrieval["documents"], writable, PATCH_SCHEMA)
-        if not await asyncio.to_thread(worker.current, job):
-            return
-        candidate = await asyncio.to_thread(self.engine.freeze, workspace)
-        with self.store.transaction() as db:
-            snapshot = self.valid(db, job, worker)
-            if snapshot is None:
-                return
-            key = digest([job["attempt_id"], {k: candidate[k] for k in ("commit_sha", "image_digest", "manifest")}])
-            builders = [t for t in snapshot["tasks"] if t["spec_version_id"] == snapshot["spec_version_id"] and t["role"] == "builder" and t["state"] != "superseded"]
-            require(bool(builders), "INVALID_STATE", "활성 구현 작업이 필요합니다.")
-            candidate["sprint_id"] = builders[-1]["sprint_id"]
-            db.execute("INSERT OR IGNORE INTO candidates VALUES (?, ?, ?, ?)",
-                       (key, snapshot["run_id"], snapshot["spec_version_id"], canonical(candidate)))
-            public = {k: candidate[k] for k in ("commit_sha", "image_digest", "manifest")}
-            artifact = self.store.artifact(db, snapshot, "build", "고정 구현 후보", public)
-            if job.get("retrieval_evidence"):
-                self.store.artifact(db, snapshot, "retrieval", "구현 검색 근거", job["retrieval_evidence"], public=False)
-            for task in builders:
-                task.update(state="succeeded", artifact_ids=[artifact["id"]])
-            for role in ("validator", "security"):
-                snapshot["tasks"].append(dict(id=uid(), phase_id=builders[-1]["phase_id"], sprint_id=builders[-1]["sprint_id"],
-                    spec_version_id=snapshot["spec_version_id"], role=role, work_kind="validation" if role == "validator" else "security",
-                    title="독립 기능 검증" if role == "validator" else "독립 보안 검사", state="ready", depends_on=[t["id"] for t in builders],
-                    acceptance_ids=builders[-1]["acceptance_ids"], artifact_ids=[]))
-            snapshot.update(state="reviewing", reports=[])
-            snapshot.pop("reason", None)
-            self.store.save(db, snapshot, "task_finished", "구현 후보 커밋과 이미지를 고정했습니다. 독립 검토가 필요합니다.")
-            self.store.schedule(db, snapshot, "validator")
-            self.completed(db, job)
 
     def candidate(self, db, snapshot):
         row = db.execute("SELECT id, body FROM candidates WHERE run_id=? AND spec_version_id=? ORDER BY rowid DESC LIMIT 1",

@@ -25,8 +25,10 @@ class ContextChecks(unittest.TestCase):
     approved = test_pipeline.PipelineChecks.approved
     def test_patch_response_loss_is_reconciled_without_regeneration(self):
         snapshot = self.approved()
+        with patch.object(self.worker.pipeline.engine, 'runtime', return_value='sha256:' + 'a' * 64):
+            asyncio.run(self.worker.tick())
         job = self.worker.claim()
-        path = 'app_frontend/style.css'
+        path = 'app_backend/main.py'
         workspace = self.worker.pipeline.engine.workspace(job['run_id'], snapshot['spec_version_id'])
         scope = RoleScope(self.store, issue_grant(self.store, job, workspace))
         original = scope.read(path)

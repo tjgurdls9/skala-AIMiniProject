@@ -38,7 +38,11 @@ class PipelineChecks(unittest.TestCase):
         with patch.object(self.worker.pipeline.engine, "runtime", return_value=candidate["image_digest"]), \
              patch.object(self.worker.pipeline.engine, "freeze", return_value=candidate), \
              patch.object(self.worker.model, "generate", side_effect=output):
-            asyncio.run(self.worker.pipeline.build(job, self.worker))
+            while job is not None:
+                asyncio.run(self.worker.pipeline.build(job, self.worker))
+                if self.store.snapshot(snapshot["run_id"])["state"] != "building":
+                    break
+                job = self.worker.claim()
         return self.store.snapshot(snapshot["run_id"])
 
     def validator(self):
@@ -72,6 +76,26 @@ class PipelineChecks(unittest.TestCase):
         replay = self.store.create_run(before["project_id"], {"mode": "replay", "source_run_id": before["run_id"]})
         self.assertEqual(self.store.acceptance_status(replay["run_id"]), published)
 
+    def test_implementation_dag_enforces_task_file_boundaries(self):
+        snapshot = self.approved()
+        builders = snapshot["tasks"]
+        self.assertEqual([t["work_kind"] for t in builders], ["infra", "backend", "frontend", "integration"])
+        self.assertEqual([t["depends_on"] for t in builders], [[], [builders[0]["id"]], [builders[1]["id"]], [builders[2]["id"]]])
+        with patch.object(self.worker.pipeline.engine, "runtime", return_value="sha256:" + "a" * 64):
+            asyncio.run(self.worker.tick())
+        job = self.worker.claim()
+        self.assertEqual(job["packet"]["options"]["task_id"], builders[1]["id"])
+        self.assertEqual(job["packet"]["options"]["writable_files"], ["app_backend/main.py"])
+        workspace = self.worker.pipeline.engine.workspace(job["run_id"], snapshot["spec_version_id"])
+        scope = RoleScope(self.store, issue_grant(self.store, job, workspace))
+        other = scope.read("app_frontend/app.js")
+        with self.assertRaises(DomainError):
+            scope.patch(other["path"], other["content"], other["content_digest"])
+        with self.store.transaction() as db:
+            task = self.store.load(db, snapshot["run_id"])["tasks"][0]
+            self.assertEqual(task["state"], "succeeded")
+            self.assertEqual(len(db.execute("SELECT * FROM candidates").fetchall()), 0)
+
     def test_review_same_candidate_gate_and_style_write_boundary(self):
         before = self.built()
         self.validator()
@@ -95,6 +119,9 @@ class PipelineChecks(unittest.TestCase):
         self.assertEqual(changed["state"], "building")
         self.assertEqual(changed["spec_version_id"], ready["spec_version_id"])
         self.assertFalse(changed["reports"])
+        current_ac = self.client.get(f"/api/runs/{changed['run_id']}/acceptance").json()
+        self.assertEqual(current_ac["items"], [{"id": "APP01", "status": "unmet"}])
+        self.assertTrue(self.store.read_artifact(ready["reports"][0]["artifact_id"]))  # Old evidence remains historical.
         builder = self.worker.claim()
         workspace = self.worker.pipeline.engine.workspace(builder["run_id"], changed["spec_version_id"])
         scope = RoleScope(self.store, issue_grant(self.store, builder, workspace))
