@@ -100,6 +100,11 @@ export function shortDigest(value: string | null | undefined): string {
   return value.startsWith('sha256:') ? `sha256:${hex.slice(0, 12)}…` : `${hex.slice(0, 12)}…`
 }
 
+export function formatClock(iso: string): string {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleTimeString('ko-KR', { hour12: false })
+}
+
 export function formatTime(iso: string): string {
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('ko-KR', { hour12: false })

@@ -52,17 +52,21 @@ export function tallySprint(snapshot: Snapshot, sprint: Sprint): SprintTally {
   }
 }
 
-/** 현재 Sprint는 서버 지정이 아니라 running → ready 작업에서 도출한다(CR-C08). Phase 순서를 따른다. */
+/**
+ * 현재 Sprint는 서버 지정이 아니라 작업 상태에서 도출한다(CR-C08). Phase 순서를 따른다.
+ * running → ready → 실패·차단 → 대기 순으로 찾고, 모두 끝났으면 마지막 Sprint.
+ */
 export function deriveCurrentSprintId(snapshot: Snapshot): string | null {
   const phaseRank = new Map(orderedPhases(snapshot).map((p, i) => [p.id, i]))
   const sprints = [...snapshot.sprints].sort(
     (a, b) => (phaseRank.get(a.phase_id) ?? 0) - (phaseRank.get(b.phase_id) ?? 0),
   )
-  for (const state of ['running', 'ready'] as const) {
-    const hit = sprints.find((s) => snapshot.tasks.some((t) => t.sprint_id === s.id && t.state === state))
+  const priority: Task['state'][][] = [['running'], ['ready'], ['failed', 'blocked'], ['pending']]
+  for (const states of priority) {
+    const hit = sprints.find((s) => snapshot.tasks.some((t) => t.sprint_id === s.id && states.includes(t.state)))
     if (hit) return hit.id
   }
-  return null
+  return sprints.at(-1)?.id ?? null
 }
 
 /** 작업의 대기 이유: 서버 reason 우선, 없으면 끝나지 않은 선행 작업 */

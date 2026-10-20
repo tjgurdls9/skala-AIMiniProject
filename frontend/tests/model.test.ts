@@ -47,9 +47,12 @@ describe('파생 계산', () => {
   test('현재 Sprint는 running 작업이 있는 Sprint에서 도출한다', () => {
     expect(deriveCurrentSprintId(scenario('building').snapshot)).toBe('sp-2')
   })
-  test('running이 없으면 ready 작업의 Sprint, 둘 다 없으면 null', () => {
+  test('running이 없으면 ready → 실패·차단 → 대기 순, 모두 끝났으면 마지막 Sprint', () => {
     expect(deriveCurrentSprintId(scenario('review-split').snapshot)).toBe('sp-3')
-    expect(deriveCurrentSprintId(scenario('succeeded').snapshot)).toBeNull()
+    expect(deriveCurrentSprintId(scenario('failed').snapshot)).toBe('sp-3')
+    expect(deriveCurrentSprintId(scenario('release-approval').snapshot)).toBe('sp-5')
+    expect(deriveCurrentSprintId(scenario('succeeded').snapshot)).toBe('sp-5')
+    expect(deriveCurrentSprintId({ ...scenario('succeeded').snapshot, sprints: [] })).toBeNull()
   })
   test('Sprint 집계는 작업 상태별 수와 AC 정의 수만 낸다', () => {
     const snap = scenario('building').snapshot
@@ -129,6 +132,10 @@ describe('오류 모델', () => {
     expect(toApiError(500, null).code).toBe('BAD_RESPONSE')
     expect(toApiError(409, { error: { code: 'MADE_UP', message: 'x' } }).code).toBe('BAD_RESPONSE')
     expect(toApiError(409, { error: { code: 'COMMAND_CONFLICT', message: '' } }).message).toBe('요청 실패 (409)')
+  })
+  test('본문 없는 게이트웨이 오류는 연결 실패로, http.Error가 있으면 그 코드로 본다', () => {
+    expect(toApiError(502, null).code).toBe('NETWORK')
+    expect(toApiError(503, { error: { code: 'TEMPORARILY_UNAVAILABLE', message: '점검' } }).code).toBe('TEMPORARILY_UNAVAILABLE')
   })
   test('모든 코드에 다음 행동 안내가 있다', () => {
     const codes = ['VERSION_CONFLICT', 'COMMAND_CONFLICT', 'REPLAY_READ_ONLY', 'RUNTIME_UNAVAILABLE', 'UNAUTHORIZED', 'NETWORK', 'EXAMPLE_NOOP', 'NOT_FOUND'] as const

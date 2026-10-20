@@ -36,6 +36,10 @@ export function toApiError(status: number, body: unknown): ApiError {
     const version = typeof err.current_state_version === 'number' ? err.current_state_version : undefined
     return new ApiError(status, err.code as ApiErrorCode, message, version)
   }
+  // 개발 프록시가 API 서버에 닿지 못하면 http.Error 없이 502/503/504를 준다: 연결 실패로 본다
+  if (status === 502 || status === 503 || status === 504) {
+    return new ApiError(status, 'NETWORK', `API 서버에 연결하지 못했습니다 (${status})`)
+  }
   return new ApiError(status, 'BAD_RESPONSE', `서버 응답을 해석할 수 없습니다 (${status})`)
 }
 

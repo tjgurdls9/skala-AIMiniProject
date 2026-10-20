@@ -14,7 +14,7 @@ export interface PendingCommand {
   receipt: CommandReceipt | null
 }
 
-type CommandInput =
+export type CommandInput =
   | { action: 'decide'; payload: DecisionPayload }
   | { action: 'request_changes'; payload: ChangePayload }
   | { action: 'pause' | 'resume' | 'cancel'; payload: Record<string, never> }

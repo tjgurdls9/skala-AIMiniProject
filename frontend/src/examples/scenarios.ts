@@ -1,5 +1,5 @@
 // 합성 예시 시나리오 — 화면 상태를 보여주기 위한 것이며 실제 실행·기록 재생이 아니다.
-import type { Environment, RunEvent, Snapshot } from '../api/types'
+import type { Environment, ReleaseTarget, RunEvent, Snapshot } from '../api/types'
 import {
   CANDIDATE, PLAN_APPROVAL_DONE, PLAN_APPROVAL_PENDING, PLAN_VIEW, SPEC_V1,
   buildEvents, buildSnapshot, buildTasks, fakeDigest, report, type SnapshotInput,
@@ -68,8 +68,8 @@ function scenario(
 
 const STAGING: Environment = { id: 'env-staging', label: '스테이징 (합성)', exposure: 'private' }
 
-const RELEASE_TARGET = {
-  gate: 'release' as const,
+const RELEASE_TARGET: ReleaseTarget = {
+  gate: 'release',
   spec_version_id: SPEC_V1,
   plan_digest: fakeDigest('d0'),
   commit_sha: CANDIDATE.commit,
