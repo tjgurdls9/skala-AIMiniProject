@@ -1,0 +1,191 @@
+/* 디자인 토큰. light/dark는 표시 옵션, office는 시각화 테마(현재 유일)다. */
+:root {
+  color-scheme: light;
+  --font: system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --bg: #f4f1ea;
+  --surface: #fffdf8;
+  --surface-2: #ece8de;
+  --ink: #1d2320;
+  --ink-2: #4b534e;
+  --ink-3: #6c736e;
+  --line: #d6d0c3;
+  --focus: #1f5fbf;
+
+  --office-floor: #dfe6dd;
+  --office-wall: #c3cfc2;
+  --office-desk: #b59f80;
+  --office-room-line: #8fa08e;
+
+  --role-planner: #2f64ad;
+  --role-supervisor: #56606a;
+  --role-builder: #157f7a;
+  --role-validator: #7451b3;
+  --role-security: #94650f;
+  --role-release: #3f7230;
+
+  --tone-neutral: #5d6560;
+  --tone-active: #1d63ad;
+  --tone-ok: #2b7444;
+  --tone-warn: #9a5800;
+  --tone-danger: #b0261d;
+  --tone-wait: #5d5a8c;
+
+  --example: #8a4b00;
+  --example-bg: #fff1d6;
+  --replay: #3c4f9a;
+  --replay-bg: #e5e9fb;
+  --live: #1f6b3a;
+  --live-bg: #def3e4;
+
+  --radius: 8px;
+  --gap: 16px;
+  --tap: 44px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121619;
+  --surface: #1a1f23;
+  --surface-2: #232a2f;
+  --ink: #e9e7e0;
+  --ink-2: #b4bab5;
+  --ink-3: #8f9792;
+  --line: #374046;
+  --focus: #8ab4ff;
+
+  --office-floor: #222b27;
+  --office-wall: #33403a;
+  --office-desk: #6e5c45;
+  --office-room-line: #5d7262;
+
+  --role-planner: #7fa8e8;
+  --role-supervisor: #a3adb6;
+  --role-builder: #5cc4bd;
+  --role-validator: #b597ea;
+  --role-security: #d9a54a;
+  --role-release: #8fc47a;
+
+  --tone-neutral: #a8afaa;
+  --tone-active: #7fb2f0;
+  --tone-ok: #75c48e;
+  --tone-warn: #f0a640;
+  --tone-danger: #ff8a7f;
+  --tone-wait: #aeaadf;
+
+  --example: #ffc46b;
+  --example-bg: #3a2a10;
+  --replay: #a8b8ff;
+  --replay-bg: #1e2647;
+  --live: #7fd69a;
+  --live-bg: #143222;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.55 var(--font);
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+h1, h2, h3, h4 { margin: 0; line-height: 1.3; }
+h2 { font-size: 1.05rem; }
+h3 { font-size: 0.95rem; }
+p { margin: 0; }
+code, .mono { font-family: var(--mono); font-size: 0.85em; }
+button, input, textarea, select { font: inherit; color: inherit; }
+
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+.btn {
+  min-height: var(--tap);
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.btn:hover:not(:disabled) { background: var(--surface-2); }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.btn.primary:hover:not(:disabled) { background: var(--ink-2); }
+.btn.danger { color: var(--tone-danger); border-color: currentColor; }
+.btn.small { min-height: 36px; padding: 0 10px; font-size: 0.9rem; }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  min-width: 0;
+}
+.panel > header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+
+.muted { color: var(--ink-3); }
+.small { font-size: 0.875rem; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.tone { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+.tone-neutral { color: var(--tone-neutral); }
+.tone-active { color: var(--tone-active); }
+.tone-ok { color: var(--tone-ok); }
+.tone-warn { color: var(--tone-warn); }
+.tone-danger { color: var(--tone-danger); }
+.tone-wait { color: var(--tone-wait); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line);
+  font-size: 0.8rem; background: var(--surface-2); white-space: nowrap;
+}
+
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; }
+.kv dt { color: var(--ink-3); font-size: 0.875rem; }
+.kv dd { margin: 0; min-width: 0; }
+
+ul.plain, ol.plain { list-style: none; margin: 0; padding: 0; }
+
+dialog.sheet {
+  width: min(760px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+}
+dialog.sheet::backdrop { background: rgb(10 14 12 / 0.55); }
+dialog.sheet .sheet-head { position: sticky; top: 0; background: var(--surface); padding: 16px 20px 10px; border-bottom: 1px solid var(--line); z-index: 1; }
+dialog.sheet .sheet-body { padding: 16px 20px; display: grid; gap: 16px; }
+dialog.sheet .sheet-foot {
+  position: sticky; bottom: 0; background: var(--surface); padding: 12px 20px 16px;
+  border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end;
+}
+
+textarea { width: 100%; min-height: 96px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); resize: vertical; }
+input[type="text"] { width: 100%; min-height: var(--tap); padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); }
+label.field { display: grid; gap: 4px; font-weight: 600; }
+label.field > span.hint { font-weight: 400; }
+
+.error-box { border: 1px solid var(--tone-danger); border-left-width: 4px; border-radius: var(--radius); padding: 10px 12px; background: var(--surface); }
+.info-box { border: 1px solid var(--line); border-left: 4px solid var(--tone-active); border-radius: var(--radius); padding: 10px 12px; background: var(--surface-2); }
+
+/* 터치 화면에서는 작은 조작 요소도 44px 이상 */
+@media (pointer: coarse) {
+  .btn.small, button { min-height: var(--tap); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
