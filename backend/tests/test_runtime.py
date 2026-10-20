@@ -245,7 +245,7 @@ class RuntimeChecks(unittest.TestCase):
         self.worker.model = Duplicate()
         asyncio.run(self.worker.tick())
         result = self.store.snapshot(snapshot["run_id"])
-        self.assertEqual(result["state"], "failed")
+        self.assertEqual(result["state"], "needs_input")
         self.assertFalse(result["approvals"])
 
 

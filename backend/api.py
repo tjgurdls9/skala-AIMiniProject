@@ -118,7 +118,7 @@ def create_app(settings=None, store=None, model=None):
             value["reasons"].append("실행기 heartbeat가 없습니다.")
         if status != "ready":
             value["reasons"].append("명시적으로 설정한 로컬 Qwen/DeepSeek 모델이 필요합니다.")
-        value["reasons"].append("현재 LIVE는 기획·승인까지 지원합니다. 생성 앱 구현·독립 검토·배포는 아직 비활성입니다.")
+        value["reasons"].append("작은 문의 앱 템플릿만 지원합니다. 격리 이미지·취약점 DB 준비가 필요하며 실제 배포는 비활성입니다.")
         validate("Runtime", value)
         return value
 
@@ -192,6 +192,12 @@ def create_app(settings=None, store=None, model=None):
     async def command(run_id: str, request: Request):
         value = await asyncio.to_thread(request.app.state.store.command, run_id, await payload(request, "Command"))
         validate("CommandReceipt", value)
+        return value
+
+    @app.get("/api/runs/{run_id}/acceptance")
+    def acceptance(run_id: str, request: Request):
+        value = request.app.state.store.acceptance_status(run_id)
+        validate("AcceptanceStatus", value)
         return value
 
     @app.get("/api/runs/{run_id}/events")

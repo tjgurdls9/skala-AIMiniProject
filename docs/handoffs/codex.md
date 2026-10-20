@@ -1,5 +1,42 @@
 # Codex CLI 인계 — 공통 준비·백엔드·런타임
 
+## 최신 진행 — 2026-10-20, D3–D8 연결
+
+아래는 이전 기록에 우선한다. 공통 준비 상태는 `READY_FOR_PARALLEL_IMPLEMENTATION`이다. **제품 완주·보안 PASS·실제 배포 완료는 아니다.** 원본 main에서 제품 코드를 수정하지 않았고 frontend 소스도 수정하지 않았다.
+
+- 기준/경로/브랜치: 공통 기준 `6cc9a0bd8c0e382f4a53a5e4a5fa32c7f5e04b18`; Codex `/Users/seohyeokin/workspace/skala-AIMiniProject/.worktrees/codex-runtime` / `work/codex-runtime`; Claude `/Users/seohyeokin/workspace/skala-AIMiniProject/.worktrees/claude-office` / `work/claude-office`.
+- protocol v1 SHA256 유지: `ad6decc2849e1eb80af54b557c7cc61ee05e7ac2b70e92abdddeedd3990bb07d`.
+- HTTP v1 SHA256: `a7f384026fbde0f6dfe0c29f853c42911b000fefa0a95ee792424fb5dc909b4f`. `AcceptanceStatus`와 GET 경로만 추가했다. 기존 Snapshot/Command/Event는 변경하지 않았다. 소비자 타입/생성 해시 갱신은 Claude가 해야 한다.
+
+### 구현·검사 결과
+
+1. 단일 추론 슬롯·로컬 Qwen3.5:4b를 실제 설치/호출했다. 각 모델 호출은 짧은 LangGraph, 다음 역할은 SQLite 큐다. 모델 서버는 `OLLAMA_NO_CLOUD=1`; 외부 키·유료 fallback·tracing 전송을 사용하지 않았다. 큰 maxLength의 Ollama grammar 400을 실제 발견해 샘플링에서만 제거하고 서버 원본 검증은 유지했다.
+2. `knowledge/**`, `runner/{access,mcp_server}.py`: 출처·버전·역할 ACL을 가진 작은 키워드 코퍼스와 실제 MCP Tool/Resource/Prompt. stdio로 명세/파일 읽기·digest 조건 패치·검색을 호출한다. 임의 shell/홈/환경/Docker socket은 노출하지 않는다. 권한은 실행 시도·lease·상태 버전·담당 파일에 묶이고 중지/인계 뒤 옛 grant는 거절된다.
+3. `templates/requests-v1/**`, `infra/**`, `runner/{sandbox,pipeline,review}.py`: 고정 FastAPI/Vue/SQLite 템플릿, 해시 lock, 비권한 Docker·읽기 전용 root·내부망·자원 제한, 변경 불가 후보 Git/이미지, 후보 밖의 보호된 기능·보안 도구를 연결했다. Vue 원문 MIT·출처/npm 무결성 기록을 동봉했다. 코드 실행은 모델 명령이 아닌 고정 서버 도구다.
+4. 기능·보안은 같은 후보에서 독립 입력/컨테이너로 실행한다. 첫 보고서는 두 번째 검토 완료 전 공개 artifact/event/Snapshot에 싣지 않는다. 원본 보고서는 불변이며 error/not_run/fail은 출시를 막는다. 보안은 정적 AST/비밀 패턴·실제 격리 inspect·Grype 의존성/이미지 검사를 수행한다. 일반 목적 종합 SAST를 구현했다고 주장하지 않는다.
+5. 합성 개발 실제 실행: 요청→모델 기획→**스크립트 테스트 결정(실제 사용자 승인 아님)**→MCP 파일 수정→후보→기능 PASS·보안 FAIL→`needs_input` 출시 차단. 실행 ID `9452916ee2e54a1d95f556b92806fe71`, 후보 commit `6fd73b3a5dff28573b8fa35295de7930e3a4b100`, image `sha256:5eedb568b5d536227a71bc47a6a57ad6f9c7e679cb0e672e2a7bb31e3bb435e7`. DB/모델/캐시는 무시된 `runtime-data/`에만 있다. 가짜 도구 결과나 모델 단독 선언으로 통과를 채우지 않았다.
+6. 프리뷰 operation의 고정 이름·이미지 조회/재개, 별도 hostname `localhost`·sandbox opaque origin/CORS·신뢰 CSP 프록시를 연결했다. 제품 프리뷰는 두 PASS 후에만 발급한다. 별도 개발 fixture에서는 실제 health·CSP·CORS와 브라우저의 Vue iframe 렌더링을 확인했다. 실패한 제품 후보에 프리뷰 artifact를 발급하지 않았다. 자기 fixture 컨테이너/네트워크만 정리하며 데이터 볼륨은 지우지 않는다.
+7. 명시적 CSS 수정은 같은 승인 명세의 새 Sprint·CSS만 쓰기 가능한 grant로 실행하며 옛 검토/출시 승인을 무효화한다. 기능/데이터/API/권한·모호한 요청은 재기획/재승인한다. 원문을 보존한다.
+8. 자체 검사: **22개 통과**(임시 DB·fake 모델/mock 도구 포함, 실제 MCP handshake). pending 보고서 비공개·not_run 차단·후보 불일치 거부·stale 결과/옛 grant 차단·스타일 쓰기 제한·재생 AC 판정 보존 포함. `pip check` 통과. 개발 검사는 제품의 독립 출시 판정이 아니다.
+
+### 실제 환경·남은 차단
+
+- 실제 모델: Ollama 0.33.0 / Qwen3.5:4b. 공개 카탈로그의 Apache 2.0 경로를 사용했다. 모델 파일 약 4GB는 Git에서 제외했다. 단일 추론만 확인했으며 M5/16GB에서 전체 앱 동시 성능·최대 메모리를 보장하지 않는다.
+- 런타임: `sha256:da20ab5363d480d3a78d017a52e74eee77836eaddae29d5305a0ffead5c8aeb7`; base `python@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce`. build 전용 pip/setuptools/wheel을 제거한 뒤에도 **High 55개 패키지-취약점 일치 항목**이 남아 출시를 차단했다. 이는 55개 고유 CVE라는 뜻이 아니다. 실제 악용/적용 가능성은 별도 확인 전이며 자동 비적용/예외 처리를 하지 않았다.
+- Grype v0.121.0 image `sha256:621d56d1d68106b787022c81546f7e0a36202a25d1239f0c20195fab8c16f7ea`, DB v6.1.10, built `2026-10-19T06:39:15Z`, valid 상태. 실제 검사는 오프라인이며 DB 시점·원본 JSON을 보고서에 보존한다. 스캐너 임시 공간 부족도 실제 발견/수정했다.
+- D9–D11: 외부 저장소/자동 배포 트리거/무료 대상/배포 승인·복구 manifest·push/deploy 어댑터와 제출 완주는 **미구현/미확인**이다. 대상 질문은 사용자에게 너무 일찍 드렸음을 정정했으며 지금 답을 요구하지 않는다. 실제 배포 직전에만 구체 대상·권한·승인을 확인한다. 현재 release 결정/외부 배포는 서버에서 비활성이다.
+- 긴 기획 문맥은 4,000 UTF-8 바이트 초과 시 원문 보존 needs_input이며 자동 분해 미구현. 범용 스택·AI/Data 생성·벡터 검색·모델 순위·추가 테마는 미구현이다. 전체 시간/수정 횟수 상한과 강제 PASS는 없다.
+- 오래된/취소된 프리뷰 서비스의 장기 정리·실제 사용자 수정 완주·장시간 재시작/응답 유실 복구·깨끗한 제출 환경 재생·배포는 미확인이다. 데이터 볼륨은 보존한다.
+
+### Claude 계약 응답·필요 요청
+
+- **CR-C09 응답**: `GET /api/runs/{id}/acceptance` → `http.AcceptanceStatus` (`spec_version_id`, `items: [{id,status,report_id?}]`). status는 `unmet|met|failed|not_run`. 현재 명세·공개된 validator 원본/해시에만 연결하며 첫 미확정 검토는 숨긴다. REPLAY는 동결된 원본 판정이다. 보안 FAIL과 개별 기능 AC met는 함께 표시할 수 있으며 전체 출시 통과로 합치지 않는다. 새 타입/해시·API 어댑터·fixture 반영은 Claude 담당이다.
+- **CR-C10 응답**: 계약 §7에 `kind: preview → http.Preview`를 명시했고 실제 발급 본문은 url/origin/commit_sha다.
+- **CR-C11 요청(재생의 읽기 전용)**: `PreviewDialog`는 현재 readOnly여도 외부 iframe을 만든다. REPLAY에서는 iframe을 마운트하지 않고 기록 URL/commit만 표시해 달라. 실행 중 아닌 상태/현재 후보와 다른 옛 프리뷰도 기록임을 명시하고 새 후보 프리뷰로 취급하지 말라. 해당 frontend 소스는 Codex가 고치지 않았다.
+- Claude 인계 `b3a52bc`까지 준비된 커밋을 확인했다. 통합 커밋/확인 결과는 아래 최종 근거에 기록한다. 추가 agent/agy·세션 자동 전달·터미널 거절 우회를 하지 않았다.
+
+아래 D1·이전 기록의 미연결/모델 부재 문구는 당시 이력이다.
+
 ## 현재 상태 — 2026-10-20
 
 `READY_FOR_PARALLEL_IMPLEMENTATION` — Git 연결·두 브랜치/worktree·초안 보존을 실제 완료했다. Claude는 자기 worktree에서 예시 기반 F0–F5/F7을 시작할 수 있다. LIVE 연결은 아래 D1 제공자 계약을 명시 반영한 뒤 수행한다. 소비자 통합 확인은 아직 남았다. 제품 구현 완료·검토 PASS·배포 완료 신호가 아니다.

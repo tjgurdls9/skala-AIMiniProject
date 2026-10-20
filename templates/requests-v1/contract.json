@@ -1,0 +1,1 @@
+{"template":"requests-v1","endpoints":["GET /health","GET /api/items","POST /api/items","PATCH /api/items/{id}"],"status":["open","done"],"protected_checks":["health","create","list","update","invalid_input","persistent_storage"],"limitations":["Single local operator; synthetic data only","No external APIs, auth, arbitrary stacks or package changes"]}

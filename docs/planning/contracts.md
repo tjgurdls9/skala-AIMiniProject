@@ -96,8 +96,9 @@
 | `GET /api/replays` | 200 `http.ReplayRecordings`. 같은 운영자의 실제 LIVE 원장 목록, 없으면 `[]` |
 | `GET /api/runtime` | 200 `http.Runtime`. 기존 초안의 세부 필드/상태를 유지 |
 | `GET /api/runs/{id}` | 200 `protocol.Snapshot` |
+| `GET /api/runs/{id}/acceptance` | 200 `http.AcceptanceStatus`. 현재 명세의 AC별 판정과 근거 report ID. 두 검토 수집 전에는 `unmet`이며 미확정 단일 판정을 공개하지 않음 |
 | `POST /api/runs/{id}/commands` | `protocol.Command` → 202 `http.CommandReceipt`. `status: accepted`, 완료 의미 아님 |
-| `GET /api/artifacts/{id}` | spec 종류는 `http.PlanView`. 다른 종류는 해당 산출물 JSON; 임의 HTML 실행/경로 다운로드 없음 |
+| `GET /api/artifacts/{id}` | `kind: spec` → `http.PlanView`, `kind: preview` → `http.Preview`. 다른 종류는 해당 산출물 JSON; 임의 HTML 실행/경로 다운로드 없음 |
 | `GET /api/environments/{id}` | 환경 미설정이므로 현재 404 `http.Error`. 환경 연결 시 `http.Environment` |
 | `GET /api/contracts/{name}` | 번들된 두 스키마의 원문. schema 내 상대 참조를 같은 경로에서 해석 |
 
@@ -110,7 +111,7 @@
 - 브라우저는 `POST /api/session`으로 연결한다. 정확히 허용한 로컬 Origin을 검사한 후 8시간짜리 무작위 세션을 `HttpOnly; SameSite=Strict; Path=/api` 쿠키로 발급한다. 자격 증명을 입력하거나 번들·URL·localStorage에 넣지 않는다. CSRF 토큰은 JSON으로 받으며 메모리에서만 보관한다.
 - 이후 POST/DELETE 등 변경 요청에는 `X-CSRF-Token`과 같은 Origin이 필요하다. EventSource는 쿠키로 인증한다. 새로고침 시 `GET /api/session`으로 CSRF를 읽고, 401이면 다시 로컬 연결한다. 서버 재시작 시 세션은 폐기된다. 로그아웃/만료 뒤 SSE도 종료한다.
 - 이 흐름은 신뢰한 로컬 origin/프로세스를 운영자로 취급하는 개인 로컬 모드다. 공용 서버·다중 사용자 로그인은 아니다. 기존 CLI Bearer 인증은 서버 설정 `LIFECYCLE_TOKEN`으로만 남긴다. 미설정 시 서버 메모리에서 무작위 생성하며 출력하지 않는다.
-- 생성 앱 프리뷰는 아직 없다. 향후 프리뷰는 부모 쿠키가 전달되지 않는 별도 hostname/격리 origin을 사용해야 한다. 같은 hostname의 다른 port만으로 쿠키가 격리된다고 간주하지 않는다.
+- 생성 앱 프리뷰는 `http://localhost:<서버 할당 포트>`를 사용하고 호스트에는 `127.0.0.1`로만 바인딩한다. 운영자 화면은 `127.0.0.1:5173`이다. 다른 hostname과 sandbox iframe(allow-same-origin 없음)으로 부모 쿠키를 격리한다. 프록시는 opaque iframe의 `Origin: null` CORS만 허용하며 credentials를 허용하거나 전달하지 않는다. REPLAY에서는 외부 프리뷰 iframe을 열지 않고 주소·커밋의 기록만 표시해야 한다.
 
 ### SSE cursor와 heartbeat (CR-C05)
 
@@ -124,6 +125,8 @@
 
 정규화는 `json.dumps(sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)`의 UTF-8 바이트다. 문자열 Unicode는 정규화하지 않고 원문 코드포인트를 보존한다. `plan_digest`는 서버가 기록한 PlanView의 SHA256, `target_digest`는 승인 target 객체의 SHA256이다. 브라우저가 해시를 다시 만들지 않는다.
 
-현재 Sprint는 프론트가 running/ready 작업에서 도출하고 도출임을 표시한다. 중지는 명령 접수와 실제 Snapshot으로 확인한다. worker는 명세/상태 버전·lease를 재검사해 중지/변경 이전의 늦은 결과를 반영하지 않는다. 구현/배포용 외부 operation은 아직 없으므로 결과 불명 외부 작업을 가짜로 만들지 않는다.
+현재 Sprint는 프론트가 running/ready 작업에서 도출하고 도출임을 표시한다. 중지는 명령 접수와 실제 Snapshot으로 확인한다. worker와 MCP 권한은 명세/상태 버전·시도·lease를 재검사해 중지/변경 이전의 쓰기·늦은 결과를 반영하지 않는다. 프리뷰 operation은 서버가 발급한 컨테이너 이름·이미지와 상태를 조회해 재개한다. 외부 Git/배포 operation은 미구현이다.
 
-현재 LIVE 제공 범위는 기획 생성·승인·중지/재개·수정 원문 보존·재기획이다. 격리 구현기가 없어 기획 승인 후에는 `waiting_resource`로 대기한다. 생성 앱·두 검토·프리뷰·배포는 미연결이고 runtime에서도 비활성임을 표시한다. 변경 scope 분류가 검증되기 전에는 `implementation` 요청도 보수적으로 재기획/재승인한다. 이는 AC06 전체 구현 완료가 아니다.
+현재 LIVE는 작은 문의 CRUD 템플릿의 기획→승인→MCP 파일 패치→고정 Git 후보/이미지→독립 기능/보안 검사까지 연결한다. 두 검토가 같은 후보에서 pass일 때만 프리뷰를 발급한다. 스캐너/DB 미준비·만료·오류는 통과가 아니다. 보안 취약점은 실제 검사 결과에 따라 출시를 막는다. 실제 배포는 비활성이다.
+
+프리뷰 상태의 `scope: implementation` 요청 중 명시적인 색·여백·폰트·레이아웃 변경만 CSS 쓰기 권한을 가진 새 Sprint로 보낸다. 기존 기획 승인은 유지하고 검토·출시 승인은 무효화한다. 기능/API/데이터/권한 변경 및 모호한 요청은 원문을 보존하고 재기획·재승인한다. 수정 후보는 같은 두 검토를 새로 받아야 한다.

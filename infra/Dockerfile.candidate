@@ -1,0 +1,4 @@
+ARG RUNTIME_IMAGE
+FROM ${RUNTIME_IMAGE}
+COPY --chown=65534:65534 app_backend /app/app_backend
+COPY --chown=65534:65534 app_frontend /app/app_frontend

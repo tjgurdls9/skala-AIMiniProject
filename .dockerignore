@@ -1,0 +1,6 @@
+*
+!templates/
+!templates/requests-v1/
+!templates/requests-v1/requirements.lock
+!infra/
+!infra/Dockerfile.runtime

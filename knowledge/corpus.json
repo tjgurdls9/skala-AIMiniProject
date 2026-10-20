@@ -1,0 +1,6 @@
+[
+  {"path":"docs/planning/contracts.md","url":"project://contracts/v1","version":"v1","license":"project-local","roles":["planner","builder","validator","security"]},
+  {"path":"knowledge/sandbox.md","url":"https://docs.docker.com/engine/containers/run/","version":"2026-10-20","license":"project-authored-notes","roles":["builder","validator","security"]},
+  {"path":"knowledge/validation.md","url":"project://validation-policy/v1","version":"v1","license":"project-authored","roles":["validator"]},
+  {"path":"knowledge/security.md","url":"project://security-policy/v1","version":"v1","license":"project-authored","roles":["security"]}
+]

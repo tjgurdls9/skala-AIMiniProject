@@ -3,21 +3,47 @@
 import asyncio
 import hashlib
 import json
+import os
 import time
 
 import httpx
 
 from backend.config import Settings
-from backend.contracts import ROOT, SCHEMAS, SECRET, canonical, digest, require, validate
+from backend.contracts import ROOT, SCHEMAS, SECRET, DomainError, canonical, digest, require, validate
 from backend.store import Store, now, uid
 from runner.model import ModelUnavailable, Ollama
+from runner.pipeline import Pipeline
+
+# This product has no permission to export prompts to a tracing service.
+os.environ["LANGSMITH_TRACING"] = "false"
+os.environ["LANGCHAIN_TRACING_V2"] = "false"
+from langgraph.graph import END, START, StateGraph
 
 POLICY = "Local Ollama Qwen/DeepSeek only; no paid fallback or external API."
 
 
+def failure_reason(error):
+    if isinstance(error, ExceptionGroup) and len(error.exceptions) == 1:
+        return failure_reason(error.exceptions[0])
+    if isinstance(error, (ModelUnavailable, httpx.HTTPError, MemoryError)):
+        return "waiting_resource", "로컬 모델 또는 자원을 확인하고 재개하세요."
+    if isinstance(error, DomainError):
+        state = "waiting_resource" if error.code in ("RUNTIME_UNAVAILABLE", "TEMPORARILY_UNAVAILABLE") else "needs_input"
+        return state, error.message
+    return "failed", "역할 출력 또는 처리 오류입니다. 입력과 계약을 확인한 뒤 재개하세요."
+
+
 class Worker:
-    def __init__(self, store, model):
+    def __init__(self, store, model, settings=None):
         self.store, self.model, self.owner = store, model, uid()
+        self.pipeline = Pipeline(store)
+        async def role_step(state):
+            return {"result": await self.model.generate(state["packet"], state["schema"])}
+        graph = StateGraph(dict)
+        graph.add_node("role", role_step)
+        graph.add_edge(START, "role")
+        graph.add_edge("role", END)
+        self.role_graph = graph.compile()
 
     def heartbeat(self):
         with self.store.transaction() as db:
@@ -44,7 +70,7 @@ class Worker:
             for row in db.execute("SELECT * FROM jobs WHERE state='pending' ORDER BY rowid"):
                 snapshot = self.store.load(db, row["run_id"])
                 if (snapshot["mode"] != "live" or row["version"] != snapshot["state_version"] or
-                        snapshot["state"] not in ("planning", "building")):
+                        row["role"] not in {"planning": {"planner"}, "building": {"builder"}, "reviewing": {"validator", "security"}, "preview_ready": {"release"}}.get(snapshot["state"], set())):
                     db.execute("UPDATE jobs SET state='superseded' WHERE id=?", (row["id"],))
                     continue
                 spec = db.execute("SELECT package FROM specs WHERE run_id=? ORDER BY rowid DESC LIMIT 1", (row["run_id"],)).fetchone()
@@ -66,7 +92,13 @@ class Worker:
                               mandatory_policy=POLICY, permissions=["propose_plan"] if row["role"] == "planner" else [],
                               unresolved_failures=[snapshot["reason"]] if snapshot.get("reason") else [],
                               next_action="Propose one plan. Preserve corrections, list assumptions; never approve or execute tools.",
+                              options=json.loads(row["context"] or "{}").get("options", {}),
+                              template_contract=json.loads((ROOT / "templates/requests-v1/contract.json").read_text()),
                               recheck=POLICY)
+                if row["role"] == "planner":
+                    packet["next_action"] = ("Propose the smallest plan supported by template_contract. Clearly state limitations and assumptions. "
+                        "Use observable API acceptance criteria only: health, create, list, update, invalid_input, persistent_storage. "
+                        "No AI/auth/payment or other stacks. Unsupported requests must be listed in non_goals and require operator clarification. Never approve or execute.")
                 attempt = uid()
                 db.execute("UPDATE jobs SET state='running', context=? WHERE id=?", (canonical(packet), row["id"]))
                 db.execute("INSERT INTO attempts VALUES (?, ?, ?, ?, ?)", (attempt, row["id"], self.owner, canonical(packet), now()))
@@ -78,14 +110,14 @@ class Worker:
             snapshot = self.store.load(db, job["run_id"])
             row = db.execute("SELECT state FROM jobs WHERE id=?", (job["id"],)).fetchone()
             return (self.owns(db) and row[0] == "running" and snapshot["state_version"] == job["version"] and
-                    snapshot["mode"] == "live" and snapshot["state"] in ("planning", "building"))
+                    snapshot["mode"] == "live" and snapshot["state"] in ("planning", "building", "reviewing", "preview_ready", "deploying"))
 
     def finish(self, job, proposal=None, failure=None):
         with self.store.transaction() as db:
             row = db.execute("SELECT state FROM jobs WHERE id=?", (job["id"],)).fetchone()
             snapshot = self.store.load(db, job["run_id"])
             if (not self.owns(db) or row[0] != "running" or snapshot["state_version"] != job["version"] or
-                    snapshot["mode"] != "live" or snapshot["state"] not in ("planning", "building")):
+                    snapshot["mode"] != "live" or snapshot["state"] not in ("planning", "building", "reviewing", "preview_ready", "deploying")):
                 db.execute("INSERT OR IGNORE INTO attempt_results VALUES (?, 'superseded', ?)", (job["attempt_id"], now()))
                 return False
             if failure:
@@ -99,7 +131,8 @@ class Worker:
                         "INVALID_COMMAND", "AC ID는 중복될 수 없습니다.", 422)
                 spec_id = uid()
                 package = {**proposal, "spec_version_id": spec_id, "stack": ["FastAPI", "Vue 3", "SQLite"],
-                           "repository": None, "deployment": None, "free_policy": POLICY, "allowed_tools": [],
+                           "repository": None, "deployment": None,
+                           "free_policy": POLICY, "allowed_tools": ["read_file", "patch_file", "container_checks"],
                            "contract_digests": {name: "sha256:" + hashlib.sha256((ROOT / "docs/planning" / name).read_bytes()).hexdigest()
                                                 for name in SCHEMAS}}
                 validate("PlanView", package)
@@ -118,10 +151,7 @@ class Worker:
                                              depends_on=[], acceptance_ids=[a["id"] for a in proposal["acceptance"]], artifact_ids=[]))
                 self.store.save(db, snapshot, "plan_proposed", "기획 초안이 생성됐습니다. 내용을 확인하고 승인하세요.")
             else:
-                # shortcut: isolated build tools are not connected, enable after D5 sandbox checks.
-                db.execute("UPDATE runs SET resume_state='building' WHERE id=?", (snapshot["run_id"],))
-                snapshot.update(state="waiting_resource", reason="격리 구현 실행기가 아직 연결되지 않았습니다. 구현 완료가 아닙니다.")
-                self.store.save(db, snapshot, "resource_wait", snapshot["reason"])
+                raise ValueError("Role must finish through its pipeline step")
             db.execute("UPDATE jobs SET state='finished' WHERE id=?", (job["id"],))
             db.execute("INSERT INTO attempt_results VALUES (?, ?, ?)",
                        (job["attempt_id"], "failed" if failure else "finished", now()))
@@ -132,40 +162,48 @@ class Worker:
         if not job:
             return False
         try:
+            if job["role"] == "builder":
+                await self.pipeline.build(job, self)
+                return True
+            if job["role"] in ("validator", "security"):
+                await self.pipeline.review(job, self)
+                return True
+            if job["role"] == "release":
+                await self.pipeline.release(job, self)
+                return True
             proposal = None
             if job["role"] == "planner":
                 # shortcut: conservative byte budget, replace with model tokenizer before longer contexts.
                 if len(canonical(job["packet"]).encode()) > 4000:
                     await asyncio.to_thread(self.finish, job, failure=("needs_input", "문맥이 입력 예산을 초과했습니다. 필수 조건을 삭제하지 않고 작업 분해를 기다립니다."))
                     return True
-                if not await asyncio.to_thread(self.current, job):
-                    await asyncio.to_thread(self.finish, job)
-                    return True
-                generation = asyncio.create_task(self.model.generate(job["packet"], SCHEMAS["http.v1.schema.json"]["$defs"]["PlanDraft"]))
-                try:
-                    while not generation.done():
-                        if not await asyncio.to_thread(self.current, job):
-                            generation.cancel()
-                            break
-                        await asyncio.sleep(0.2)
-                    proposal = await generation
-                except asyncio.CancelledError:
-                    if asyncio.current_task().cancelling():
-                        raise
-                    await asyncio.to_thread(self.finish, job)
-                    return True
-                finally:
-                    if not generation.done():
-                        generation.cancel()
-                    await asyncio.gather(generation, return_exceptions=True)
+                proposal = await self.infer(job, job["packet"], SCHEMAS["http.v1.schema.json"]["$defs"]["PlanDraft"])
                 validate("PlanDraft", proposal)
                 require(not SECRET.search(canonical(proposal)), "INVALID_COMMAND", "모델 출력에 비밀정보가 포함됐습니다.", 422)
             await asyncio.to_thread(self.finish, job, proposal)
-        except (ModelUnavailable, httpx.HTTPError, MemoryError):
-            await asyncio.to_thread(self.finish, job, failure=("waiting_resource", "로컬 모델 또는 자원을 확인하고 재개하세요."))
-        except Exception:
-            await asyncio.to_thread(self.finish, job, failure=("failed", "역할 출력 또는 처리 오류입니다. 입력과 계약을 확인한 뒤 재개하세요."))
+        except Exception as error:
+            await asyncio.to_thread(self.finish, job, failure=failure_reason(error))
         return True
+
+    async def infer(self, job, packet, schema):
+        if not await asyncio.to_thread(self.current, job):
+            raise ModelUnavailable("Attempt superseded")
+        generation = asyncio.create_task(self.role_graph.ainvoke({"packet": packet, "schema": schema}))
+        try:
+            while not generation.done():
+                if not await asyncio.to_thread(self.current, job):
+                    generation.cancel()
+                    break
+                await asyncio.sleep(0.2)
+            return (await generation)["result"]
+        except asyncio.CancelledError:
+            if asyncio.current_task().cancelling():
+                raise
+            raise ModelUnavailable("Attempt superseded")
+        finally:
+            if not generation.done():
+                generation.cancel()
+            await asyncio.gather(generation, return_exceptions=True)
 
     async def run(self):
         require(await asyncio.to_thread(self.heartbeat), "RUNTIME_UNAVAILABLE", "다른 실행기가 lease를 보유하고 있습니다.")
@@ -188,4 +226,4 @@ class Worker:
 
 if __name__ == "__main__":
     settings = Settings.from_env()
-    asyncio.run(Worker(Store(settings.database), Ollama(settings.model, settings.ollama_url)).run())
+    asyncio.run(Worker(Store(settings.database), Ollama(settings.model, settings.ollama_url), settings).run())
