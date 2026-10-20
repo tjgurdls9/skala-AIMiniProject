@@ -1,105 +1,105 @@
 # Claude CLI 인계 — 사무실 프론트엔드
 
-담당: `frontend/**`, 프론트 의존성·lock, `frontend/src/generated/**`(계약에서 생성), `frontend/src/examples/**`, `frontend/README.md`, 이 파일. 백엔드·runner·Infra·공유 계약·루트 파일은 수정하지 않는다. 추가 에이전트는 기동하지 않았다.
+담당: `frontend/**`(의존성·lock·생성 타입·예시 포함)와 이 파일. 백엔드·runner·Infra·공유 계약·루트 파일은 수정하지 않았다. 추가 에이전트는 기동하지 않았다.
 
 ## 현재 상태 — 2026-10-20
 
-`WAITING_FOR_WORKSPACE` — 코드 착수 전.
+`FRONTEND_EXAMPLES_AND_LIVE_ADAPTER_READY` — 아래 두 단계를 구분한다.
 
-- `docs/handoffs/codex.md` 상태가 `BOOTSTRAP_REQUIRED`다. 원본은 Git 저장소가 아니며 `.worktrees/claude-office`도 없다.
-- 협업 §7-3과 Codex 인계에 따라, 원본에서 코딩하거나 `git init/switch`를 하지 않았다. `frontend/` 디렉터리도 만들지 않았다.
-- 이 세션의 산출물은 이 파일 하나다. 기준 커밋: 없음.
-- `READY_FOR_PARALLEL_IMPLEMENTATION`, 기준 커밋, claude-office worktree 절대 경로가 Codex 인계에 기록되면 그 worktree에서만 착수한다.
+| 단계 | 상태 |
+|---|---|
+| 합성 예시 기반 화면(F0–F5, F7) | 구현했다. 브라우저에서 1440/1024/390px, 다크, 모션 감소를 확인했다 |
+| 실제 API 연결(F6) | 어댑터를 구현했다. Codex `a70a7b1`의 scratchpad 사본 서버로 세션·runtime·replays·404를 확인했다. 모델·실행기가 없어 LIVE 실행 생성 → 기획 승인 → SSE 반영 흐름은 확인하지 못했다 |
 
-## 읽은 입력
+제품 완료, 독립 검증·보안 PASS, 배포 완료를 뜻하지 않는다. 이 세션의 자기 점검은 독립 판정이 아니다.
 
-- `DEVELOPMENT_AGENT_DESIGN.md`, `docs/planning/{requirements,experience,contracts,collaboration}.md`, `acceptance.md`(AC03–07, AC16–19, §3 실패 시나리오), `docs/prompts/CLAUDE_IMPLEMENTATION.md`, `docs/handoffs/codex.md`
-- 계약 스키마 `docs/planning/protocol.v1.schema.json`
-  - SHA256 `ad6decc2849e1eb80af54b557c7cc61ee05e7ac2b70e92abdddeedd3990bb07d` (10472 bytes, 원본 폴더 기준, 커밋 미확정)
-- 원본의 `backend/api.py`는 커밋·인계 전 진행 중인 코드다. 계약 요청 중복을 피하려고 경로·오류 형태만 읽기 전용으로 확인했다. 이를 확정 계약으로 소비하지 않는다.
+## 기준·브랜치·계약
 
-## 착수 시 구현 계획 (worktree 준비 후)
+| 항목 | 값 |
+|---|---|
+| worktree | `/Users/seohyeokin/workspace/skala-AIMiniProject/.worktrees/claude-office` |
+| 브랜치 | `work/claude-office` (push 안 함) |
+| 공통 기준 | `6cc9a0bd8c0e382f4a53a5e4a5fa32c7f5e04b18` |
+| 계약 반영 | `2403a0e`를 cherry-pick해 `f151930`으로 반영했다. 충돌은 `docs/handoffs/codex.md` 한 곳뿐이었다. Codex의 `2403a0e` 버전을 수정 없이 채택해 해소했다. 계약 두 파일은 변경 없이 반영했다 |
+| protocol v1 SHA256 | `ad6decc2849e1eb80af54b557c7cc61ee05e7ac2b70e92abdddeedd3990bb07d` |
+| http v1 SHA256 | `9a10711627ee332f39e933caec4e1244de7bf679a0e88ce48b48c94e3d41f945` (Codex 인계의 D1 해시와 일치) |
+| 프론트 커밋 | `968bbe9` 기반 계층(타입·출처·예시·useRun) / `046f02c` 화면·테스트 / 이 인계 커밋 |
 
-구성: Vue 3 + Vite + TypeScript. 상태 프레임워크·3D 엔진·외부 폰트는 쓰지 않는다. 소비자 타입은 `json-schema-to-typescript`(버전 고정, devDependency)로 스키마에서 `src/generated/protocol.ts`를 생성한다.
+## 변경 파일
 
-| 묶음 | 내용 | 관련 AC |
-|---|---|---|
-| F0 | 프로젝트 골격, 타입 생성 스크립트, 출처 어댑터 경계(`example` / `live` / `replay`) — UI는 같은 Snapshot을 소비 | — |
-| F1 | 합성 예시 Snapshot·Event 세트: 빈 상태, 기획 승인 대기, 구현 중, 검증 통과·보안 실패, 프리뷰, 배포 승인 대기, 무료 소진·자원 대기, 실패, 중지. 화면 고정 배지 “합성 예시 · 실제 실행 아님”. 예시 조작은 로컬 상태만 바꾸고 외부 효과 없음 | AC16 |
-| F2 | 상단 바(출처 배지 LIVE/실제 REPLAY/합성, 상태, 명세 버전, 항상 보이는 중지), 프로젝트→Phase→Sprint→작업→아티팩트 트리, Sprint 집계 지도, 작업 수 진행과 AC를 분리 표시 | AC07 |
-| F3 | 사무실 Canvas(회의실→구현 구역→분리된 검증실·보안실→출시 게이트). 선택 Sprint만 표시, 수신한 사건만 연출, 숨김·모션 감소 시 정적 렌더. 동등한 DOM 목록 | AC17 |
-| F4 | 근거 패널(작업·AC·아티팩트·두 보고서 별도), 시간순 사건 기록, 실패·보안 차단·무료 소진·승인 대기 고정 영역 | AC07, AC10 |
-| F5 | 기획 승인 dialog, 프리뷰(제한 iframe, 별도 origin)·수정 요청(구현/기획 구분, 입력 초안 보존), 배포 승인 dialog(서버 대상 그대로 전송). 202는 “접수”로만 표시, 409 시 피드백 보존과 최신 대상 재조회 | AC03–06 |
-| F6 | live 어댑터: Snapshot GET, SSE seq 중복 제거·누락 시 재동기화, heartbeat는 진행으로 취급하지 않음, 연결 끊김과 실행 실패 구분. LIVE 오류 시 예시로 자동 전환하지 않음 | AC16 |
-| F7 | 로컬 관련도 보조(work_kind·depends_on 기반 강조, “로컬 관련도 보조” 표기), 1440/1024/390px, light/dark와 office 테마 분리, 키보드·포커스·대비 | AC17–19 |
+모두 `frontend/` 아래에 있으며, 이 인계 파일만 예외다.
 
-F0–F5와 F7은 계약 확정 전에도 예시로 진행할 수 있다. F6과 F5의 실제 전송은 아래 계약 요청이 답변된 뒤 연결한다.
+- 설정·도구: `package.json`, `package-lock.json`(정확 버전 고정: vue 3.5.44, vite 8.3.4, typescript 5.9.3, vue-tsc 3.3.13, vitest 5.0.5, json-schema-to-typescript 16.0.0, ajv 8.20.0 등), `vite.config.ts`, `tsconfig.json`, `index.html`, `scripts/gen-types.mjs`, `README.md`
+- 생성: `src/generated/{protocol,http}.ts`와 각 `.sha256`
+- 로직: `src/api/*`, `src/composables/*`, `src/model/*`, `src/office/*`, `src/examples/*`
+- 화면: `src/components/*.vue` 21개, `src/App.vue`, `src/main.ts`, `src/styles/base.css`
+- 테스트: `tests/*.test.ts` 6개
 
-## 계약 변경·확정 요청
+## CR-C01–C08 반영 결과
 
-형식: 요청 ID / 사용자 동작 / 현재 계약의 부족 / 제안 / 호환성 영향 / 그동안 가능한 UI 작업.
+| 요청 ID | 프론트 반영 |
+|---|---|
+| CR-C01 | `LiveApi`는 GET/POST `/api/session`과 메모리 CSRF(`X-CSRF-Token`)를 쓰고, 401이면 한 번 재연결한다. Bearer·저장소·URL 토큰은 쓰지 않는다. 프론트 주소는 `127.0.0.1:5173`으로 고정했다(`strictPort`) |
+| CR-C02 | `{title, request}` → Project, `{mode, source_run_id?}` → Snapshot(`run_id`), `/api/replays` |
+| CR-C03 | `http.Runtime` 필드를 그대로 표시한다. `live_available=false`이면 시작 버튼을 막고 `reasons`를 보여준다 |
+| CR-C04 | 202 `CommandReceipt`는 "접수됨 · 반영 확인 중"으로만 표시한다. `http.Error`, 409(`current_state_version`)이면 의견을 보존하고 스냅샷을 다시 읽는다 |
+| CR-C05 | `?after=` 최초 연결, 브라우저 `Last-Event-ID` 재연결, `event: lifecycle` 파싱, `event: resync`면 닫고 스냅샷부터 다시 연결한다. heartbeat는 무시한다 |
+| CR-C06 | spec 아티팩트를 `http.PlanView`로 읽는다. 승인 대상과 `spec_version_id`가 다르면 승인을 막는다. AC는 정의만 보여주며 충족 표시는 하지 않는다 |
+| CR-C07 | `http.Preview`는 다른 hostname일 때만 sandbox iframe으로 연다. 환경 404는 "미설정"으로 표시한다 |
+| CR-C08 | 현재 Sprint는 running → ready → 실패·차단 → 대기 순으로 도출하고 "도출"이라고 표기한다. 중지는 접수 뒤 스냅샷으로 확인한다 |
 
-**CR-C01 브라우저 인증 방식**
-- 동작: 사무실 화면이 API·SSE를 호출한다.
-- 부족: 진행 중인 `backend/api.py`는 `Authorization: Bearer <token>`을 검사한다. 프론트 지침은 “브라우저에 secret 금지”다. 또한 `EventSource`는 사용자 헤더를 보낼 수 없다.
-- 제안: 로컬 모드에서는 같은 origin과 loopback 바인딩, 서버가 발급하는 HttpOnly·SameSite=Strict 세션 쿠키를 쓰고, 상태 변경 요청에 CSRF 방어를 둔다. 토큰을 프론트 번들·URL·localStorage에 넣지 않는다.
-- 영향: 서버 인증 계층. 스키마 필드 변경은 없다.
-- 가능한 작업: 인증을 제외한 전체 화면.
+`npm run gen:types`로 두 스키마의 소비자 타입을 생성했다. 상대 `$ref`도 해석된다. 생성 결과에 필드를 수기로 추가하지 않았다.
 
-**CR-C02 프로젝트·실행 생성 요청·응답 스키마**
-- 동작: 최초 요청 입력 → 프로젝트 생성 → LIVE 실행 생성. 또는 실제 기록을 REPLAY로 선택한다.
-- 부족: `POST /api/projects`, `POST /api/projects/{id}/runs`의 본문·응답 스키마와 재생 가능한 실제 기록 목록 조회 경로가 없다.
-- 제안: projects 요청 `{title, request_text}` → `{project_id}`. runs 요청 `{mode: "live"}` 또는 `{mode: "replay", source_run_id}` → `{run_id}` 후 Snapshot GET. 재생 목록 `GET /api/replays` → `ReplaySource[]`.
-- 영향: 추가만 있음.
-- 가능한 작업: 입력 폼과 출처 선택 UI.
+## 실행·확인한 것
 
-**CR-C03 `GET /api/runtime` 응답 스키마**
-- 동작: 실행 가능성(로컬 모델, 실행기, 무료 자격, Git·배포 대상)을 표시한다.
-- 부족: 응답 필드가 미정이다.
-- 제안: 항목별 `{id, label, status: "ready"|"missing"|"unverified"|"exhausted"|"error", reason?}`. 키 존재 여부만으로는 `ready`가 되지 않는다.
-- 영향: 추가만 있음.
-- 가능한 작업: 상태 칩 UI(예시 데이터).
+| 확인 | 결과 |
+|---|---|
+| `npm test` (Vitest 5.0.5, happy-dom) | 6개 파일, 105개 통과 |
+| `npm run coverage` | 구문 90.6%, 분기 85.7%, 함수 85.1%, 라인 93.1% (`src/generated` 제외) |
+| 계약 적합성 | 합성 예시 9종의 Snapshot·Event, PlanView, Environment를 ajv 2020으로 실제 스키마에 대조했다. 사건 seq 연속성, ID 참조 존재, `replay_source` 없음도 확인했다 |
+| `vue-tsc --noEmit` | 오류 0 |
+| `vite build` | JS 159.6KB(gzip 54.9KB), CSS 16.2KB(gzip 4.2KB) |
+| `npm audit` | 0건 |
+| 브라우저 (Chrome DevTools MCP, 격리 컨텍스트) | 아래 별도 표 |
 
-**CR-C04 명령 접수(202)와 오류 본문**
-- 동작: 승인·수정·중지·재개 클릭 후 접수와 실패를 구분해 표시한다.
-- 부족: 202 본문이 미정이다. 오류 본문 `{error:{code,message}}`가 계약 문서에 명시되지 않았다. 409 `STALE_APPROVAL`/`VERSION_CONFLICT`에서 최신 대상을 다시 읽을 단서도 없다.
-- 제안: 202 `{command_id, accepted: true}`(새 상태는 이벤트와 Snapshot으로만 확인). 오류 `{error:{code,message,current_state_version?}}`를 스키마에 추가한다.
-- 영향: 추가만 있음. 기존 오류 형태와 호환된다.
-- 가능한 작업: 접수/충돌 UI, 피드백 초안 보존.
+브라우저 확인 내용:
 
-**CR-C05 SSE 연결 세부**
-- 동작: 재접속, 누락 복구, 끊김 표시.
-- 부족: 최초 cursor(진행 중인 코드의 `?after=` 쿼리와 `Last-Event-ID` 헤더 중 무엇을 쓰는지), heartbeat 형식, 이벤트 보존 구간이 사라졌을 때의 재동기화 신호가 미정이다.
-- 제안: 최초 연결 `?after=<snapshot.last_event_seq>`, 재접속은 브라우저 `Last-Event-ID`. heartbeat는 SSE 주석 줄(`: ping`). 보존 구간 밖이면 `event: resync`를 보내고 클라이언트가 Snapshot을 다시 읽는다.
-- 영향: 전송 계약 문서화만 필요하다.
-- 가능한 작업: 예시 이벤트 재생으로 seq 중복 제거·누락 처리 로직을 먼저 구현한다.
+| 항목 | 결과 |
+|---|---|
+| 확인한 화면 | 1440: 시작·구현 중·기획 승인 / 1024: 배포 승인 / 390: 모바일·다크·모션 감소, 검증 통과·보안 실패 |
+| 레이아웃·터치 | 390px 가로 넘침 없음(`scrollWidth = 390`). 32px 미만 조작 요소는 44px label 안의 체크박스 하나뿐이다 |
+| dialog·키보드 | 기획 승인 dialog를 Esc로 닫으면 포커스가 여는 버튼으로 돌아간다. 예시 모드 승인은 "보내지 않음"으로 표시된다 |
+| 실제 API | Codex `a70a7b1`을 `git archive`로 scratchpad에 내보낸 사본, `LIFECYCLE_DB`도 scratchpad, Codex venv Python으로 실행했다 |
+| API 응답 | 세션 쿠키 연결, `/api/runtime`(LIVE 불가 이유 3개), `/api/replays`(빈 목록), 없는 실행의 404 표시를 확인했다. 서버는 확인 후 종료했다. Codex worktree에는 쓰지 않았다 |
+| 스크린샷 | 확인용으로만 찍었고 저장소에 포함하지 않았다 |
 
-**CR-C06 기획 승인 화면 표시 데이터**
-- 동작: 목표·기능·비범위·AC·스택·저장소/브랜치·배포 대상·무료 정책·원문 대비 변경점을 한 화면에서 읽고 승인한다.
-- 부족: Snapshot에는 `PlanTarget`(digest 3개)과 `Artifact.public_summary`만 있다. 명세 내용 형식, AC 정의(ID 외 제목·설명), AC 충족 상태가 없다.
-- 제안: (a) `kind: "spec"` 아티팩트의 `GET /api/artifacts/{id}` 응답을 정해진 JSON 형식(PlanView)으로 제공하거나, (b) Snapshot에 `acceptance: [{id, title, status: "unmet"|"met"|"failed"|"not_run"}]`를 추가한다.
-- 영향: (b)는 Snapshot 스키마 확장이고 `additionalProperties: false`라서 프로토콜 버전 검토가 필요하다.
-- 가능한 작업: 승인 dialog 레이아웃. AC는 ID만 표시하고 충족 현황은 “계약 대기”로 표시한다.
+## 확인하지 못한 것
 
-**CR-C07 프리뷰 주소와 배포 환경 표시 정보**
-- 동작: 프리뷰를 제한 iframe으로 열고, 배포 승인에서 환경 이름·노출 범위를 확인한다.
-- 부족: `kind: "preview"` 아티팩트에서 미리보기 URL·origin을 얻는 방법이 없다. `environment_id`만으로는 표시 이름·공개 범위를 알 수 없다.
-- 제안: preview 아티팩트 응답에 `{url, origin}`(서버가 허용한 별도 origin만). 환경 조회 `GET /api/environments/{id}` → `{id, label, exposure}`.
-- 영향: 추가만 있음.
-- 가능한 작업: 프리뷰·배포 dialog. 예시에서는 iframe 대신 “합성 예시 — 프리뷰 없음” 자리표시를 쓴다.
+- 실제 모델·실행기가 있는 LIVE 흐름: 실행 생성 → 기획 → 승인 → 202 뒤 스냅샷 반영, 실제 SSE 재연결·resync
+- 실제 프리뷰 iframe과 배포 승인 전송(서버 미연결)
+- Firefox·Safari, 실기기 터치, 스크린리더 낭독, 대비 수치 측정, 장시간 Canvas 성능 프로파일
+- Playwright E2E: 작성하지 않았다. 화면 흐름은 Vitest 통합 테스트와 수동 브라우저 확인으로 대신했다
 
-**CR-C08 “현재 Sprint”와 중지 처리 중 상태 (확인 요청)**
-- 부족: Snapshot에 현재 Sprint 지정이 없고, RunState에 “중지 처리 중”(취소 접수 후 외부 작업 결과 대기)이 없다.
-- 제안: 현재 Sprint는 프론트가 `running`/`ready` 작업에서 도출하고 “도출”이라고 표기한다. 중지 처리 중은 접수된 pause/cancel 명령과 `operation_uncertain` 이벤트로 표시한다. 서버 쪽 지정이 필요하면 Codex가 판단한다.
-- 영향: 채택하면 변경 없음.
+## 계약 요청 (새 요청)
 
-## 미확인·미실행
+**CR-C09 AC 충족 상태**
+- 동작: Sprint와 전체 AC 충족 현황을 작업 진행과 구분해 보여준다.
+- 부족: Snapshot·PlanView 어디에도 AC별 판정이 없다. 현재 화면은 "충족 판정은 서버가 아직 제공하지 않음"이라고 표시한다.
+- 제안: 판정 주체(검증 보고서)에 묶인 `acceptance: [{id, status: "unmet"|"met"|"failed"|"not_run", report_id?}]`
+- 호환성: Snapshot 확장이라 protocol 버전 검토가 필요하다. 또는 별도 GET으로 받는다.
+- 그동안: 정의 개수만 표시한다.
 
-- 코드·빌드·브라우저·모바일·키보드·성능 확인: 모두 미실행이다. 코드가 아직 없다.
-- 소비자 타입 생성: 미실행이다.
-- 이 세션의 자기 점검은 독립 검증·보안 판정이 아니다.
+**CR-C10 preview 아티팩트 본문 형식 확인**
+- 동작: 프리뷰 dialog가 `GET /api/artifacts/{preview id}`를 `http.Preview`로 해석한다.
+- 부족: 계약 §7은 spec만 PlanView로 명시한다. preview 종류가 `http.Preview`를 반환하는지 명시가 없다.
+- 제안: "kind: preview → http.Preview" 한 줄을 명시한다.
+- 그동안: 형식이 다르면 "프리뷰 주소 없음"으로 표시하고 열지 않는다.
 
-## Codex에게 필요한 것
+## Codex에게 필요한 것 (통합)
 
-1. `READY_FOR_PARALLEL_IMPLEMENTATION`, 기준 커밋, `.worktrees/claude-office` 실제 경로, 계약 SHA256, 프론트 개발 포트(기본 제안 5173), API 프록시 대상 포트
-2. 위 CR-C01–C08에 대한 같은 ID 답변(채택·보류·거절과 계약 커밋)
+1. 이 브랜치 `work/claude-office`의 프론트 커밋을 통합 기준에 병합해 주세요. 프론트 파일은 수정하지 말고, 필요하면 요청으로 남겨 주세요.
+2. 루트 README에 `frontend/README.md` 링크와 실행 순서를 추가해 주세요. 순서는 API(8000) → `cd frontend && npm ci && npm run dev`(5173)입니다. 루트 `.gitignore`의 `node_modules/`, `dist/`, `coverage/`가 프론트 산출물을 이미 제외한다.
+3. 모델·실행기를 연결할 수 있게 되면 LIVE 흐름 확인 시점을 알려 주세요. 기획 생성 → 승인 → 반영을 프론트에서 확인하겠습니다.
+4. CR-C09, CR-C10에 같은 ID로 답해 주세요.
+
+허가 없이 push·merge·deploy를 하지 않았다.
