@@ -81,3 +81,49 @@
 | Prompt | 기획·구현·검토의 버전 고정 작업 양식 | 출력이 권한·승인 정책을 덮지 않음 |
 
 한 로컬 MCP 서버와 역할별 도구 노출부터 시작한다. 여러 동적 서버 자동 설치는 첫 범위가 아니다. MCP 응답의 출처·해시·버전·호출 ID를 근거로 남기고 지시문으로 승격하지 않는다. Git·배포의 최종 실행은 승인 원장을 확인하는 서버 실행기만 수행한다.
+
+## 7. D1 로컬 HTTP 연결 기준 — 2026-10-20
+
+이 절과 `http.v1.schema.json`의 추가 타입은 Codex의 D1 제공자 계약이다. Claude 소비자 타입/fixture의 명시 반영·상호 확인은 별도 필요하다. protocol v1의 Snapshot/Command/Event 필드·열거 값은 바꾸지 않았다. 과거 HTTP 초안과 다른 새 필드 복사본을 프론트에 수기로 유지하지 않는다.
+
+| 경로 | 본문/응답의 단일 타입 원본 |
+|---|---|
+| `POST /api/session` | 본문 없음. 201 `http.Session`, HttpOnly 쿠키 발급 |
+| `GET /api/session` | 200 `http.Session`, 현재 CSRF 토큰·만료시각 |
+| `DELETE /api/session` | 본문 없음. 204, 세션 폐기 |
+| `POST /api/projects` | `http.ProjectCreate` → 201 `http.Project`. 최초 원문 필드는 **`request`** |
+| `POST /api/projects/{id}/runs` | `http.RunCreate` → 201 `http.Run` (= `protocol.Snapshot`). `run_id`가 포함된 전체 초기 스냅샷 |
+| `GET /api/replays` | 200 `http.ReplayRecordings`. 같은 운영자의 실제 LIVE 원장 목록, 없으면 `[]` |
+| `GET /api/runtime` | 200 `http.Runtime`. 기존 초안의 세부 필드/상태를 유지 |
+| `GET /api/runs/{id}` | 200 `protocol.Snapshot` |
+| `POST /api/runs/{id}/commands` | `protocol.Command` → 202 `http.CommandReceipt`. `status: accepted`, 완료 의미 아님 |
+| `GET /api/artifacts/{id}` | spec 종류는 `http.PlanView`. 다른 종류는 해당 산출물 JSON; 임의 HTML 실행/경로 다운로드 없음 |
+| `GET /api/environments/{id}` | 환경 미설정이므로 현재 404 `http.Error`. 환경 연결 시 `http.Environment` |
+| `GET /api/contracts/{name}` | 번들된 두 스키마의 원문. schema 내 상대 참조를 같은 경로에서 해석 |
+
+모든 오류 JSON은 `http.Error` 형태다. 409 버전 충돌에는 `error.current_state_version`을 포함한다. 404와 잘못된 메서드도 `detail` 대신 이 형태로 반환한다. `request_text`, `accepted: true`, runtime 항목 배열은 이번 D1에서 채택하지 않았다. 위 스키마의 실제 필드를 소비한다.
+
+### 로컬 브라우저 세션 (CR-C01)
+
+- 서버는 `python -m backend`로 `127.0.0.1:8000`에만 바인딩하고 proxy 헤더를 신뢰하지 않는다. 원격 주소·다른 Host·다른 Origin은 거절한다. 외부 공개용 인증은 아직 제공하지 않는다.
+- 프론트 주소는 **`http://127.0.0.1:5173`**이다. Vite가 `/api`를 `http://127.0.0.1:8000`으로 프록시한다. 프록시를 사용하는 같은 origin 요청이므로 CORS를 열지 않는다. `localhost:5173` Origin은 이번 허용 목록에 없다.
+- 브라우저는 `POST /api/session`으로 연결한다. 정확히 허용한 로컬 Origin을 검사한 후 8시간짜리 무작위 세션을 `HttpOnly; SameSite=Strict; Path=/api` 쿠키로 발급한다. 자격 증명을 입력하거나 번들·URL·localStorage에 넣지 않는다. CSRF 토큰은 JSON으로 받으며 메모리에서만 보관한다.
+- 이후 POST/DELETE 등 변경 요청에는 `X-CSRF-Token`과 같은 Origin이 필요하다. EventSource는 쿠키로 인증한다. 새로고침 시 `GET /api/session`으로 CSRF를 읽고, 401이면 다시 로컬 연결한다. 서버 재시작 시 세션은 폐기된다. 로그아웃/만료 뒤 SSE도 종료한다.
+- 이 흐름은 신뢰한 로컬 origin/프로세스를 운영자로 취급하는 개인 로컬 모드다. 공용 서버·다중 사용자 로그인은 아니다. 기존 CLI Bearer 인증은 서버 설정 `LIFECYCLE_TOKEN`으로만 남긴다. 미설정 시 서버 메모리에서 무작위 생성하며 출력하지 않는다.
+- 생성 앱 프리뷰는 아직 없다. 향후 프리뷰는 부모 쿠키가 전달되지 않는 별도 hostname/격리 origin을 사용해야 한다. 같은 hostname의 다른 port만으로 쿠키가 격리된다고 간주하지 않는다.
+
+### SSE cursor와 heartbeat (CR-C05)
+
+최초 연결은 `/api/runs/{id}/events?after=<snapshot.last_event_seq>`. 재접속은 `Last-Event-ID`가 있으면 쿼리보다 우선한다. cursor는 0 이상의 16자리 이내 십진 정수다. 누락/형식 오류는 422 `CURSOR_INVALID`, 없는 실행은 404다. 현재 이벤트는 삭제하지 않고 모두 보존한다.
+
+공개 사건은 `id: <seq>`, `event: lifecycle`, `data: <protocol.Event JSON>`이다. 약 15초 무사건 시 `: heartbeat` 주석을 전송한다. 현재 기록 범위 밖 cursor는 200 SSE로 `event: resync`, `data: {"reason":"cursor_out_of_range"}` 한 건을 보내고 연결을 닫는다. 프론트는 기존 EventSource를 닫고 Snapshot을 다시 읽어 새 cursor로 연결한다. heartbeat·resync는 protocol.Event로 파싱하지 않는다. 단절 시 자동 성공/실패로 표시하지 않는다.
+
+### 기획·해시·미연결 기능 (CR-C06–C08)
+
+`kind: spec` 아티팩트는 `http.PlanView`다. 목표·기능·비범위·AC 정의·가정·원문 대비 변경 설명·제약과 서버 소유의 스택·도구·저장소/배포 대상·무료 정책·두 계약 해시를 포함한다. 저장소·배포 대상 `null`은 미설정이며 외부 부작용을 허용하지 않는다. 최초 요청/정정 원문은 원장에 보존한다. 모델의 `changes`는 설명이지 원문 대조 검증 결과가 아니다. AC 이행 상태는 이번 응답에 없으며 ID/정의만으로 충족을 표시하면 안 된다.
+
+정규화는 `json.dumps(sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)`의 UTF-8 바이트다. 문자열 Unicode는 정규화하지 않고 원문 코드포인트를 보존한다. `plan_digest`는 서버가 기록한 PlanView의 SHA256, `target_digest`는 승인 target 객체의 SHA256이다. 브라우저가 해시를 다시 만들지 않는다.
+
+현재 Sprint는 프론트가 running/ready 작업에서 도출하고 도출임을 표시한다. 중지는 명령 접수와 실제 Snapshot으로 확인한다. worker는 명세/상태 버전·lease를 재검사해 중지/변경 이전의 늦은 결과를 반영하지 않는다. 구현/배포용 외부 operation은 아직 없으므로 결과 불명 외부 작업을 가짜로 만들지 않는다.
+
+현재 LIVE 제공 범위는 기획 생성·승인·중지/재개·수정 원문 보존·재기획이다. 격리 구현기가 없어 기획 승인 후에는 `waiting_resource`로 대기한다. 생성 앱·두 검토·프리뷰·배포는 미연결이고 runtime에서도 비활성임을 표시한다. 변경 scope 분류가 검증되기 전에는 `implementation` 요청도 보수적으로 재기획/재승인한다. 이는 AC06 전체 구현 완료가 아니다.

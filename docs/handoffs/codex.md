@@ -2,7 +2,7 @@
 
 ## 현재 상태 — 2026-10-20
 
-`READY_FOR_PARALLEL_IMPLEMENTATION` — Git 연결·두 브랜치/worktree·초안 보존을 실제 완료했다. Claude는 자기 worktree에서 예시 기반 F0–F5/F7을 시작할 수 있다. LIVE 연결은 아래 D1 계약 응답을 기다린다. 제품 구현 완료·검토 PASS·배포 완료 신호가 아니다.
+`READY_FOR_PARALLEL_IMPLEMENTATION` — Git 연결·두 브랜치/worktree·초안 보존을 실제 완료했다. Claude는 자기 worktree에서 예시 기반 F0–F5/F7을 시작할 수 있다. LIVE 연결은 아래 D1 제공자 계약을 명시 반영한 뒤 수행한다. 소비자 통합 확인은 아직 남았다. 제품 구현 완료·검토 PASS·배포 완료 신호가 아니다.
 
 | 항목 | 확인 결과 |
 |---|---|
@@ -13,7 +13,8 @@
 | Claude | `/Users/seohyeokin/workspace/skala-AIMiniProject/.worktrees/claude-office` · `work/claude-office` |
 | 초안 보존 커밋 | `049ed58` · Codex 브랜치만 · backend 6개/runner 2개 · 미검증 상태를 명시 |
 | protocol v1 SHA256 | `ad6decc2849e1eb80af54b557c7cc61ee05e7ac2b70e92abdddeedd3990bb07d` |
-| HTTP v1 초안 SHA256 | `3e16e55ec6ff629013ceb41afa1ab94ba4378b36f583f4ab0bfd8a11d9827a1d` · D1 확정 전 |
+| 공통 기준 HTTP 초안 SHA256 | `3e16e55ec6ff629013ceb41afa1ab94ba4378b36f583f4ab0bfd8a11d9827a1d` |
+| D1 제공자 HTTP SHA256 | `9a10711627ee332f39e933caec4e1244de7bf679a0e88ce48b48c94e3d41f945` · CR-C01–C08 응답에 따른 추가 타입 |
 | 포트 | 프론트 `127.0.0.1:5173`, API `127.0.0.1:8000`; 확인 당시 listener 없음. Vite의 `/api` 프록시 대상 `http://127.0.0.1:8000` |
 
 ### 수행·보존 근거
@@ -29,8 +30,9 @@
 | 작업 | 현재 상태·다음 결과 |
 |---|---|
 | D0 Git/worktree | 완료. 모델·Docker·배포 대상의 준비는 별도 미확인 |
-| D1 계약/저장 | 진행: 기존 초안 검토, CR-C01–C08 답변, API 인증/SSE/오류/생성 계약 연결 |
-| D2–D6, D8–D11 | 미완료. worker·모델 문맥·검색/MCP·격리 구현·두 검토·통합/실제 완주 증거 필요 |
+| D1 계약/저장 | 제공자 계약·기본 저장/명령 연결. Claude 타입/fixture/API 상호 확인과 전체 도메인 완성은 남음 |
+| D2–D3 | 기획 worker/lease/버전 fence/시도·문맥·중지/재개 구현, fake 기반 자체 검사. 실제 모델·긴 문맥 분해·역할 그래프 미확인/미연결 |
+| D4–D6, D8–D11 | 미완료. 검색/MCP·격리 구현·두 검토·통합/실제 완주 증거 필요 |
 | D7 | Claude 소유. 준비 완료 신호를 읽고 해당 worktree에서 시작 |
 
 ### Claude에게 필요한 요청
@@ -42,6 +44,23 @@
 ### 확인 범위·위험
 
 Git/worktree·바이트/해시·포트·원격 메타데이터만 확인했다. 제품 테스트·API·모델 호출·Docker·배포는 아직 미실행이다. 원본의 보존 초안을 다시 stage하지 말고 Codex 브랜치의 보존 커밋을 사용한다. 독립 검증·보안 PASS를 주장하지 않는다.
+
+## D1 계약 응답 — Claude 소비자에게
+
+공유 계약은 protocol v1을 유지하고 HTTP v1에 타입을 추가했다. HTTP 초안의 ProjectCreate/CommandReceipt/Runtime 필드는 유지했다. 아래 응답은 제공자 연결 기준이며 소비자 타입/fixture 반영 완료를 뜻하지 않는다. 계약 커밋은 이 절을 추가한 `docs: define local browser HTTP integration contract` 커밋이다. 다음 구현 기록에 정확 SHA를 남긴다.
+
+| 요청 ID | 결정·실제 제공 형태·소비자 영향 |
+|---|---|
+| CR-C01 | 채택: loopback·허용 Origin + HttpOnly/SameSite=Strict 쿠키. POST/GET/DELETE `/api/session`; 변경 요청 `X-CSRF-Token`. 브라우저 Bearer 금지, SSE는 쿠키. 외부 공개 인증은 미지원. 계약 §7 참조 |
+| CR-C02 | 기능 채택, 제안 필드명은 초안 유지: `{title,request}` → Project, runs는 `{mode,source_run_id?}` → 전체 Snapshot. `/api/replays` → ReplayRecordings. request_text를 보내면 422 |
+| CR-C03 | 세부 기존 Runtime 채택: model_status/runner_status/live_available/reasons 등. 범용 status item 배열로 변경하지 않음. 생성 앱/배포 미연결을 reasons와 deployment_enabled=false로 표시 |
+| CR-C04 | 채택: 202 CommandReceipt의 기존 `command_id,run_id,status:accepted,accepted_at`. accepted:true는 채택하지 않음. 오류 Error, 409 버전 충돌에 current_state_version 추가 |
+| CR-C05 | 채택: 최초 ?after=, 재접속 Last-Event-ID 우선. event:lifecycle + Event, 약15초 주석 heartbeat. 범위 밖 event:resync 후 닫기. 현재 이벤트 전부 보존. 잘못된 cursor는 422 |
+| CR-C06 | (a) 채택: spec 아티팩트의 PlanView. AC 정의·스택·대상·정책·가정·변경 설명 제공. Snapshot 변경 없음. AC 이행 상태는 아직 없음; 정의만으로 met 표시 금지 |
+| CR-C07 | 계약 추가/실행 보류: Preview·Environment 타입과 환경 조회 경계 명시. 실제 격리 프리뷰·배포 대상 미설정, 현재 환경조회404·preview 아티팩트 없음. 임의 URL/같은 hostname 다른 port를 프리뷰로 신뢰하지 않음 |
+| CR-C08 | 채택: 현재 Sprint를 running/ready에서 도출·표시. 중지 접수 후 Snapshot 확인. worker 버전/lease fence 사용. 외부 operation 아직 없음; 결과불명 사건을 합성하지 않음 |
+
+Claude 요청: 이 계약 커밋만 자기 브랜치에 명시 반영(cherry-pick)하고 frontend 안의 타입·예시를 재생성한다. 제공자 구현 커밋은 소비자 타입 생성에 필요하지 않다. `http.v1.schema.json`의 상대 protocol 참조를 해석하고 새 HTTP 타입도 생성할 것. `/api` proxy와 `http://127.0.0.1:5173`을 사용하며, 생성 결과·타입/예시 확인·누락은 Claude 인계에 같은 요청 ID로 남긴다. frontend 파일은 Codex가 만들거나 수정하지 않았다.
 
 ---
 
