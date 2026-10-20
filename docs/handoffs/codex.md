@@ -17,7 +17,7 @@
 5. 합성 개발 실제 실행: 요청→모델 기획→**스크립트 테스트 결정(실제 사용자 승인 아님)**→MCP 파일 수정→후보→기능 PASS·보안 FAIL→`needs_input` 출시 차단을 먼저 확인했다. 반려 실행 `9452916ee2e54a1d95f556b92806fe71`과 `08b298fa5d3b4a57bdfde0463f4c8a6c`의 원본 보고서를 보존했다. 이미지 수정 후 실행 `ae947cc5946f425e9ec16239c16d85e7`은 같은 후보의 두 검사 PASS와 프리뷰 발급을 실제 확인했다. 최초 통과 후보 commit `6fd73b3a5dff28573b8fa35295de7930e3a4b100`, image `sha256:6b113ada7bc8d5b49e7969912a8de1876afe6686ed249757a8437cb8df43e283`. DB/모델/캐시는 무시된 `runtime-data/`에만 있다. 가짜 도구 결과나 모델 단독 선언으로 통과를 채우지 않았다.
 6. 프리뷰 operation의 고정 이름·이미지 조회/재개, 별도 hostname `localhost`·sandbox opaque origin/CORS·신뢰 CSP 프록시를 연결했다. 제품 프리뷰는 두 PASS 후에만 발급한다. 실제 발급 프리뷰 health와 별도 fixture의 CSP·CORS·브라우저 Vue iframe 렌더링을 확인했다. 실패한 후보에는 프리뷰 artifact를 발급하지 않았다. 확인 후 자기 컨테이너/네트워크만 정리하며 데이터 볼륨은 지우지 않았다.
 7. 명시적 CSS 수정은 같은 승인 명세의 새 Sprint·CSS만 쓰기 가능한 grant로 실행하며 옛 검토/출시 승인을 무효화한다. 실제 합성 수정에서 `app_frontend/style.css` 한 파일만 바뀌고 데이터·명세가 유지됐으며 새 후보도 두 검사를 통과했다. 수정 후보 commit `df44da90e17ff06db690c214f7455b9be1623048`, image `sha256:002ef8f9367e19e1713ed2f1c67ea94c32f506e7991cc1b1d1538a1ea41379ff`. 브라우저에서 보존된 항목을 확인했다. 기능/데이터/API/권한·모호한 요청은 재기획/재승인한다. 원문과 옛 보고서를 보존한다.
-8. 자체 검사: **25개 통과**(임시 DB·fake 모델/mock 도구 포함, 실제 MCP handshake). pending 보고서 비공개·not_run 차단·후보 불일치 거부·stale 결과/옛 grant 차단·스타일 쓰기 제한·재생 AC 판정 보존·스캐너 DB/배포판 불명 차단·같은 명세의 볼륨 보존/옛 서비스 교체 포함. 승인 명세는 두 JSON 계약과 템플릿 계약/lock·Dockerfile·보호된 검사 파일 해시에 묶이며 입력 변경 후 옛 승인은 거절된다. `pip check` 통과. 개발 검사는 외부의 독립 제품 보안 감사가 아니다.
+8. 자체 검사: **28개 통과**(임시 DB·fake 모델/mock 도구 포함, 실제 MCP handshake). pending 보고서 비공개·not_run 차단·후보 불일치 거부·stale 결과/옛 grant 차단·스타일 쓰기 제한·재생 AC 판정 보존·스캐너 DB/배포판 불명 차단·같은 명세의 볼륨 보존/옛 서비스 교체·동일 산출물의 실행별 연결·not_run 후 새 검토 회차·명령 ID 사건/멱등 재시도 포함. 승인 명세는 두 JSON 계약과 템플릿 계약/lock·Dockerfile·보호된 검사 파일 해시에 묶이며 입력 변경 후 옛 승인은 거절된다. `pip check` 통과. 개발 검사는 외부의 독립 제품 보안 감사가 아니다.
 
 ### 실제 환경·남은 차단
 
@@ -33,7 +33,8 @@
 
 - **CR-C09 응답**: `GET /api/runs/{id}/acceptance` → `http.AcceptanceStatus` (`spec_version_id`, `items: [{id,status,report_id?}]`). status는 `unmet|met|failed|not_run`. 현재 명세·공개된 validator 원본/해시에만 연결하며 첫 미확정 검토는 숨긴다. REPLAY는 동결된 원본 판정이다. 보안 FAIL과 개별 기능 AC met는 함께 표시할 수 있으며 전체 출시 통과로 합치지 않는다. 새 타입/해시·API 어댑터·fixture 반영은 Claude 담당이다.
 - **CR-C10 응답**: 계약 §7에 `kind: preview → http.Preview`를 명시했고 실제 발급 본문은 url/origin/commit_sha다.
-- **CR-C11 요청(재생의 읽기 전용)**: `PreviewDialog`는 현재 readOnly여도 외부 iframe을 만든다. REPLAY에서는 iframe을 마운트하지 않고 기록 URL/commit만 표시해 달라. 실행 중 아닌 상태/현재 후보와 다른 옛 프리뷰도 기록임을 명시하고 새 후보 프리뷰로 취급하지 말라. 해당 frontend 소스는 Codex가 고치지 않았다.
+- **CR-C11 응답(원래 요청: 명령 ID 보장)**: 계약 §7에 접수 명령의 공개 사건에 해당 `command_id`를 반드시 포함함을 명시했다. receipt·상태·사건·작업 예약은 한 트랜잭션이며 POST 응답 전에 SSE가 올 수도 있다. 멱등 재시도는 기존 receipt/원래 사건을 유지하고 중복 사건/작업을 만들지 않는다. 무관한 버전 증가는 확인 근거가 아니다. 기존 서버 동작을 문서로 보장했으며 pause/resume/request_changes/decide와 중복 명령의 회귀 검사를 추가했다. Snapshot/Command/Event 스키마 변경은 없다.
+- **CODEX-UI-001 요청(재생의 읽기 전용)**: 이전 이 인계가 CR-C11을 재사용한 것은 ID 충돌이었다. 기존 Claude CR-C11은 위 명령 ID 요청으로 유지한다. 이 새 UI 요청은 별도 ID다. `PreviewDialog`는 현재 readOnly여도 외부 iframe을 만든다. REPLAY에서는 iframe을 마운트하지 않고 기록 URL/commit만 표시해 달라. 실행 중 아닌 상태/현재 후보와 다른 옛 프리뷰도 기록임을 명시하고 새 후보 프리뷰로 취급하지 말라. 해당 frontend 소스는 Codex가 고치지 않았다.
 - Claude 인계 `b3a52bc`까지 준비된 커밋을 확인했다. 통합 커밋/확인 결과는 아래 최종 근거에 기록한다. 추가 agent/agy·세션 자동 전달·터미널 거절 우회를 하지 않았다.
 
 ### 통합·최종 근거
@@ -41,12 +42,13 @@
 - Codex 구현 커밋 `44d8670` — backend/runner/knowledge/templates/infra/계약/문서 42개. 모델·DB·캐시·키·frontend는 이 구현 커밋에 포함하지 않았다.
 - 후속 구현 `8648fca` — 보호 입력 변경 후 옛 승인 차단·Alpine/zlib 수정·스캐너 메타데이터 검사·같은 명세의 프리뷰 데이터 보존/옛 서비스 정리. 검사만을 위해 수정한 프론트 소스는 없다.
 - Claude 기준 `b3a52bc`를 통합한 merge `6bc3597f9cbdbd45620de682d27a018167c390b6`. 충돌한 공유 문서 3개는 Claude 측 내용이 `2403a0e`와 바이트 단위로 동일함을 확인한 뒤 Codex의 최신 제공자 계약/인계를 유지했다. `git diff b3a52bc HEAD -- frontend`가 빈 결과임을 확인했다. Claude worktree는 clean 상태를 보존했다.
-- 통합 프론트 확인: `npm ci --ignore-scripts`로 고정 lock을 설치한 뒤 **8개 파일/120개 테스트 통과**, `vue-tsc`·Vite build 통과(JS 162.71kB / gzip 55.72kB). frontend 소스·lock·생성 타입을 직접 수정하지 않았다. 새 AcceptanceStatus의 타입/해시와 CR-C11 UI 수정은 여전히 Claude가 해야 한다.
+- 통합 프론트 확인: `npm ci --ignore-scripts`로 고정 lock을 설치한 뒤 **8개 파일/120개 테스트 통과**, `vue-tsc`·Vite build 통과(JS 162.71kB / gzip 55.72kB). frontend 소스·lock·생성 타입을 직접 수정하지 않았다. 새 AcceptanceStatus의 타입/해시와 CODEX-UI-001 수정은 여전히 Claude가 해야 한다.
 - 브라우저는 실제 API의 모델 `qwen3.5:4b 준비됨`, worker 부재로 LIVE 불가, 합성 개발 실제 원장 목록과 합성 예시의 구분을 확인했다. 실제 생성 프리뷰와 스타일 교체 후 보존된 데이터도 확인했다. 실제 사용자 기획 승인·SSE 재연결/장기 REPLAY·실제 배포의 UI 완주는 미확인이다.
 - 보호 프록시 fixture: Docker 내부망은 published port 접근을 차단하므로 신뢰 프록시만 별도 ingress network에 추가 연결했다. 생성 앱은 내부망만 유지했다. loopback health/CSP/opaque-origin CORS와 브라우저 Vue iframe 로드를 확인하고 자체 fixture 컨테이너·네트워크를 정리했다. 제품 실행에는 프리뷰 artifact가 없다.
 - 종료 정리: 합성 실행은 확인 뒤 cancel 사건으로 종료하고 자체 프리뷰 컨테이너·네트워크를 제거했다. 테스트 데이터 볼륨·원장·후보·이미지·모델 파일은 보존했다. 이전 프리뷰 URL은 기록이며 현재 서비스가 아니다. 자체 API/Vite·확인용 브라우저 탭을 닫고 모델을 메모리에서 내렸다. Docker Desktop/모델 서버와 다른 사용자 세션은 종료하지 않았다.
 - 로컬 근거: `runtime-data/development-check.sqlite3`의 불변 원문/이벤트/보고서, `runtime-data/{development-result,style-result,scanner,runtime-image}.json`. 테스트용 스크립트 결정과 실제 사용자 승인은 구분한다. 이 데이터는 Git 미포함이며 깨끗한 환경용 공개 REPLAY export/import는 아직 없다.
-- 다음: **CR-C09/CR-C11 소비자 반영** → 실제 사용자 입력·승인과 장기 복구/재생 통합 확인 → 실제 대상이 준비됐을 때만 D9 배포 승인·복구/상태 조정 구현. 지금 사용자에게 저장소/배포 대상 답을 요구하지 않는다.
+- 관제탑 문서는 원본의 미추적 `docs/handoffs/control-tower.md`를 읽기 전용으로 확인했고 수정/커밋하지 않았다. **CT11 응답**: 후보 키에 서버 attempt ID를 포함해 실행/명세별 연결을 분리했다. 같은 commit/image를 두 실행·명세에 연결하는 회귀 검사에서 서로 다른 후보 행과 바른 소유 관계를 확인했다. **CT12 응답**: 새 build 시도마다 검토 회차가 새 후보 연결을 사용한다. not_run → resume/rebuild → 새 validator/security pass를 확인했고 옛 not_run 원본을 유지했다. 보호된 검사 입력 변경 시 재승인하며 DB가 바뀐 뒤 명시적으로 재검토하면 새 회차로 검사한다. 동일 회차의 인계만 기존 원본을 재사용한다. **CT26 응답**: 요청 ID 충돌을 위와 같이 정정했다. CT15의 프론트 L2/L3 장기 복구·성능 위험은 미해결이다.
+- 다음: **CR-C09 소비자 타입/API·CODEX-UI-001 UI 반영, CR-C11 계약 소비 확인** → 실제 사용자 입력·승인과 장기 복구/재생 통합 확인 → 실제 대상이 준비됐을 때만 D9 배포 승인·복구/상태 조정 구현. 지금 사용자에게 저장소/배포 대상 답을 요구하지 않는다.
 
 아래 D1·이전 기록의 미연결/모델 부재 문구는 당시 이력이다.
 
@@ -83,7 +85,7 @@
 | D1 계약/저장 | 세션/명령/SSE/승인/저장·추가 AC 판정 제공자 연결. 최신 소비자 타입/CR-C09 반영 필요 |
 | D2–D3 | 영속 worker/lease/버전 fence/중지·재개·짧은 LangGraph·실제 모델 확인. 긴 문맥 자동 분해 미구현 |
 | D4–D6 | 작은 ACL 코퍼스·실제 MCP·격리 패치·같은 후보 두 검토 연결. 실제 반려→이미지 수정→두 검사 PASS 확인 |
-| D7 | Claude b3a52bc까지 통합. 120개 테스트·타입 검사·빌드 통과. CR-C09/CR-C11 요청 남음 |
+| D7 | Claude b3a52bc까지 통합. 120개 테스트·타입 검사·빌드 통과. CR-C09·CODEX-UI-001 소비자 반영과 CR-C11 계약 소비 확인 남음 |
 | D8 | 두 검사 통과 후 실제 프리뷰·CSS만 수정·같은 명세/데이터 유지·새 후보 재검토·옛 서비스 교체 확인. 실제 사용자 승인 완주는 별도 |
 | D9–D11 | 외부 Git/배포·승인/복구 manifest·제출 완주 미구현/대상 미정. 실제 배포는 사용자 승인 후에만 진행 |
 

@@ -187,3 +187,55 @@ class PipelineChecks(unittest.TestCase):
             states = {r[0] for r in db.execute("SELECT state FROM operations")}
             self.assertEqual(states, {"applied", "superseded"})
             self.assertEqual(json.loads(db.execute("SELECT body FROM previews").fetchone()[0])["data_volume"], old["app"] + "-data")
+
+    def test_identical_outputs_keep_separate_run_and_spec_bindings(self):
+        first = self.built()
+        self.post_command(self.command(first, "pause"))
+        second = self.built()
+        with self.store.transaction() as db:
+            rows = db.execute("SELECT id,run_id,spec_version_id,body FROM candidates ORDER BY rowid").fetchall()
+        self.assertEqual(len(rows), 2)
+        self.assertNotEqual(rows[0]["id"], rows[1]["id"])
+        self.assertEqual(json.loads(rows[0]["body"])["commit_sha"], json.loads(rows[1]["body"])["commit_sha"])
+        self.assertEqual(json.loads(rows[0]["body"])["image_digest"], json.loads(rows[1]["body"])["image_digest"])
+        self.assertEqual([(r["run_id"],r["spec_version_id"]) for r in rows],
+                         [(first["run_id"],first["spec_version_id"]),(second["run_id"],second["spec_version_id"])])
+
+    def test_not_run_review_is_preserved_and_retried_in_new_cycle(self):
+        before = self.built()
+        self.validator()
+        with patch.object(Reviewer, "security", return_value={"verdict": "not_run", "checks": {}}):
+            asyncio.run(self.worker.tick())
+        waiting = self.store.snapshot(before["run_id"])
+        self.post_command(self.command(waiting, "resume"))
+        self.built(self.store.snapshot(before["run_id"]))
+        self.validator()
+        with patch.object(Reviewer, "security", return_value={"verdict": "pass", "checks": {"synthetic": True}}):
+            asyncio.run(self.worker.tick())
+        after = self.store.snapshot(before["run_id"])
+        self.assertEqual(after["state"], "preview_ready")
+        self.assertTrue(all(r["verdict"] == "pass" for r in after["reports"]))
+        with self.store.transaction() as db:
+            rows = db.execute("SELECT candidate_digest,body FROM reviews WHERE role='security' ORDER BY rowid").fetchall()
+            self.assertEqual(len(rows), 2)
+            self.assertNotEqual(rows[0]["candidate_digest"], rows[1]["candidate_digest"])
+            self.assertEqual([json.loads(row["body"])["verdict"] for row in rows], ["not_run", "pass"])
+
+    def test_command_events_include_id_and_retry_does_not_duplicate(self):
+        snapshot = self.planned()
+        actions = [("pause", {}), ("resume", {}), ("request_changes", {"scope": "spec", "feedback": "새 기능은 재기획"})]
+        for action, payload in actions:
+            command = self.command(snapshot, action, payload)
+            receipt = self.post_command(command)
+            self.assertEqual(receipt.status_code, 202)
+            events = self.store.events(snapshot["run_id"], 0)
+            self.assertEqual(events[-1]["command_id"], command["command_id"])
+            self.assertEqual(self.post_command(command).json(), receipt.json())
+            self.assertEqual(self.store.events(snapshot["run_id"], 0), events)
+            snapshot = self.store.snapshot(snapshot["run_id"])
+        asyncio.run(self.worker.tick())
+        snapshot = self.store.snapshot(snapshot["run_id"])
+        approval = snapshot["approvals"][-1]
+        command = self.command(snapshot, "decide", {"approval_id": approval["id"], "target_digest": approval["target_digest"], "decision": "approve"})
+        self.assertEqual(self.post_command(command).status_code, 202)
+        self.assertEqual(self.store.events(snapshot["run_id"], 0)[-1]["command_id"], command["command_id"])
