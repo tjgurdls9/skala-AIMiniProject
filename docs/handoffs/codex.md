@@ -14,19 +14,20 @@
 2. `knowledge/**`, `runner/{access,mcp_server}.py`: 출처·버전·역할 ACL을 가진 작은 키워드 코퍼스와 실제 MCP Tool/Resource/Prompt. stdio로 명세/파일 읽기·digest 조건 패치·검색을 호출한다. 임의 shell/홈/환경/Docker socket은 노출하지 않는다. 권한은 실행 시도·lease·상태 버전·담당 파일에 묶이고 중지/인계 뒤 옛 grant는 거절된다.
 3. `templates/requests-v1/**`, `infra/**`, `runner/{sandbox,pipeline,review}.py`: 고정 FastAPI/Vue/SQLite 템플릿, 해시 lock, 비권한 Docker·읽기 전용 root·내부망·자원 제한, 변경 불가 후보 Git/이미지, 후보 밖의 보호된 기능·보안 도구를 연결했다. Vue 원문 MIT·출처/npm 무결성 기록을 동봉했다. 코드 실행은 모델 명령이 아닌 고정 서버 도구다.
 4. 기능·보안은 같은 후보에서 독립 입력/컨테이너로 실행한다. 첫 보고서는 두 번째 검토 완료 전 공개 artifact/event/Snapshot에 싣지 않는다. 원본 보고서는 불변이며 error/not_run/fail은 출시를 막는다. 보안은 정적 AST/비밀 패턴·실제 격리 inspect·Grype 의존성/이미지 검사를 수행한다. 일반 목적 종합 SAST를 구현했다고 주장하지 않는다.
-5. 합성 개발 실제 실행: 요청→모델 기획→**스크립트 테스트 결정(실제 사용자 승인 아님)**→MCP 파일 수정→후보→기능 PASS·보안 FAIL→`needs_input` 출시 차단. 실행 ID `9452916ee2e54a1d95f556b92806fe71`, 후보 commit `6fd73b3a5dff28573b8fa35295de7930e3a4b100`, image `sha256:5eedb568b5d536227a71bc47a6a57ad6f9c7e679cb0e672e2a7bb31e3bb435e7`. DB/모델/캐시는 무시된 `runtime-data/`에만 있다. 가짜 도구 결과나 모델 단독 선언으로 통과를 채우지 않았다.
-6. 프리뷰 operation의 고정 이름·이미지 조회/재개, 별도 hostname `localhost`·sandbox opaque origin/CORS·신뢰 CSP 프록시를 연결했다. 제품 프리뷰는 두 PASS 후에만 발급한다. 별도 개발 fixture에서는 실제 health·CSP·CORS와 브라우저의 Vue iframe 렌더링을 확인했다. 실패한 제품 후보에 프리뷰 artifact를 발급하지 않았다. 자기 fixture 컨테이너/네트워크만 정리하며 데이터 볼륨은 지우지 않는다.
-7. 명시적 CSS 수정은 같은 승인 명세의 새 Sprint·CSS만 쓰기 가능한 grant로 실행하며 옛 검토/출시 승인을 무효화한다. 기능/데이터/API/권한·모호한 요청은 재기획/재승인한다. 원문을 보존한다.
-8. 자체 검사: **22개 통과**(임시 DB·fake 모델/mock 도구 포함, 실제 MCP handshake). pending 보고서 비공개·not_run 차단·후보 불일치 거부·stale 결과/옛 grant 차단·스타일 쓰기 제한·재생 AC 판정 보존 포함. `pip check` 통과. 개발 검사는 제품의 독립 출시 판정이 아니다.
+5. 합성 개발 실제 실행: 요청→모델 기획→**스크립트 테스트 결정(실제 사용자 승인 아님)**→MCP 파일 수정→후보→기능 PASS·보안 FAIL→`needs_input` 출시 차단을 먼저 확인했다. 반려 실행 `9452916ee2e54a1d95f556b92806fe71`과 `08b298fa5d3b4a57bdfde0463f4c8a6c`의 원본 보고서를 보존했다. 이미지 수정 후 실행 `ae947cc5946f425e9ec16239c16d85e7`은 같은 후보의 두 검사 PASS와 프리뷰 발급을 실제 확인했다. 최초 통과 후보 commit `6fd73b3a5dff28573b8fa35295de7930e3a4b100`, image `sha256:6b113ada7bc8d5b49e7969912a8de1876afe6686ed249757a8437cb8df43e283`. DB/모델/캐시는 무시된 `runtime-data/`에만 있다. 가짜 도구 결과나 모델 단독 선언으로 통과를 채우지 않았다.
+6. 프리뷰 operation의 고정 이름·이미지 조회/재개, 별도 hostname `localhost`·sandbox opaque origin/CORS·신뢰 CSP 프록시를 연결했다. 제품 프리뷰는 두 PASS 후에만 발급한다. 실제 발급 프리뷰 health와 별도 fixture의 CSP·CORS·브라우저 Vue iframe 렌더링을 확인했다. 실패한 후보에는 프리뷰 artifact를 발급하지 않았다. 확인 후 자기 컨테이너/네트워크만 정리하며 데이터 볼륨은 지우지 않았다.
+7. 명시적 CSS 수정은 같은 승인 명세의 새 Sprint·CSS만 쓰기 가능한 grant로 실행하며 옛 검토/출시 승인을 무효화한다. 실제 합성 수정에서 `app_frontend/style.css` 한 파일만 바뀌고 데이터·명세가 유지됐으며 새 후보도 두 검사를 통과했다. 수정 후보 commit `df44da90e17ff06db690c214f7455b9be1623048`, image `sha256:002ef8f9367e19e1713ed2f1c67ea94c32f506e7991cc1b1d1538a1ea41379ff`. 브라우저에서 보존된 항목을 확인했다. 기능/데이터/API/권한·모호한 요청은 재기획/재승인한다. 원문과 옛 보고서를 보존한다.
+8. 자체 검사: **25개 통과**(임시 DB·fake 모델/mock 도구 포함, 실제 MCP handshake). pending 보고서 비공개·not_run 차단·후보 불일치 거부·stale 결과/옛 grant 차단·스타일 쓰기 제한·재생 AC 판정 보존·스캐너 DB/배포판 불명 차단·같은 명세의 볼륨 보존/옛 서비스 교체 포함. 승인 명세는 두 JSON 계약과 템플릿 계약/lock·Dockerfile·보호된 검사 파일 해시에 묶이며 입력 변경 후 옛 승인은 거절된다. `pip check` 통과. 개발 검사는 외부의 독립 제품 보안 감사가 아니다.
 
 ### 실제 환경·남은 차단
 
-- 실제 모델: Ollama 0.33.0 / Qwen3.5:4b. 공개 카탈로그의 Apache 2.0 경로를 사용했다. 모델 파일 약 4GB는 Git에서 제외했다. 단일 추론만 확인했으며 M5/16GB에서 전체 앱 동시 성능·최대 메모리를 보장하지 않는다.
-- 런타임: `sha256:da20ab5363d480d3a78d017a52e74eee77836eaddae29d5305a0ffead5c8aeb7`; base `python@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce`. build 전용 pip/setuptools/wheel을 제거한 뒤에도 **High 55개 패키지-취약점 일치 항목**이 남아 출시를 차단했다. 이는 55개 고유 CVE라는 뜻이 아니다. 실제 악용/적용 가능성은 별도 확인 전이며 자동 비적용/예외 처리를 하지 않았다.
+- 실제 모델: Ollama 0.33.0 / Qwen3.5:4b. 공개 카탈로그의 Apache 2.0 경로를 사용했다. 모델 파일 약 4GB는 Git에서 제외했다. `sysctl`로 메모리 17,179,869,184 bytes·CPU 10 확인. 실제 추론 중 `ollama ps`는 3.6GB·100% GPU·context 16,384로 보고했다. 단일 시점 관찰이며 전체 앱 동시 성능·최대 메모리는 보장하지 않는다. `vm_stat`의 낮은 free/압축 메모리는 장비 전체 상태로 다른 앱 영향과 분리하지 않았다.
+- 초기 Debian 런타임은 build 도구 제거 뒤에도 **High 55개 패키지-취약점 일치 항목**으로 출시를 차단했다(55개 고유 CVE라는 뜻 아님). 공식 Python Alpine으로 OS 패키지를 줄인 뒤 남은 zlib High 1개를 `1.3.2-r1`로 고정 수정했다. 배포판의 서명 저장소로 설치하고 재검사했다. 예외/비적용으로 숨기지 않았다. 기존 반려 원본은 보존했다.
+- 최종 런타임 `sha256:c90dc49f8c62dd5473877227226056018fddb671ccefbf3e23843be33307d1cb`, base `python@sha256:d9368b3a5ac59afea7b5d4f2e2aea0941dbf9fdee9c369c5bec00b98244bc929` / Alpine 3.24.2. 최종 후보는 static·secrets·isolation·scanner_coverage·dependency_image 모두 true, **High/Critical/Unknown 0, Medium 9, Negligible 1**이다. 알려진 검사 범위의 정책 통과이며 무취약성 보증은 아니다. 고정 이미지 값은 로컬 Docker image ID이고 원격 registry manifest digest 검증은 D9에 남았다.
 - Grype v0.121.0 image `sha256:621d56d1d68106b787022c81546f7e0a36202a25d1239f0c20195fab8c16f7ea`, DB v6.1.10, built `2026-10-19T06:39:15Z`, valid 상태. 실제 검사는 오프라인이며 DB 시점·원본 JSON을 보고서에 보존한다. 스캐너 임시 공간 부족도 실제 발견/수정했다.
 - D9–D11: 외부 저장소/자동 배포 트리거/무료 대상/배포 승인·복구 manifest·push/deploy 어댑터와 제출 완주는 **미구현/미확인**이다. 대상 질문은 사용자에게 너무 일찍 드렸음을 정정했으며 지금 답을 요구하지 않는다. 실제 배포 직전에만 구체 대상·권한·승인을 확인한다. 현재 release 결정/외부 배포는 서버에서 비활성이다.
 - 긴 기획 문맥은 4,000 UTF-8 바이트 초과 시 원문 보존 needs_input이며 자동 분해 미구현. 범용 스택·AI/Data 생성·벡터 검색·모델 순위·추가 테마는 미구현이다. 전체 시간/수정 횟수 상한과 강제 PASS는 없다.
-- 오래된/취소된 프리뷰 서비스의 장기 정리·실제 사용자 수정 완주·장시간 재시작/응답 유실 복구·깨끗한 제출 환경 재생·배포는 미확인이다. 데이터 볼륨은 보존한다.
+- 같은 명세의 교체는 볼륨을 보존하고 새 health/발급 후 옛 서비스를 정리한다. 장기 방치·취소 후 자동 서비스 정리, 실제 사용자 승인에 의한 완주, 장시간 재시작/응답 유실 복구, 깨끗한 제출 환경 재생·배포는 미확인이다. 다른 명세 간 자동 DB 이전은 제공하지 않는다.
 
 ### Claude 계약 응답·필요 요청
 
@@ -34,6 +35,18 @@
 - **CR-C10 응답**: 계약 §7에 `kind: preview → http.Preview`를 명시했고 실제 발급 본문은 url/origin/commit_sha다.
 - **CR-C11 요청(재생의 읽기 전용)**: `PreviewDialog`는 현재 readOnly여도 외부 iframe을 만든다. REPLAY에서는 iframe을 마운트하지 않고 기록 URL/commit만 표시해 달라. 실행 중 아닌 상태/현재 후보와 다른 옛 프리뷰도 기록임을 명시하고 새 후보 프리뷰로 취급하지 말라. 해당 frontend 소스는 Codex가 고치지 않았다.
 - Claude 인계 `b3a52bc`까지 준비된 커밋을 확인했다. 통합 커밋/확인 결과는 아래 최종 근거에 기록한다. 추가 agent/agy·세션 자동 전달·터미널 거절 우회를 하지 않았다.
+
+### 통합·최종 근거
+
+- Codex 구현 커밋 `44d8670` — backend/runner/knowledge/templates/infra/계약/문서 42개. 모델·DB·캐시·키·frontend는 이 구현 커밋에 포함하지 않았다.
+- 후속 구현 `8648fca` — 보호 입력 변경 후 옛 승인 차단·Alpine/zlib 수정·스캐너 메타데이터 검사·같은 명세의 프리뷰 데이터 보존/옛 서비스 정리. 검사만을 위해 수정한 프론트 소스는 없다.
+- Claude 기준 `b3a52bc`를 통합한 merge `6bc3597f9cbdbd45620de682d27a018167c390b6`. 충돌한 공유 문서 3개는 Claude 측 내용이 `2403a0e`와 바이트 단위로 동일함을 확인한 뒤 Codex의 최신 제공자 계약/인계를 유지했다. `git diff b3a52bc HEAD -- frontend`가 빈 결과임을 확인했다. Claude worktree는 clean 상태를 보존했다.
+- 통합 프론트 확인: `npm ci --ignore-scripts`로 고정 lock을 설치한 뒤 **8개 파일/120개 테스트 통과**, `vue-tsc`·Vite build 통과(JS 162.71kB / gzip 55.72kB). frontend 소스·lock·생성 타입을 직접 수정하지 않았다. 새 AcceptanceStatus의 타입/해시와 CR-C11 UI 수정은 여전히 Claude가 해야 한다.
+- 브라우저는 실제 API의 모델 `qwen3.5:4b 준비됨`, worker 부재로 LIVE 불가, 합성 개발 실제 원장 목록과 합성 예시의 구분을 확인했다. 실제 생성 프리뷰와 스타일 교체 후 보존된 데이터도 확인했다. 실제 사용자 기획 승인·SSE 재연결/장기 REPLAY·실제 배포의 UI 완주는 미확인이다.
+- 보호 프록시 fixture: Docker 내부망은 published port 접근을 차단하므로 신뢰 프록시만 별도 ingress network에 추가 연결했다. 생성 앱은 내부망만 유지했다. loopback health/CSP/opaque-origin CORS와 브라우저 Vue iframe 로드를 확인하고 자체 fixture 컨테이너·네트워크를 정리했다. 제품 실행에는 프리뷰 artifact가 없다.
+- 종료 정리: 합성 실행은 확인 뒤 cancel 사건으로 종료하고 자체 프리뷰 컨테이너·네트워크를 제거했다. 테스트 데이터 볼륨·원장·후보·이미지·모델 파일은 보존했다. 이전 프리뷰 URL은 기록이며 현재 서비스가 아니다. 자체 API/Vite·확인용 브라우저 탭을 닫고 모델을 메모리에서 내렸다. Docker Desktop/모델 서버와 다른 사용자 세션은 종료하지 않았다.
+- 로컬 근거: `runtime-data/development-check.sqlite3`의 불변 원문/이벤트/보고서, `runtime-data/{development-result,style-result,scanner,runtime-image}.json`. 테스트용 스크립트 결정과 실제 사용자 승인은 구분한다. 이 데이터는 Git 미포함이며 깨끗한 환경용 공개 REPLAY export/import는 아직 없다.
+- 다음: **CR-C09/CR-C11 소비자 반영** → 실제 사용자 입력·승인과 장기 복구/재생 통합 확인 → 실제 대상이 준비됐을 때만 D9 배포 승인·복구/상태 조정 구현. 지금 사용자에게 저장소/배포 대상 답을 요구하지 않는다.
 
 아래 D1·이전 기록의 미연결/모델 부재 문구는 당시 이력이다.
 
@@ -66,11 +79,13 @@
 
 | 작업 | 현재 상태·다음 결과 |
 |---|---|
-| D0 Git/worktree | 완료. 모델·Docker·배포 대상의 준비는 별도 미확인 |
-| D1 계약/저장 | 제공자 계약·기본 저장/명령 연결. Claude 타입/fixture/API 상호 확인과 전체 도메인 완성은 남음 |
-| D2–D3 | 기획 worker/lease/버전 fence/시도·문맥·중지/재개 구현, fake 기반 자체 검사. 실제 모델·긴 문맥 분해·역할 그래프 미확인/미연결 |
-| D4–D6, D8–D11 | 미완료. 검색/MCP·격리 구현·두 검토·통합/실제 완주 증거 필요 |
-| D7 | Claude 소유. 준비 완료 신호를 읽고 해당 worktree에서 시작 |
+| D0 Git/worktree | 완료. 로컬 Qwen·Docker·오프라인 스캐너 준비 확인. 실제 배포 대상은 미정 |
+| D1 계약/저장 | 세션/명령/SSE/승인/저장·추가 AC 판정 제공자 연결. 최신 소비자 타입/CR-C09 반영 필요 |
+| D2–D3 | 영속 worker/lease/버전 fence/중지·재개·짧은 LangGraph·실제 모델 확인. 긴 문맥 자동 분해 미구현 |
+| D4–D6 | 작은 ACL 코퍼스·실제 MCP·격리 패치·같은 후보 두 검토 연결. 실제 반려→이미지 수정→두 검사 PASS 확인 |
+| D7 | Claude b3a52bc까지 통합. 120개 테스트·타입 검사·빌드 통과. CR-C09/CR-C11 요청 남음 |
+| D8 | 두 검사 통과 후 실제 프리뷰·CSS만 수정·같은 명세/데이터 유지·새 후보 재검토·옛 서비스 교체 확인. 실제 사용자 승인 완주는 별도 |
+| D9–D11 | 외부 Git/배포·승인/복구 manifest·제출 완주 미구현/대상 미정. 실제 배포는 사용자 승인 후에만 진행 |
 
 ### Claude에게 필요한 요청
 
