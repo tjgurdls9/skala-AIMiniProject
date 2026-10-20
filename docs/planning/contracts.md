@@ -134,3 +134,12 @@
 프리뷰 상태의 `scope: implementation` 요청 중 명시적인 색·여백·폰트·레이아웃 변경만 CSS 쓰기 권한을 가진 새 Sprint로 보낸다. 기존 기획 승인은 유지하고 검토·출시 승인은 무효화한다. 기능/API/데이터/권한 변경 및 모호한 요청은 원문을 보존하고 재기획·재승인한다. 수정 후보는 같은 두 검토를 새로 받아야 한다.
 
 같은 명세의 프리뷰 교체는 기존 데이터 볼륨을 유지한다. 다른 명세는 새 볼륨을 사용하고 이전 볼륨을 보존한다. 새 후보의 health·발급을 확인한 후 옛 프리뷰 컨테이너·네트워크를 정리하며 데이터 볼륨은 자동 삭제하지 않는다. 임의 DB 스키마 간 자동 데이터 이전은 제공하지 않는다.
+
+### S04–S05 공개 근거 (CR-C12)
+
+추가 HTTP 정의이며 protocol/Snapshot/명령 필드는 바꾸지 않는다. 소비자가 계약 전용 커밋의 타입/해시를 반영한 뒤 공개 artifact 연결을 활성화한다.
+
+- `kind: retrieval` → `http.RetrievalEvidence`. `method`는 실제 실행한 keyword/semantic, `status`는 found/no_results/search_error다. 오류를 빈 결과로 바꾸지 않는다. `model`은 사용한 로컬 embedding 식별자이며 키워드면 null이다. sources에는 역할 ACL을 통과한 최대 5개 chunk의 출처 URL·문서 버전·라이선스·최초 수집 시각·본문 해시·역할 ACL·관련도를 제공한다. 점수는 충족/검사 판정이 아니다. `search_error`의 error_code는 공개된 안전한 분류만 사용하며 내부 예외/모델 prompt는 제공하지 않는다. 상대 검토 원문/판정은 코퍼스에 넣거나 공개하지 않는다.
+- `kind: context` → `http.ContextEvidence`. 원문 source_digest와 원장의 request_id/offset/length/chunk hash, 완료/전체 조각 수, 명세 버전 및 ready/needs_input을 제공한다. offset/length는 Unicode 코드포인트다. 원문/정정은 원장에 그대로 남고 역할별 필수 조건은 직접 입력한다. 압축 근거는 내부 사고 원문이나 승인 증거가 아니다. 공개 본문에는 raw prompt/추론/파일 내용이 없다. 완료 조각 수는 total을 넘지 않으며 source_digest 변경 시 이전 checkpoint를 새 입력으로 재사용하지 않는다.
+
+`ReplayRecording.recorded_at` 및 동결 `replay_source.recorded_at`은 포함된 원본의 마지막 사건 occurred_at이다(CR-C13). GET/재생 생성 시각이 아니며 원본에 새 사건이 없으면 조회 결과가 안정적이다. LIVE 기록의 최신 사건이 바뀌어도 생성된 REPLAY의 시각/manifest는 변하지 않는다.

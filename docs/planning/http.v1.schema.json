@@ -424,6 +424,52 @@
         }
       }
     },
+    "RetrievalEvidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["role", "method", "status", "model", "sources"],
+      "properties": {
+        "role": {"enum": ["planner", "builder", "validator", "security"]},
+        "method": {"enum": ["keyword", "semantic"]},
+        "status": {"enum": ["found", "no_results", "search_error"]},
+        "model": {"type": ["string", "null"]},
+        "error_code": {"enum": ["MODEL_UNAVAILABLE", "VERSION_CONFLICT", "INVALID_SOURCE", "SEARCH_FAILED"]},
+        "sources": {"type": "array", "maxItems": 5, "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["chunk_id", "url", "version", "license", "collected_at", "content_digest", "roles", "score"],
+          "properties": {
+            "chunk_id": {"$ref": "protocol.v1.schema.json#/$defs/Digest"},
+            "url": {"type": "string", "format": "uri"},
+            "version": {"type": "string", "minLength": 1},
+            "license": {"type": "string", "minLength": 1},
+            "collected_at": {"type": "string", "format": "date-time"},
+            "content_digest": {"$ref": "protocol.v1.schema.json#/$defs/Digest"},
+            "roles": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["planner", "builder", "validator", "security"]}},
+            "score": {"type": "number"}
+          }
+        }}
+      }
+    },
+    "ContextEvidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["spec_version_id", "status", "source_digest", "completed_fragments", "total_fragments", "sources"],
+      "properties": {
+        "spec_version_id": {"oneOf": [{"type": "null"}, {"$ref": "protocol.v1.schema.json#/$defs/Id"}]},
+        "status": {"enum": ["ready", "needs_input"]},
+        "source_digest": {"$ref": "protocol.v1.schema.json#/$defs/Digest"},
+        "completed_fragments": {"type": "integer", "minimum": 0},
+        "total_fragments": {"type": "integer", "minimum": 0},
+        "sources": {"type": "array", "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["request_id", "content_digest", "offset", "length"],
+          "properties": {
+            "request_id": {"$ref": "protocol.v1.schema.json#/$defs/Id"},
+            "content_digest": {"$ref": "protocol.v1.schema.json#/$defs/Digest"},
+            "offset": {"type": "integer", "minimum": 0},
+            "length": {"type": "integer", "minimum": 1}
+          }
+        }}
+      }
+    },
     "Preview": {
       "type": "object",
       "additionalProperties": false,
