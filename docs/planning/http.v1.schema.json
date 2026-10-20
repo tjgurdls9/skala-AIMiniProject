@@ -403,6 +403,27 @@
         }
       }
     },
+    "AcceptanceStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spec_version_id", "items"],
+      "properties": {
+        "spec_version_id": {"oneOf": [{"type": "null"}, {"$ref": "protocol.v1.schema.json#/$defs/Id"}]},
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "status"],
+            "properties": {
+              "id": {"type": "string", "minLength": 1},
+              "status": {"enum": ["unmet", "met", "failed", "not_run"]},
+              "report_id": {"$ref": "protocol.v1.schema.json#/$defs/Id"}
+            }
+          }
+        }
+      }
+    },
     "Preview": {
       "type": "object",
       "additionalProperties": false,
