@@ -19,6 +19,8 @@ const request = ref('')
 const submitting = ref(false)
 const submitError = ref<ApiError | null>(null)
 const motion = ref(true)
+/** 프로젝트는 만들었는데 실행 생성이 실패한 경우, 재시도에서 같은 프로젝트를 다시 쓴다(중복 생성 방지) */
+const createdProject = ref<{ key: string; id: string } | null>(null)
 
 const MODEL_STATUS: Record<Runtime['model_status'], string> = { not_configured: '미설정', unavailable: '연결 안 됨', ready: '준비됨' }
 const RUNNER_STATUS: Record<Runtime['runner_status'], string> = { unavailable: '연결 안 됨', ready: '준비됨' }
@@ -40,8 +42,12 @@ async function startLive(): Promise<void> {
   submitting.value = true
   submitError.value = null
   try {
-    const project = await props.api.createProject({ title: title.value.trim(), request: request.value.trim() })
-    const snapshot = await props.api.createRun(project.project_id, { mode: 'live' })
+    const key = `${title.value.trim()}\n${request.value.trim()}`
+    if (createdProject.value?.key !== key) {
+      const project = await props.api.createProject({ title: title.value.trim(), request: request.value.trim() })
+      createdProject.value = { key, id: project.project_id }
+    }
+    const snapshot = await props.api.createRun(createdProject.value.id, { mode: 'live' })
     emit('openRun', snapshot.run_id)
   } catch (error) {
     submitError.value = error instanceof ApiError ? error : new ApiError(0, 'NETWORK', '실행을 만들지 못했습니다.')
@@ -51,12 +57,16 @@ async function startLive(): Promise<void> {
 }
 
 async function startReplay(rec: ReplayRecording): Promise<void> {
+  if (submitting.value) return
+  submitting.value = true
   submitError.value = null
   try {
     const snapshot = await props.api.createRun(rec.project_id, { mode: 'replay', source_run_id: rec.source_run_id })
     emit('openRun', snapshot.run_id)
   } catch (error) {
     submitError.value = error instanceof ApiError ? error : new ApiError(0, 'NETWORK', '재생을 만들지 못했습니다.')
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -126,7 +136,7 @@ onMounted(load)
         <p class="small muted">이전 LIVE 실행의 실제 원장을 새 명령 없이 다시 봅니다.</p>
         <ul v-if="replays?.length" class="plain list">
           <li v-for="r in replays" :key="r.source_run_id">
-            <button type="button" class="btn item" @click="startReplay(r)">
+            <button type="button" class="btn item" :disabled="submitting" @click="startReplay(r)">
               <span><strong>{{ r.title }}</strong><br /><span class="small muted">{{ formatTime(r.recorded_at) }} · manifest <code>{{ shortDigest(r.manifest_digest) }}</code></span></span>
             </button>
           </li>

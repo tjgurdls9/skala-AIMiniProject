@@ -181,6 +181,11 @@ label.field > span.hint { font-weight: 400; }
 .error-box { border: 1px solid var(--tone-danger); border-left-width: 4px; border-radius: var(--radius); padding: 10px 12px; background: var(--surface); }
 .info-box { border: 1px solid var(--line); border-left: 4px solid var(--tone-active); border-radius: var(--radius); padding: 10px 12px; background: var(--surface-2); }
 
+/* 터치 화면에서는 작은 조작 요소도 44px 이상 */
+@media (pointer: coarse) {
+  .btn.small, button { min-height: var(--tap); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }

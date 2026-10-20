@@ -99,7 +99,7 @@ describe('useRun 스트림 처리', () => {
     streams[0].handlers.onDown(true)
     expect(run.connection.value).toBe('closed')
     expect(run.snapshot.value?.state).toBe('building')
-    run.reconnect()
+    await run.reconnect()
     expect(streams).toHaveLength(2)
   })
 

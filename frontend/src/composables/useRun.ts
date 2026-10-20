@@ -19,6 +19,8 @@ export type CommandInput =
   | { action: 'request_changes'; payload: ChangePayload }
   | { action: 'pause' | 'resume' | 'cancel'; payload: Record<string, never> }
 
+const PENDING_CONFIRM_MS = 20_000
+
 export function newCommandId(): string {
   return crypto.randomUUID()
 }
@@ -39,13 +41,21 @@ export function useRun(source: RunSource) {
   let refreshing: Promise<void> | null = null
   let refreshAgain = false
   let disposed = false
+  let pendingTimer: ReturnType<typeof setTimeout> | null = null
+
+  function clearPending(): void {
+    if (pendingTimer) clearTimeout(pendingTimer)
+    pendingTimer = null
+    pending.value = null
+  }
 
   function applySnapshot(next: Snapshot): void {
     const current = snapshot.value
     if (current && next.state_version < current.state_version) return // 늦게 도착한 이전 버전은 무시
     snapshot.value = next
+    // 명령 이후 업무 상태가 바뀌었으면 반영된 것으로 본다(같은 명령 ID의 사건이 오면 그쪽이 더 확실한 근거)
     const p = pending.value
-    if (p && next.state_version > p.expectedStateVersion) pending.value = null
+    if (p && next.state_version > p.expectedStateVersion) clearPending()
   }
 
   /** 동시에 여러 번 요청돼도 한 번에 하나만 읽고, 진행 중 요청이 있었으면 한 번 더 읽는다 */
@@ -85,7 +95,10 @@ export function useRun(source: RunSource) {
     lastSeq = event.seq
     events.value = [...events.value, event]
     const p = pending.value
-    if (p && event.command_id === p.commandId) void refreshSnapshot()
+    if (p && event.command_id === p.commandId) {
+      clearPending()
+      void refreshSnapshot()
+    }
     if (needsSnapshot(snapshot.value, event)) void refreshSnapshot()
     if (event.seq > liveFromSeq.value) liveListeners.forEach((fn) => fn(event))
   }
@@ -110,9 +123,13 @@ export function useRun(source: RunSource) {
     connection.value = 'resyncing'
     await refreshSnapshot()
     const snap = snapshot.value
-    if (!snap) return
+    if (!snap || loadError.value) {
+      connection.value = 'closed' // 낡은 커서로 다시 연결하지 않는다
+      return
+    }
     notice.value = '서버 기록 범위 밖이라 최신 스냅샷부터 다시 연결했습니다. 이전 사건 일부는 표시되지 않을 수 있습니다.'
     lastSeq = snap.last_event_seq
+    events.value = events.value.filter((e) => e.seq <= lastSeq)
     reopen(lastSeq, 'connecting')
   }
 
@@ -128,12 +145,18 @@ export function useRun(source: RunSource) {
     reopen(0, 'connecting')
   }
 
-  function reconnect(): void {
+  /** 스냅샷(필요하면 세션 재발급 포함)을 먼저 읽고, 성공했을 때만 사건 스트림을 다시 연다 */
+  async function reconnect(): Promise<void> {
+    connection.value = 'connecting'
+    await refreshSnapshot()
+    if (loadError.value) {
+      connection.value = 'closed'
+      return
+    }
     reopen(lastSeq, 'connecting')
-    void refreshSnapshot()
   }
 
-  /** 202는 접수일 뿐이다. 실제 반영은 이후 스냅샷의 state_version으로 확인한다. */
+  /** 202는 접수일 뿐이다. 반영은 같은 명령 ID의 사건 또는 이후 스냅샷의 state_version으로 확인한다. */
   async function send(input: CommandInput, commandId: string): Promise<CommandReceipt> {
     const snap = snapshot.value
     if (!snap) throw new ApiError(0, 'INVALID_STATE', '스냅샷이 없어 명령을 보낼 수 없습니다.')
@@ -149,11 +172,19 @@ export function useRun(source: RunSource) {
     pending.value = { commandId, action: input.action, expectedStateVersion: snap.state_version, receipt: null }
     try {
       const receipt = await source.sendCommand(command)
-      if (pending.value?.commandId === commandId) pending.value = { ...pending.value, receipt }
+      if (pending.value?.commandId === commandId) {
+        pending.value = { ...pending.value, receipt }
+        // 접수 뒤 반영 근거가 오지 않으면 조작을 다시 풀고 미확인임을 알린다(영구 잠금 방지)
+        pendingTimer = setTimeout(() => {
+          if (pending.value?.commandId !== commandId) return
+          clearPending()
+          notice.value = '명령은 접수됐지만 반영을 아직 확인하지 못했습니다. 실행 상태와 사건 기록을 확인하세요.'
+        }, PENDING_CONFIRM_MS)
+      }
       void refreshSnapshot()
       return receipt
     } catch (error) {
-      if (pending.value?.commandId === commandId) pending.value = null
+      if (pending.value?.commandId === commandId) clearPending()
       if (error instanceof ApiError && error.isStale) await refreshSnapshot()
       throw error
     }
@@ -166,6 +197,7 @@ export function useRun(source: RunSource) {
 
   function dispose(): void {
     disposed = true
+    if (pendingTimer) clearTimeout(pendingTimer)
     closeStream?.()
     closeStream = null
     liveListeners.clear()

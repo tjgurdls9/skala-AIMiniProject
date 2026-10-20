@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { SendResult } from '../composables/useCommandForm'
+import { watch } from 'vue'
 import { useCommandForm } from '../composables/useCommandForm'
 import type { CommandInput } from '../composables/useRun'
 import BaseDialog from './BaseDialog.vue'
@@ -13,6 +14,9 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ close: [] }>()
 const form = useCommandForm()
+watch(() => [props.open, props.action] as const, ([open]) => {
+  if (open) form.renew()
+}, { immediate: true })
 
 const TEXT = {
   resume: {

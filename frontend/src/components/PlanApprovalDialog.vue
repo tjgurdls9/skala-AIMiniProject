@@ -8,6 +8,7 @@ import { useCommandForm } from '../composables/useCommandForm'
 import { useDraft } from '../composables/useDraft'
 import type { CommandInput } from '../composables/useRun'
 import { shortDigest } from '../model/labels'
+import { isPlanView } from '../model/planView'
 import BaseDialog from './BaseDialog.vue'
 import CommandFeedback from './CommandFeedback.vue'
 import PlanViewBody from './PlanViewBody.vue'
@@ -22,6 +23,7 @@ const props = defineProps<{
   specArtifactId: string | null
   source: RunSource
   runId: string
+  readOnly: boolean
   send: (input: CommandInput, commandId: string) => Promise<SendResult>
 }>()
 const emit = defineEmits<{ close: [] }>()
@@ -32,10 +34,12 @@ const { text: feedback, clear } = useDraft(`draft:${props.runId}:plan-feedback`)
 const form = useCommandForm()
 
 watch(
-  () => [props.open, props.specArtifactId] as const,
-  async ([open, id]) => {
+  () => [props.open, props.specArtifactId, props.approval?.id, props.approval?.target_digest] as const,
+  async ([open, id], prev) => {
     if (!open) return
-    form.reset()
+    // 새로 열면 새 결정, 열린 채 대상이 바뀌면(409 뒤 재조회) 안내는 남기고 ID만 새로
+    form.renew({ keepError: prev?.[0] === true })
+
     plan.value = null
     planError.value = null
     if (!id) {
@@ -43,7 +47,9 @@ watch(
       return
     }
     try {
-      plan.value = (await props.source.getArtifact(id)) as PlanView
+      const body = await props.source.getArtifact(id)
+      if (isPlanView(body)) plan.value = body
+      else planError.value = '기획 본문 형식이 계약(PlanView)과 맞지 않습니다.'
     } catch (error) {
       planError.value = error instanceof ApiError ? error.message : '기획 본문을 읽지 못했습니다.'
     }
@@ -94,11 +100,12 @@ async function decide(decision: 'approve' | 'reject'): Promise<void> {
         <textarea v-model="feedback" maxlength="8000" />
       </label>
       <CommandFeedback :error="form.error.value" />
+      <p v-if="readOnly" class="info-box">실제 기록 재생은 읽기 전용입니다. 내용만 확인할 수 있습니다.</p>
     </template>
 
     <template #foot>
       <button type="button" class="btn" @click="emit('close')">닫기</button>
-      <template v-if="approval">
+      <template v-if="approval && !readOnly">
         <button type="button" class="btn danger" :disabled="form.submitting.value || !feedback.trim()" @click="decide('reject')">
           수정 요청(거절)
         </button>

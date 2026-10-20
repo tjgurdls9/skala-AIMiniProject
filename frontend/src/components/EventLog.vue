@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import type { RunEvent, Task, WorkKind } from '../api/types'
 import { EVENT_TYPE, formatClock, formatTime, WORK_KIND } from '../model/labels'
-import { eventEmphasis, groupRepeats, relatedTaskIds } from '../model/relevance'
+import { eventEmphasis, groupRepeats, keepWhenFiltered, relatedTaskIds } from '../model/relevance'
 
 /** 시간순 사건 기록. 관심 분야는 강조만 하고 순서를 바꾸지 않는다(로컬 관련도 보조). */
 const props = defineProps<{ events: RunEvent[]; tasks: Task[] }>()
@@ -16,14 +16,12 @@ const onlyRelated = ref(false)
 const limit = ref(PAGE)
 
 const related = computed(() => relatedTaskIds(props.tasks, interests.value))
-const groups = computed(() => {
+const filtered = computed(() => {
   const all = groupRepeats(props.events)
-  const filtered = onlyRelated.value && interests.value.size
-    ? all.filter((g) => eventEmphasis(g.last, related.value) !== 'none')
-    : all
-  return filtered.slice(-limit.value)
+  return onlyRelated.value && interests.value.size ? all.filter((g) => keepWhenFiltered(g.last, related.value)) : all
 })
-const hidden = computed(() => Math.max(0, groupRepeats(props.events).length - limit.value))
+const groups = computed(() => filtered.value.slice(-limit.value))
+const hidden = computed(() => Math.max(0, filtered.value.length - limit.value))
 
 function toggle(kind: WorkKind): void {
   const next = new Set(interests.value)
@@ -51,7 +49,7 @@ function toggle(kind: WorkKind): void {
       >{{ WORK_KIND[k] }}</button>
       <label class="small only">
         <input v-model="onlyRelated" type="checkbox" :disabled="!interests.size" />
-        강조 항목만 (승인·대기·경고는 항상 표시)
+        강조 항목만 (승인·대기·경고·작업 종료·검토·상태 변경은 항상 표시)
       </label>
     </fieldset>
     <button v-if="hidden" type="button" class="btn small more" @click="limit += PAGE">이전 사건 {{ hidden }}건 더 보기</button>
@@ -64,7 +62,7 @@ function toggle(kind: WorkKind): void {
           {{ EVENT_TYPE[g.last.event_type] }}<template v-if="g.count > 1"> ×{{ g.count }}</template>
         </span>
         <span class="summary">
-          {{ g.last.summary }}
+          <template v-if="g.count > 1">{{ g.first.summary }} … </template>{{ g.last.summary }}
           <button v-if="g.last.task_id" type="button" class="task-link small" @click="emit('task', g.last.task_id!)">작업 보기</button>
         </span>
       </li>

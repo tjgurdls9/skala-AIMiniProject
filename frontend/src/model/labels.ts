@@ -94,6 +94,16 @@ export const CRITICAL_EVENTS = new Set<RunEvent['event_type']>([
   'approval_requested', 'approval_invalidated', 'quota_wait', 'resource_wait', 'operation_uncertain', 'warning',
 ])
 
+/**
+ * 관련도 필터·묶음과 무관하게 항상 개별로 보이는 사건. 실패·판정·상태 전이가 이 유형으로 전달되므로
+ * (요약 문장으로 성패를 추측하지 않고) 유형 전체를 숨기지 않는다.
+ */
+export const ALWAYS_SHOWN_EVENTS = new Set<RunEvent['event_type']>([
+  ...CRITICAL_EVENTS,
+  'task_finished', 'review_submitted', 'run_state_changed', 'deployment_started', 'deployment_finished',
+  'approval_decided', 'changes_requested', 'preview_ready', 'plan_proposed',
+])
+
 export function shortDigest(value: string | null | undefined): string {
   if (!value) return '—'
   const hex = value.replace(/^sha256:/, '')

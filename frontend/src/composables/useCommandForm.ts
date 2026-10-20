@@ -31,9 +31,14 @@ export function useCommandForm() {
     }
   }
 
-  function reset(): void {
-    error.value = null
+  /**
+   * 새 결정을 시작한다: 새 명령 ID를 만든다(같은 ID 재사용은 열린 화면 안의 네트워크 재시도뿐).
+   * 대상만 바뀐 경우(409 뒤 최신 대상 재조회)에는 원인 안내를 남긴다.
+   */
+  function renew(options: { keepError?: boolean } = {}): void {
+    if (!options.keepError) error.value = null
+    commandId.value = newCommandId()
   }
 
-  return { commandId, submitting, error, run, reset }
+  return { commandId, submitting, error, run, renew }
 }

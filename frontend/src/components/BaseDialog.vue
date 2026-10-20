@@ -25,13 +25,21 @@ watch(
   { immediate: true },
 )
 
-function onClose(): void {
-  opener?.focus()
+/** 여는 버튼이 결정 뒤 사라졌으면 작업 공간 본문으로 포커스를 돌린다 */
+function restoreFocus(): void {
+  const target = opener?.isConnected ? opener : document.querySelector<HTMLElement>('#workspace-main, main, h1')
+  target?.focus()
   opener = null
+}
+
+function onClose(): void {
+  restoreFocus()
   if (props.open) emit('close')
 }
 
-onBeforeUnmount(() => opener?.focus())
+onBeforeUnmount(() => {
+  if (opener) restoreFocus()
+})
 </script>
 
 <template>

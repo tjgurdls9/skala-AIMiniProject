@@ -56,7 +56,15 @@ watch(() => snapshot.value?.sprints.length, () => {
   if (!view.sprintId) view.sprintId = currentSprintId.value ?? snapshot.value?.sprints[0]?.id ?? null
 })
 watch(() => snapshot.value?.state, (state, prev) => {
-  if (state && prev && state !== prev) announce.value = `실행 상태: ${RUN_STATE[state].text}`
+  if (state && prev && state !== prev) {
+    announce.value = `실행 상태: ${RUN_STATE[state].text}`
+    headerError.value = null
+  }
+})
+// 새로 생긴 결정 대기를 스크린리더에 한 번 알린다(사건 로그 전체를 읽히지 않음)
+watch(() => alerts.value.filter((a) => a.action && a.action.kind !== 'task').map((a) => a.key).join(','), (keys, prev) => {
+  const added = alerts.value.filter((a) => a.action && a.action.kind !== 'task' && !(prev ?? '').split(',').includes(a.key))
+  if (keys && added.length) announce.value = added.map((a) => a.text).join(' · ')
 })
 
 function selectSprint(id: string): void {
@@ -73,6 +81,7 @@ function selectArtifact(id: string): void {
 }
 
 async function send(input: CommandInput, commandId: string): Promise<SendResult> {
+  if (run.isReplay.value) return new ApiError(409, 'REPLAY_READ_ONLY', '실제 기록 재생에서는 명령을 보내지 않습니다.')
   try {
     await run.send(input, commandId)
     announce.value = '명령이 접수됐습니다. 반영은 실행 상태로 확인합니다.'
@@ -122,7 +131,7 @@ onBeforeUnmount(() => run.dispose())
 
     <template v-else>
       <AlertStrip :alerts="alerts" :notices="notices" @act="act" />
-      <main class="workspace">
+      <main id="workspace-main" class="workspace" tabindex="-1" aria-label="작업 공간">
         <WorkTree
           class="area-tree"
           :snapshot="snapshot"
@@ -148,7 +157,7 @@ onBeforeUnmount(() => run.dispose())
             <button v-if="planApproval" type="button" class="btn primary" @click="dialog = 'plan'">⚑ 기획 검토·승인</button>
             <button v-if="snapshot.state === 'preview_ready'" type="button" class="btn primary" @click="dialog = 'preview'">⚑ 프리뷰 확인·수정 요청</button>
             <button v-if="releaseApproval" type="button" class="btn primary" @click="dialog = 'release'">⚑ 배포 대상 검토·승인</button>
-            <span v-if="run.isReplay.value" class="small muted">재생 중에는 결정을 보낼 수 없습니다.</span>
+            <span v-if="run.isReplay.value" class="small muted">재생 중에는 내용만 확인할 수 있고 결정을 보낼 수 없습니다.</span>
           </div>
         </div>
         <EvidencePanel
@@ -170,6 +179,7 @@ onBeforeUnmount(() => run.dispose())
         :spec-artifact-id="specArtifactId"
         :source="source"
         :run-id="snapshot.run_id"
+        :read-only="run.isReplay.value"
         :send="send"
         @close="dialog = null"
       />
@@ -188,6 +198,7 @@ onBeforeUnmount(() => run.dispose())
         :approval="releaseApproval"
         :snapshot="snapshot"
         :source="source"
+        :read-only="run.isReplay.value"
         :send="send"
         @close="dialog = null"
         @artifact="selectArtifact"

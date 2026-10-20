@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { ApiError } from '../api/errors'
 import type { RunSource } from '../api/source'
 import type { Snapshot } from '../api/types'
 import type { SendResult } from '../composables/useCommandForm'
@@ -27,6 +28,7 @@ const previewArtifact = computed(() => [...props.snapshot.artifacts].reverse().f
 const titles = computed(() => Object.fromEntries(props.snapshot.artifacts.map((a) => [a.id, a.title])))
 const attachIds = computed(() => [props.selectedArtifactId, previewArtifact.value?.id].filter((id, i, arr): id is string => !!id && arr.indexOf(id) === i))
 const preview = ref<unknown>(null)
+const previewError = ref<string | null>(null)
 const sent = ref(false)
 
 watch(
@@ -35,11 +37,13 @@ watch(
     if (!open) return
     sent.value = false
     preview.value = null
+    previewError.value = null
     if (!id) return
     try {
-      preview.value = await props.source.getArtifact(id)
-    } catch {
-      preview.value = null
+      const body = await props.source.getArtifact(id)
+      if (previewArtifact.value?.id === id) preview.value = body
+    } catch (error) {
+      if (previewArtifact.value?.id === id) previewError.value = error instanceof ApiError && error.code !== 'NOT_FOUND' ? `프리뷰 정보를 읽지 못했습니다: ${error.message}` : null
     }
   },
   { immediate: true },
@@ -56,7 +60,8 @@ watch(
         <dt>프리뷰 아티팩트</dt><dd>{{ previewArtifact ? previewArtifact.public_summary : '없음' }}</dd>
       </dl>
     </section>
-    <PreviewFrame :preview="preview" />
+    <p v-if="previewError" class="error-box" role="alert">{{ previewError }}</p>
+    <PreviewFrame v-else :preview="preview" />
     <section>
       <h3>독립 검토</h3>
       <ReviewPair :pair="pair" @artifact="emit('artifact', $event)" />

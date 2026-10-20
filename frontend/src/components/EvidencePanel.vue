@@ -2,8 +2,9 @@
 import { computed, ref, watch } from 'vue'
 import { ApiError, errorHint } from '../api/errors'
 import type { RunSource } from '../api/source'
-import type { PlanView, RunEvent, Snapshot } from '../api/types'
+import type { RunEvent, Snapshot } from '../api/types'
 import { indexById, reviewPair, waitingReason } from '../model/derive'
+import { isPlanView } from '../model/planView'
 import { EVENT_TYPE, formatTime, ROLE, shortDigest, TASK_STATE, WORK_KIND } from '../model/labels'
 import PlanViewBody from './PlanViewBody.vue'
 import ReviewPair from './ReviewPair.vue'
@@ -28,11 +29,6 @@ const body = ref<unknown>(null)
 const bodyError = ref<string | null>(null)
 const loading = ref(false)
 
-function isPlanView(value: unknown): value is PlanView {
-  const v = value as Partial<PlanView> | null
-  return !!v && typeof v.goal === 'string' && Array.isArray(v.acceptance) && typeof v.spec_version_id === 'string'
-}
-
 watch(
   () => props.artifactId,
   async (id) => {
@@ -46,7 +42,7 @@ watch(
     } catch (error) {
       if (props.artifactId === id) bodyError.value = error instanceof ApiError ? `${error.message} ${error.code === 'NOT_FOUND' ? '' : errorHint(error)}` : '본문을 읽지 못했습니다.'
     } finally {
-      loading.value = false
+      if (props.artifactId === id) loading.value = false
     }
   },
   { immediate: true },

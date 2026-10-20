@@ -22,6 +22,7 @@ const props = defineProps<{
   approval: (Approval & { target: ReleaseTarget }) | null
   snapshot: Snapshot
   source: RunSource
+  readOnly: boolean
   send: (input: CommandInput, commandId: string) => Promise<SendResult>
 }>()
 const emit = defineEmits<{ close: []; artifact: [id: string] }>()
@@ -40,10 +41,12 @@ const matchesCandidate = computed(() => {
 const invalidated = computed(() => props.snapshot.approvals.filter((a) => a.target.gate === 'release' && a.state === 'invalidated').length)
 
 watch(
-  () => [props.open, props.approval?.target.environment_id] as const,
-  async ([open, id]) => {
+  () => [props.open, props.approval?.id, props.approval?.target_digest] as const,
+  async ([open], prev) => {
     if (!open) return
-    form.reset()
+    // 새로 열면 새 결정, 열린 채 대상이 바뀌면(409 뒤 재조회) 안내는 남기고 ID만 새로
+    form.renew({ keepError: prev?.[0] === true })
+    const id = props.approval?.target.environment_id
     env.value = null
     envError.value = null
     if (!id) return
@@ -100,10 +103,11 @@ async function decide(decision: 'approve' | 'reject'): Promise<void> {
         <textarea v-model="feedback" maxlength="8000" />
       </label>
       <CommandFeedback :error="form.error.value" />
+      <p v-if="readOnly" class="info-box">실제 기록 재생은 읽기 전용입니다. 내용만 확인할 수 있습니다.</p>
     </template>
     <template #foot>
       <button type="button" class="btn" @click="emit('close')">닫기</button>
-      <template v-if="approval">
+      <template v-if="approval && !readOnly">
         <button type="button" class="btn danger" :disabled="form.submitting.value || !feedback.trim()" @click="decide('reject')">배포 거절</button>
         <button type="button" class="btn primary" :disabled="form.submitting.value || !passed || !matchesCandidate" @click="decide('approve')">
           {{ form.submitting.value ? '보내는 중…' : `이 결과를 ${env?.label ?? approval.target.environment_id}에 배포 승인` }}
