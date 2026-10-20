@@ -1,4 +1,4 @@
-/* 자동 생성 파일 — 수정 금지. 원본: docs/planning/protocol.v1.schema.json sha256:ad6decc2849e1eb80af54b557c7cc61ee05e7ac2b70e92abdddeedd3990bb07d. 재생성: npm run gen:types */
+/* 자동 생성 파일 — 수정 금지. 원본: docs/planning/protocol.v1.schema.json sha256:43e0f444b2f6fc408dd177d8db599a7a13f0f3e7e8f0e2993595701c89147147. 재생성: npm run gen:types */
 
 export type DevelopmentLifecycleProtocolV1DesignNotImplemented = Snapshot | Command | Event
 export type Id = string
@@ -165,6 +165,7 @@ export interface ReplaySource {
   source_run_id: Id
   recorded_at: string
   manifest_digest: Digest
+  provenance?: 'local_ledger' | 'imported_unsigned'
 }
 export interface DecisionPayload {
   approval_id: Id

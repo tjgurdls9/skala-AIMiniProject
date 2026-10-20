@@ -17,6 +17,7 @@ import OfficeScene from './OfficeScene.vue'
 import PlanApprovalDialog from './PlanApprovalDialog.vue'
 import PreviewDialog from './PreviewDialog.vue'
 import ReleaseApprovalDialog from './ReleaseApprovalDialog.vue'
+import RecordingExport from './RecordingExport.vue'
 import RunHeader from './RunHeader.vue'
 import SceneRoster from './SceneRoster.vue'
 import SprintBoard from './SprintBoard.vue'
@@ -252,6 +253,7 @@ onBeforeUnmount(() => {
             />
             <EventLog :events="run.events.value" :tasks="snapshot.tasks" @task="selectTask" />
           </div>
+          <RecordingExport :source="source" :run-id="snapshot.run_id" />
         </section>
       </main>
 

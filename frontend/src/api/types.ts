@@ -19,6 +19,10 @@ export type {
 export type {
   AcceptanceStatus,
   CommandReceipt,
+  ContextEvidence,
+  RecordingBundle,
+  RecordingImportResult,
+  RetrievalEvidence,
   Environment,
   Error as ApiErrorBody,
   PlanView,

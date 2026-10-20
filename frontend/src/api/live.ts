@@ -3,10 +3,14 @@ import { parseEventData } from '../model/eventStream'
 import type { RunSource, StreamHandlers } from './source'
 import type {
   AcceptanceStatus,
+  RecordingBundle,
+  RecordingImportResult,
   Command, CommandReceipt, Environment, Project, ProjectCreate, ReplayRecording, RunCreate, Runtime, Session, Snapshot,
 } from './types'
 
 const EVENT_SOURCE_CLOSED = 2 // EventSource.CLOSED
+/** 계약(CODEX-RECORDING-001): import 본문 최대 16 MiB */
+export const RECORDING_MAX_BYTES = 16 * 1024 * 1024
 
 type Fetch = typeof fetch
 type EventSourceFactory = (url: string) => EventSource
@@ -57,6 +61,29 @@ export class LiveApi {
 
   getAcceptance(runId: string): Promise<AcceptanceStatus> {
     return this.request('GET', `/api/runs/${encodeURIComponent(runId)}/acceptance`)
+  }
+
+  /** 실행의 공개 기록 묶음(동결 snapshot·events·공개 artifact). 키·원문 요청·작업 내부는 포함되지 않는다 */
+  getRecording(runId: string): Promise<RecordingBundle> {
+    return this.request('GET', `/api/runs/${encodeURIComponent(runId)}/recording`)
+  }
+
+  /** 서명 없는 기록 가져오기. 같은 manifest면 같은 읽기 전용 run을 돌려준다 */
+  importRecording(text: string): Promise<RecordingImportResult> {
+    if (new Blob([text]).size > RECORDING_MAX_BYTES) {
+      return Promise.reject(new ApiError(413, 'BODY_TOO_LARGE', '기록 파일이 16 MiB를 넘습니다.'))
+    }
+    let body: unknown
+    try {
+      body = JSON.parse(text)
+    } catch {
+      return Promise.reject(new ApiError(422, 'INVALID_COMMAND', '기록 파일이 JSON 형식이 아닙니다.'))
+    }
+    const b = body as { format?: unknown; version?: unknown } | null
+    if (!b || b.format !== 'lifecycle-recording' || b.version !== 1) {
+      return Promise.reject(new ApiError(422, 'INVALID_COMMAND', '기록 형식(lifecycle-recording v1)이 아닙니다.'))
+    }
+    return this.request('POST', '/api/recordings/import', body)
   }
 
   sendCommand(runId: string, command: Command): Promise<CommandReceipt> {
@@ -129,6 +156,7 @@ export function liveSource(api: LiveApi, runId: string): RunSource {
     runId,
     getSnapshot: () => api.getSnapshot(runId),
     getAcceptance: () => api.getAcceptance(runId),
+    getRecording: () => api.getRecording(runId),
     openEvents: (after, handlers) => api.openEvents(runId, after, handlers),
     sendCommand: (command) => api.sendCommand(runId, command),
     getArtifact: (id) => api.getArtifact(id),

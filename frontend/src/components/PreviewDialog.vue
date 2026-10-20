@@ -32,6 +32,7 @@ const currentCommit = computed(() => pair.value.validator?.commit_sha ?? pair.va
 /** CODEX-UI-001: 실행 중인 현재 후보의 프리뷰일 때만 iframe을 연다 */
 const recordReason = computed<string | null>(() => {
   if (props.source.kind === 'example') return '합성 예시입니다.'
+  if (props.snapshot.replay_source?.provenance === 'imported_unsigned') return '가져온 기록(서명 없음)에서는 외부 앱을 열지 않습니다.'
   if (props.readOnly) return '실제 기록 재생에서는 외부 앱을 열지 않습니다.'
   if (props.snapshot.state !== 'preview_ready') return '현재 프리뷰 확인 단계가 아니어서 과거 기록으로만 표시합니다.'
   const commit = (preview.value as Partial<Preview> | null)?.commit_sha
