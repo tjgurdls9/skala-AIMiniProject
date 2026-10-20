@@ -4,7 +4,7 @@ import type { SourceKind } from '../api/source'
 import type { Snapshot } from '../api/types'
 import type { ConnectionState, PendingCommand } from '../composables/useRun'
 import { acceptsCommands, RESUMABLE_STATES } from '../model/derive'
-import { RUN_STATE } from '../model/labels'
+import { RUN_STATE, shortId } from '../model/labels'
 import SourceBadge from './SourceBadge.vue'
 import ThemeControls from './ThemeControls.vue'
 
@@ -42,8 +42,9 @@ const busy = computed(() => props.pending !== null)
       <div>
         <h1>개발 사무실</h1>
         <p class="small muted">
-          프로젝트 <code>{{ snapshot?.project_id ?? '—' }}</code> · 실행 <code>{{ snapshot?.run_id ?? '—' }}</code>
-          · 명세 <code>{{ snapshot?.spec_version_id ?? '미확정' }}</code>
+          프로젝트 <code :title="snapshot?.project_id">{{ shortId(snapshot?.project_id) }}</code>
+          · 실행 <code :title="snapshot?.run_id">{{ shortId(snapshot?.run_id) }}</code>
+          · 명세 <code :title="snapshot?.spec_version_id ?? undefined">{{ snapshot?.spec_version_id ? shortId(snapshot.spec_version_id) : '미확정' }}</code>
         </p>
       </div>
     </div>
@@ -83,6 +84,7 @@ const busy = computed(() => props.pending !== null)
 .id { display: flex; align-items: center; gap: 12px; min-width: 0; }
 h1 { font-size: 1.1rem; }
 .status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.id > div { min-width: 0; }
 .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: flex-end; }
 @media (max-width: 1100px) {
   .run-header { grid-template-columns: 1fr auto; }

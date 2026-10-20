@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import type { SourceKind } from '../api/source'
 import type { Snapshot } from '../api/types'
-import { formatTime, shortDigest } from '../model/labels'
+import { formatTime, shortDigest, shortId } from '../model/labels'
 
 /** LIVE 배지는 연결 출처가 실제 API이고 snapshot.mode가 live일 때만 붙인다. 예시의 mode 값만 보고 붙이지 않는다. */
 const props = defineProps<{ kind: SourceKind; snapshot: Snapshot | null }>()
@@ -20,13 +20,13 @@ const replay = computed(() => (props.kind === 'live' ? props.snapshot?.replay_so
   <span :class="['source', badge.cls]">
     <strong>{{ badge.text }}</strong>
     <span v-if="replay" class="small">
-      원본 실행 <code>{{ replay.source_run_id }}</code> · 기록 {{ formatTime(replay.recorded_at) }} · manifest <code>{{ shortDigest(replay.manifest_digest) }}</code>
+      원본 실행 <code :title="replay.source_run_id">{{ shortId(replay.source_run_id) }}</code> · 기록 {{ formatTime(replay.recorded_at) }} · manifest <code>{{ shortDigest(replay.manifest_digest) }}</code>
     </span>
   </span>
 </template>
 
 <style scoped>
-.source { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 4px 10px; border-radius: 6px; border: 1px solid currentColor; }
+.source { display: inline-flex; flex-wrap: wrap; max-width: 100%; align-items: center; gap: 4px 8px; padding: 4px 10px; border-radius: 6px; border: 1px solid currentColor; }
 .example { color: var(--example); background: var(--example-bg); }
 .replay { color: var(--replay); background: var(--replay-bg); }
 .live { color: var(--live); background: var(--live-bg); }
