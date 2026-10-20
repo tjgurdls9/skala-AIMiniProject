@@ -136,7 +136,10 @@ class RuntimeChecks(unittest.TestCase):
         validate("ReplayRecordings", response.json())
         replay = self.store.create_run(original["project_id"], {"mode": "replay", "source_run_id": original["run_id"]})
         self.assertEqual(replay["replay_source"]["manifest_digest"], response.json()[0]["manifest_digest"])
+        self.assertEqual(self.client.get("/api/replays").json(), response.json())
+        self.assertEqual(replay["replay_source"]["recorded_at"], response.json()[0]["recorded_at"])
         original_events = self.store.events(original["run_id"], 0)
+        self.assertEqual(response.json()[0]["recorded_at"], original_events[-1]["occurred_at"])
         replay_events = self.store.events(replay["run_id"], 0)
         self.assertEqual([e["occurred_at"] for e in original_events], [e["occurred_at"] for e in replay_events])
         for event in replay_events:
@@ -146,6 +149,34 @@ class RuntimeChecks(unittest.TestCase):
         self.assertEqual(self.store.snapshot(replay["run_id"]), replay)
         self.assertIn("event: resync", self.client.get(f"/api/runs/{replay['run_id']}/events?after=99999").text)
         self.assertEqual(self.client.get(f"/api/runs/{replay['run_id']}/events?after=bad").status_code, 422)
+
+    def test_same_owner_expired_attempt_cannot_publish_after_reclaim(self):
+        snapshot = self.live()
+        old = self.worker.claim()
+        with self.store.transaction() as db:
+            db.execute("UPDATE worker_lock SET expires=0")
+        self.assertTrue(self.worker.heartbeat())
+        fresh = self.worker.claim()
+        self.assertEqual(old["id"], fresh["id"])
+        self.assertNotEqual(old["attempt_id"], fresh["attempt_id"])
+        self.assertFalse(self.worker.current(old))
+        with self.store.transaction() as db:
+            self.assertIsNone(self.worker.pipeline.valid(db, old, self.worker))
+        self.assertFalse(self.worker.finish(old, PLAN))
+        self.assertTrue(self.worker.current(fresh))
+        self.assertTrue(self.worker.finish(fresh, PLAN))
+        self.assertEqual(self.store.snapshot(snapshot["run_id"])["state"], "awaiting_plan_approval")
+
+    def test_corrupt_artifact_is_contract_error(self):
+        snapshot = self.live()
+        for content, metadata in (("{", "{}"), ("{}", "null"), ("{}", "{}")):
+            artifact_id = uid()
+            with self.store.transaction() as db:
+                db.execute("INSERT INTO artifacts VALUES (?, ?, ?, ?, 1)",
+                           (artifact_id, snapshot["run_id"], metadata, content))
+            response = self.client.get("/api/artifacts/" + artifact_id)
+            self.assertEqual(response.status_code, 503)
+            validate("Error", response.json())
 
     def test_replan_preserves_feedback_and_immutable_records(self):
         before = self.planned()

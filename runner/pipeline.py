@@ -31,7 +31,7 @@ class Pipeline:
     def valid(self, db, job, worker):
         snapshot = self.store.load(db, job["run_id"])
         row = db.execute("SELECT state FROM jobs WHERE id=?", (job["id"],)).fetchone()
-        if not worker.owns(db) or row[0] != "running" or snapshot["mode"] != "live" or snapshot["state_version"] != job["version"]:
+        if not worker.owns(db) or not worker.attempt_active(db, job) or row[0] != "running" or snapshot["mode"] != "live" or snapshot["state_version"] != job["version"]:
             return None
         return snapshot
 
@@ -183,7 +183,11 @@ class Pipeline:
                     all(r["verdict"] == "pass" and r["commit_sha"] == candidate["commit_sha"] and
                         r["image_digest"] == candidate["image_digest"] and r["spec_version_id"] == snapshot["spec_version_id"] for r in snapshot["reports"]),
                     "INVALID_STATE", "같은 후보의 두 독립 검토가 필요합니다.")
-            operation_id = digest([job["run_id"], candidate_key, "preview"])
+            # Physical attempts get separate names; a stale cleanup cannot remove its successor.
+            operation_id = digest([job["run_id"], candidate_key, "preview", job["attempt_id"]])
+            unresolved = [(r["id"], json.loads(r["result"])) for r in db.execute(
+                "SELECT id,result FROM operations WHERE run_id=? AND id!=? AND state IN ('pending','uncertain')",
+                (job["run_id"], operation_id)) if json.loads(r["result"]).get("kind") == "preview"]
             old_preview = db.execute("SELECT p.body, c.spec_version_id, p.candidate_digest FROM previews p JOIN candidates c ON c.id=p.candidate_digest WHERE p.run_id=?", (job["run_id"],)).fetchone()
             old_operation = json.loads(old_preview["body"]) if old_preview else None
             previous = db.execute("SELECT result FROM operations WHERE id=?", (operation_id,)).fetchone()
@@ -201,8 +205,15 @@ class Pipeline:
                 db.execute("INSERT INTO operations VALUES (?, ?, ?, 'pending', ?)",
                            (operation_id, job["run_id"], candidate_key, canonical(operation)))
         published = False
+        starting = None
         try:
-            await asyncio.to_thread(self.preview_services, candidate, operation, lambda: worker.current(job))
+            for old_id, orphan in unresolved:
+                stopped = await asyncio.to_thread(self.cleanup_preview, orphan)
+                with self.store.transaction() as db:
+                    db.execute("UPDATE operations SET state=? WHERE id=?", ("not_applied" if stopped else "uncertain", old_id))
+                require(stopped, "TEMPORARILY_UNAVAILABLE", "이전 프리뷰 자원의 실제 상태를 확인한 뒤 재개하세요.", 503)
+            starting = asyncio.create_task(asyncio.to_thread(self.preview_services, candidate, operation, lambda: worker.current(job)))
+            await asyncio.shield(starting)
             async with httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=5) as client:
                 for _ in range(20):
                     if not await asyncio.to_thread(worker.current, job):
@@ -229,12 +240,15 @@ class Pipeline:
                 self.completed(db, job)
                 published = True
             if old_operation and old_operation["app"] != operation["app"]:
-                await asyncio.to_thread(self.retire_preview, old_operation, digest([job["run_id"], old_preview["candidate_digest"], "preview"]))
+                await asyncio.to_thread(self.retire_preview, old_operation)
         finally:
             if not published:
-                await asyncio.to_thread(self.cleanup_preview, operation)
+                # Cancelling to_thread does not stop Docker; wait before confirming absence.
+                if starting is not None:
+                    await asyncio.gather(starting, return_exceptions=True)
+                stopped = await asyncio.to_thread(self.cleanup_preview, operation)
                 with self.store.transaction() as db:
-                    db.execute("UPDATE operations SET state='not_applied' WHERE id=?", (operation_id,))
+                    db.execute("UPDATE operations SET state=? WHERE id=?", ("not_applied" if stopped else "uncertain", operation_id))
 
     def preview_services(self, candidate, operation, current):
         def active():
@@ -271,15 +285,20 @@ class Pipeline:
                 "-p", f"127.0.0.1:{operation['port']}:8081", self.engine.runtime(), "python", "/checks/preview.py", operation["app"] + ":8080")
 
     def cleanup_preview(self, operation):
-        self.engine.cleanup(operation["proxy"])
-        self.engine.cleanup(operation["app"])
+        stopped = self.engine.cleanup(operation["proxy"])
+        stopped = self.engine.cleanup(operation["app"]) and stopped
         for network in (operation["network"] + "-ingress", operation["network"]):
             try:
                 self.engine.docker("network", "rm", network)
             except ModelUnavailable:
                 pass
+        try:
+            networks = self.engine.docker("network", "ls", "--format", "{{.Name}}").splitlines()
+            return stopped and not {operation["network"], operation["network"] + "-ingress"}.intersection(networks)
+        except ModelUnavailable:
+            return False
 
-    def retire_preview(self, operation, operation_id):
-        self.cleanup_preview(operation)
+    def retire_preview(self, operation):
+        stopped = self.cleanup_preview(operation)
         with self.store.transaction() as db:
-            db.execute("UPDATE operations SET state='superseded' WHERE id=?", (operation_id,))
+            db.execute("UPDATE operations SET state=? WHERE result=?", ("superseded" if stopped else "uncertain", canonical(operation)))

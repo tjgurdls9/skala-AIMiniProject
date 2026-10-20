@@ -187,7 +187,7 @@ class Store:
                 manifest = {"snapshot": source, "events": [json.loads(r[0]) for r in rows]}
                 snapshot = copy.deepcopy(source)
                 snapshot.update(run_id=run_id, mode="replay", replay_source={
-                    "source_run_id": source["run_id"], "recorded_at": now(), "manifest_digest": digest(manifest)})
+                    "source_run_id": source["run_id"], "recorded_at": manifest["events"][-1]["occurred_at"], "manifest_digest": digest(manifest)})
                 db.execute("INSERT INTO runs VALUES (?, ?, ?, NULL, ?)",
                            (run_id, project_id, canonical(snapshot), source["run_id"]))
                 # Artifact records are immutable; replay resolves IDs through its frozen source snapshot.
@@ -316,8 +316,12 @@ class Store:
         with self.transaction() as db:
             row = db.execute("SELECT content, metadata FROM artifacts WHERE id=? AND public=1", (artifact_id,)).fetchone()
             require(row is not None, "NOT_FOUND", "아티팩트를 찾을 수 없습니다.", 404)
-            content, metadata = json.loads(row[0]), json.loads(row[1])
-            require(digest(content) == metadata["content_digest"], "TEMPORARILY_UNAVAILABLE", "아티팩트 무결성을 확인할 수 없습니다.", 503)
+            try:
+                content, metadata = json.loads(row[0]), json.loads(row[1])
+                valid = digest(content) == metadata["content_digest"]
+            except (ValueError, KeyError, TypeError):
+                valid = False
+            require(valid, "TEMPORARILY_UNAVAILABLE", "아티팩트 무결성을 확인할 수 없습니다.", 503)
             return content
 
     def replay_recordings(self):
@@ -330,5 +334,5 @@ class Store:
                 events = [json.loads(r[0]) for r in db.execute(
                     "SELECT body FROM events WHERE run_id=? ORDER BY seq", (snapshot["run_id"],))]
                 result.append(dict(project_id=snapshot["project_id"], title=row[1], source_run_id=snapshot["run_id"],
-                                   recorded_at=now(), manifest_digest=digest({"snapshot": snapshot, "events": events})))
+                                   recorded_at=events[-1]["occurred_at"], manifest_digest=digest({"snapshot": snapshot, "events": events})))
             return result

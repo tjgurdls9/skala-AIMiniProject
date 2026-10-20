@@ -176,7 +176,7 @@ class PipelineChecks(unittest.TestCase):
         job = self.worker.claim()
         async def exercise():
             with patch("runner.pipeline.socket.socket") as sock, patch("runner.pipeline.httpx.AsyncClient") as client, \
-                 patch.object(self.worker.pipeline, "preview_services") as services, patch.object(self.worker.pipeline, "cleanup_preview") as cleanup:
+                 patch.object(self.worker.pipeline, "preview_services") as services, patch.object(self.worker.pipeline, "cleanup_preview", return_value=True) as cleanup:
                 sock.return_value.__enter__.return_value.getsockname.return_value = ("127.0.0.1", 43111)
                 client.return_value.__aenter__.return_value.get = AsyncMock(return_value=httpx.Response(200, json={"status": "ok"}))
                 await self.worker.pipeline.release(job, self.worker)
@@ -187,6 +187,43 @@ class PipelineChecks(unittest.TestCase):
             states = {r[0] for r in db.execute("SELECT state FROM operations")}
             self.assertEqual(states, {"applied", "superseded"})
             self.assertEqual(json.loads(db.execute("SELECT body FROM previews").fetchone()[0])["data_volume"], old["app"] + "-data")
+
+    def test_lost_preview_result_remains_uncertain_and_blocks_recreation(self):
+        async def tick():
+            with patch("runner.pipeline.socket.socket") as sock:
+                sock.return_value.__enter__.return_value.getsockname.return_value = ("127.0.0.1", 43111)
+                await self.worker.tick()
+        snapshot = self.built()
+        self.validator()
+        with patch.object(Reviewer, "security", return_value={"verdict": "pass", "checks": {}}):
+            asyncio.run(self.worker.tick())
+        with patch.object(self.worker.pipeline, "preview_services", side_effect=ModelUnavailable()), \
+             patch.object(self.worker.pipeline, "cleanup_preview", return_value=False):
+            asyncio.run(tick())
+        waiting = self.store.snapshot(snapshot["run_id"])
+        self.assertEqual(waiting["state"], "waiting_resource")
+        with self.store.transaction() as db:
+            first = dict(db.execute("SELECT * FROM operations").fetchone())
+        self.assertEqual(first["state"], "uncertain")
+        self.assertEqual(self.post_command(self.command(waiting, "resume")).status_code, 202)
+        with patch.object(self.worker.pipeline, "preview_services") as start, \
+             patch.object(self.worker.pipeline, "cleanup_preview", return_value=False):
+            asyncio.run(tick())
+            start.assert_not_called()
+        with self.store.transaction() as db:
+            operations = [dict(r) for r in db.execute("SELECT * FROM operations")]
+        self.assertEqual(len(operations), 2)
+        self.assertEqual({r["state"] for r in operations}, {"uncertain"})
+        self.assertNotEqual(json.loads(operations[0]["result"])["app"], json.loads(operations[1]["result"])["app"])
+
+    def test_container_cleanup_requires_confirmed_absence(self):
+        engine = self.worker.pipeline.engine
+        with patch.object(engine, "docker", side_effect=ModelUnavailable()):
+            self.assertFalse(engine.cleanup("lifecycle-abc"))
+        with patch.object(engine, "docker", side_effect=[ModelUnavailable(), ""]):
+            self.assertTrue(engine.cleanup("lifecycle-abc"))
+        with patch.object(engine, "docker", side_effect=["", "lifecycle-abc\n"]):
+            self.assertFalse(engine.cleanup("lifecycle-abc"))
 
     def test_identical_outputs_keep_separate_run_and_spec_bindings(self):
         first = self.built()

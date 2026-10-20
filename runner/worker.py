@@ -50,7 +50,7 @@ class Worker:
             lock = db.execute("SELECT owner, expires FROM worker_lock WHERE id=1").fetchone()
             if lock and lock[0] != self.owner and lock[1] > clock:
                 return False
-            if not lock or lock[0] != self.owner:
+            if not lock or lock[0] != self.owner or lock[1] <= clock:
                 db.execute("INSERT OR IGNORE INTO attempt_results SELECT a.id, 'superseded', ? FROM attempts a "
                            "JOIN jobs j ON j.id=a.job_id WHERE j.state='running'", (now(),))
                 db.execute("UPDATE jobs SET state='pending' WHERE state='running'")
@@ -61,6 +61,10 @@ class Worker:
     def owns(self, db):
         row = db.execute("SELECT owner, expires FROM worker_lock WHERE id=1").fetchone()
         return row is not None and row[0] == self.owner and row[1] > time.time()
+
+    def attempt_active(self, db, job):
+        row = db.execute("SELECT a.owner,r.outcome FROM attempts a LEFT JOIN attempt_results r ON r.attempt_id=a.id WHERE a.id=? AND a.job_id=?", (job["attempt_id"], job["id"])).fetchone()
+        return row is not None and row["owner"] == self.owner and row["outcome"] is None
 
     def claim(self):
         with self.store.transaction() as db:
@@ -109,14 +113,14 @@ class Worker:
         with self.store.transaction() as db:
             snapshot = self.store.load(db, job["run_id"])
             row = db.execute("SELECT state FROM jobs WHERE id=?", (job["id"],)).fetchone()
-            return (self.owns(db) and row[0] == "running" and snapshot["state_version"] == job["version"] and
+            return (self.owns(db) and self.attempt_active(db, job) and row[0] == "running" and snapshot["state_version"] == job["version"] and
                     snapshot["mode"] == "live" and snapshot["state"] in ("planning", "building", "reviewing", "preview_ready", "deploying"))
 
     def finish(self, job, proposal=None, failure=None):
         with self.store.transaction() as db:
             row = db.execute("SELECT state FROM jobs WHERE id=?", (job["id"],)).fetchone()
             snapshot = self.store.load(db, job["run_id"])
-            if (not self.owns(db) or row[0] != "running" or snapshot["state_version"] != job["version"] or
+            if (not self.owns(db) or not self.attempt_active(db, job) or row[0] != "running" or snapshot["state_version"] != job["version"] or
                     snapshot["mode"] != "live" or snapshot["state"] not in ("planning", "building", "reviewing", "preview_ready", "deploying")):
                 db.execute("INSERT OR IGNORE INTO attempt_results VALUES (?, 'superseded', ?)", (job["attempt_id"], now()))
                 return False

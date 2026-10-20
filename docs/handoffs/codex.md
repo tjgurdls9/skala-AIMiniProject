@@ -8,7 +8,7 @@
 |---|---|
 | P01/S01 | 원본의 검토한 계획/진입점/프롬프트 10개를 명시 반영. Git/worktree·무료 모델/실행기·소유 경계의 기존 근거 유지. 원본 제품 초안은 가져오지 않음 |
 | P01/S02 | 계약 전용 패치와 SHA256 제공. Claude `dc1407c`가 같은 제공자 계약을 이미 반영했고 reverse apply check 통과. 소비자 AC 표시·재생 iframe 차단의 완료 커밋/생성 해시·통합 확인 대기 |
-| P02/S03 | 다음 작업: lease·취소/재개·재시작 인계·operation 유실/손상·프리뷰 자원 정리 보완 |
+| P02/S03 | 같은 owner 만료 lease 재인수/옛 시도 fence·손상 artifact 503·프리뷰 불명 상태/새 시도 자원 분리 보완. 자체 검사 32개 통과. 실제 프로세스 강제 종료·Docker 응답 유실·취소 후 자동 청소 수용은 남음 |
 | P02/S04 | 대기 아님: 장문 입력의 영속 분해·근거 선택·최신 필수 조건 직접 제공을 구현할 차례. 기존 4,000/14,000 byte 보류는 임시 경계 |
 | P02/S05 | S04와 이어 작은 로컬 의미 검색·버전/ACL·단일 추론 자원 운용 구현. 기존 키워드 검색은 부분 근거 |
 | P03/S06 | S03–05 뒤 분야별 Infra/Back/Front/AI/Data 필요/의존/쓰기 경계와 기존 큐 연결 |
@@ -22,6 +22,14 @@
 S01–02 경계: `docs/planning/phase-completion.md` 전체 및 최신 원본 설계/요구/아키텍처/계약/수용/협업·delivery §3·양쪽 인계를 읽었다. 계획 파일만 복사했고 이전 P01 후 무조건 대기 지시는 적용하지 않는다. contract-first와 기존 ECC 문맥 지침을 사용하며 별도 CONTEXT/기획 체계를 만들지 않는다. 이전 28/120 검사 수치는 이번 새 코드 검증으로 승격하지 않는다.
 
 제공자 전용 산출물: `docs/handoffs/contracts/v1-c3e11c1-from-2403a0e.patch` 및 같은 폴더 README. 변경은 HTTP 스키마/전송 문서 두 파일뿐, protocol은 그대로다. protocol SHA256 `ad6decc2849e1eb80af54b557c7cc61ee05e7ac2b70e92abdddeedd3990bb07d`, HTTP `a7f384026fbde0f6dfe0c29f853c42911b000fefa0a95ee792424fb5dc909b4f`, patch `72976f6e210da86c2d5a6e8c039489fdcfa3e73836d87c36e7c73ebc693f2d0c`. Claude는 이미 적용한 계약을 중복 적용하지 말고 소비자 완료 커밋을 인계하면 된다. 현재 진행 중 frontend diff를 건드리지 않았으며 준비된 P02를 이어간다.
+
+## 보완 진행 — 2026-10-21, S03·CR-C13
+
+- `backend/store.py`, `runner/{worker,pipeline,sandbox}.py`, `backend/tests/{test_runtime,test_pipeline}.py`: 같은 실행기가 만료 lease를 재인수해도 옛 attempt는 게시/패치할 수 없다. 손상 JSON/metadata/digest 아티팩트는 계약의 503 오류다.
+- 프리뷰 physical operation은 attempt별 이름으로 분리한다. 재시작 시 미확정 자원의 부재를 조회/확인한 뒤 새 자원을 만든다. Docker 단절/확인 실패는 `uncertain`으로 보존하며 `not_applied`로 추정하지 않는다. 취소된 Docker thread가 끝나기 전 정리하지 않는다. 정리/교체는 데이터 volume을 삭제하지 않는다.
+- **CR-C13 응답**: `/api/replays[].recorded_at`와 동결 `replay_source.recorded_at`는 원본에 포함된 마지막 사건의 `occurred_at`이다. 단순 조회·재생 생성 시각을 사용하지 않는다. 원본에 새 사건이 없으면 반복 GET의 시각/manifest는 같다. 새 사건이 생긴 LIVE 목록은 최신 기록 시각으로 갱신하고 이미 생성된 REPLAY는 동결한다. 필드/타입 변경 없음.
+- 자체 검사: `backend/.venv/bin/python -m unittest discover -s backend/tests -q` **32개 통과**. 임시 DB/fake 모델/mock Docker와 실제 MCP stdio 사용. 실제 Docker daemon 단절/프로세스 종료의 제품 수용을 수행했다는 뜻은 아니다.
+- Claude clean HEAD `0dbe45e`까지 확인: S02 소비자·P02/P03 UI·직접 사용자 디자인 `8d69830`와 전환 저항 피드백 `0dbe45e` 완료 커밋을 다음 통합 대상으로 확정했다. 직접 디자인을 다시 요청하지 않는다. CR-C12 검색 provenance 기계 계약을 먼저 제공할 예정이며 소비자 타입/화면 변경은 Claude 담당이다.
 
 ## 최신 진행 — 2026-10-20, D3–D8 연결
 

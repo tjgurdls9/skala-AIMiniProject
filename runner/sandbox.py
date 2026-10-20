@@ -134,6 +134,10 @@ class Sandbox:
             self.docker("rm", "-f", name)
         except ModelUnavailable:
             pass
+        try:
+            return name not in self.docker("ps", "-a", "--format", "{{.Names}}").splitlines()
+        except ModelUnavailable:
+            return False
 
 
 if __name__ == "__main__":
