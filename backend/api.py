@@ -14,14 +14,25 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from jsonschema import ValidationError
 from starlette.exceptions import HTTPException
+from starlette.staticfiles import StaticFiles
 
 from backend.config import Settings
-from backend.contracts import DomainError, SCHEMAS, SECRET, require, validate
+from backend.archive import MAX_BYTES, export_recording, import_recording, unique_object
+from backend.contracts import ROOT, DomainError, SCHEMAS, SECRET, require, validate
 from backend.store import Store
 from runner.model import Ollama
 
 ORIGINS = {"http://127.0.0.1:5173", "http://127.0.0.1:8000"}
 COOKIE = "lifecycle_session"
+
+
+def allowed_origin(request):
+    return request.headers.get("origin") in ORIGINS | {str(request.base_url).rstrip("/")}
+
+
+def cookie_name(request):
+    port = request.url.port
+    return COOKIE if port in (None, 8000, 5173) else f"{COOKIE}_{port}"
 
 
 def create_app(settings=None, store=None, model=None):
@@ -39,14 +50,14 @@ def create_app(settings=None, store=None, model=None):
         supplied = request.headers.get("authorization", "")
         if hmac.compare_digest(supplied.encode(), ("Bearer " + request.app.state.settings.token).encode()):
             return
-        key = hashlib.sha256(request.cookies.get(COOKIE, "").encode()).hexdigest()
+        key = hashlib.sha256(request.cookies.get(cookie_name(request), "").encode()).hexdigest()
         session = request.app.state.sessions.get(key)
         require(session is not None and session["expires"] > time.time(),
                 "UNAUTHORIZED", "로컬 세션을 연결하세요.", 401)
         request.state.session_key = key
         request.state.session = session
         if request.method not in ("GET", "HEAD"):
-            require(request.headers.get("origin") in ORIGINS and
+            require(allowed_origin(request) and
                     hmac.compare_digest(request.headers.get("x-csrf-token", "").encode(), session["csrf_token"].encode()),
                     "FORBIDDEN", "같은 origin의 CSRF 토큰이 필요합니다.", 403)
 
@@ -57,14 +68,15 @@ def create_app(settings=None, store=None, model=None):
     async def request_boundary(request, call_next):
         if (not request.client or request.client.host not in ("127.0.0.1", "::1") or
                 request.url.hostname not in ("127.0.0.1", "localhost") or
-                (request.headers.get("origin") is not None and request.headers["origin"] not in ORIGINS)):
+                (request.headers.get("origin") is not None and not allowed_origin(request))):
             return JSONResponse({"error": {"code": "FORBIDDEN", "message": "로컬 origin에서만 접근할 수 있습니다."}}, status_code=403)
         # Bound chunked bodies too; Content-Length alone is not a trust boundary.
         if request.method in ("POST", "PUT", "PATCH"):
             body = bytearray()
             async for chunk in request.stream():
                 body.extend(chunk)
-                if len(body) > 131072:
+                limit = MAX_BYTES if request.url.path == "/api/recordings/import" else 131072
+                if len(body) > limit:
                     return JSONResponse({"error": {"code": "BODY_TOO_LARGE", "message": "요청 크기 제한을 초과했습니다."}}, status_code=413)
             request._body = bytes(body)
         response = await call_next(request)
@@ -124,7 +136,7 @@ def create_app(settings=None, store=None, model=None):
 
     @app.post("/api/session", status_code=201)
     async def open_session(request: Request, response: Response):
-        require(request.headers.get("origin") in ORIGINS, "FORBIDDEN", "로컬 origin이 필요합니다.", 403)
+        require(allowed_origin(request), "FORBIDDEN", "로컬 origin이 필요합니다.", 403)
         sessions = request.app.state.sessions
         for key in list(sessions):
             if sessions[key]["expires"] <= time.time():
@@ -132,7 +144,7 @@ def create_app(settings=None, store=None, model=None):
         token, expires = secrets.token_urlsafe(32), time.time() + 8 * 3600
         value = {"csrf_token": secrets.token_urlsafe(32), "expires_at": datetime.fromtimestamp(expires, timezone.utc).isoformat()}
         sessions[hashlib.sha256(token.encode()).hexdigest()] = {**value, "expires": expires}
-        response.set_cookie(COOKIE, token, httponly=True, samesite="strict", max_age=8 * 3600, path="/api")
+        response.set_cookie(cookie_name(request), token, httponly=True, samesite="strict", max_age=8 * 3600, path="/api")
         validate("Session", value)
         return value
 
@@ -145,7 +157,7 @@ def create_app(settings=None, store=None, model=None):
     def close_session(request: Request, response: Response):
         require(hasattr(request.state, "session_key"), "FORBIDDEN", "브라우저 세션이 필요합니다.", 403)
         del request.app.state.sessions[request.state.session_key]
-        response.delete_cookie(COOKIE, path="/api")
+        response.delete_cookie(cookie_name(request), path="/api")
 
     @app.get("/api/replays")
     def replays(request: Request):
@@ -156,6 +168,19 @@ def create_app(settings=None, store=None, model=None):
     @app.get("/api/environments/{environment_id}")
     def environment(environment_id: str):
         raise DomainError("NOT_FOUND", "설정된 배포 환경이 없습니다.", 404)
+
+    @app.get("/api/runs/{run_id}/recording")
+    def recording(run_id: str, request: Request):
+        return export_recording(request.app.state.store.path, run_id)
+
+    @app.post("/api/recordings/import")
+    async def import_archive(request: Request):
+        try:
+            bundle = json.loads(await request.body(), object_pairs_hook=unique_object,
+                                parse_constant=lambda _: require(False, "INVALID_COMMAND", "유한 JSON 값이 필요합니다.", 422))
+            return await asyncio.to_thread(import_recording, request.app.state.store, bundle)
+        except (ValueError, ValidationError, RecursionError):
+            raise DomainError("INVALID_COMMAND", "계약에 맞는 기록 JSON이 필요합니다.", 422)
 
     @app.get("/api/runtime")
     async def get_runtime(request: Request):
@@ -240,6 +265,8 @@ def create_app(settings=None, store=None, model=None):
     def artifact(artifact_id: str, request: Request):
         return request.app.state.store.read_artifact(artifact_id)
 
+    if (ROOT / "frontend/dist/index.html").is_file():
+        app.mount("/", StaticFiles(directory=ROOT / "frontend/dist", html=True), name="office")
     return app
 
 

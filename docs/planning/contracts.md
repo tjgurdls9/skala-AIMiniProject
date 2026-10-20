@@ -108,8 +108,9 @@
 
 ### 로컬 브라우저 세션 (CR-C01)
 
-- 서버는 `python -m backend`로 `127.0.0.1:8000`에만 바인딩하고 proxy 헤더를 신뢰하지 않는다. 원격 주소·다른 Host·다른 Origin은 거절한다. 외부 공개용 인증은 아직 제공하지 않는다.
+- 서버는 `python -m backend`로 `127.0.0.1`에만 바인딩한다(기본 8000, `LIFECYCLE_PORT` 1024–65535). proxy 헤더를 신뢰하지 않으며 원격 주소·다른 Host·허용하지 않은 Origin을 거절한다. 외부 공개용 인증은 아직 제공하지 않는다.
 - 프론트 주소는 **`http://127.0.0.1:5173`**이다. Vite가 `/api`를 `http://127.0.0.1:8000`으로 프록시한다. 프록시를 사용하는 같은 origin 요청이므로 CORS를 열지 않는다. `localhost:5173` Origin은 이번 허용 목록에 없다.
+- 제출본은 빌드된 신뢰 사무실 `frontend/dist`를 API의 `/`에서 제공할 수 있다. 이 경우 요청의 loopback Host와 정확히 같은 Origin도 허용한다. 임의의 다른 포트/Origin을 허용하거나 CORS를 열지 않는다. 별도 포트의 세션 쿠키 이름을 분리하되 HttpOnly/CSRF 조건은 그대로 유지한다. import는 생성 코드나 프리뷰를 이 경로에 설치하지 않는다.
 - 브라우저는 `POST /api/session`으로 연결한다. 정확히 허용한 로컬 Origin을 검사한 후 8시간짜리 무작위 세션을 `HttpOnly; SameSite=Strict; Path=/api` 쿠키로 발급한다. 자격 증명을 입력하거나 번들·URL·localStorage에 넣지 않는다. CSRF 토큰은 JSON으로 받으며 메모리에서만 보관한다.
 - 이후 POST/DELETE 등 변경 요청에는 `X-CSRF-Token`과 같은 Origin이 필요하다. EventSource는 쿠키로 인증한다. 새로고침 시 `GET /api/session`으로 CSRF를 읽고, 401이면 다시 로컬 연결한다. 서버 재시작 시 세션은 폐기된다. 로그아웃/만료 뒤 SSE도 종료한다.
 - 이 흐름은 신뢰한 로컬 origin/프로세스를 운영자로 취급하는 개인 로컬 모드다. 공용 서버·다중 사용자 로그인은 아니다. 기존 CLI Bearer 인증은 서버 설정 `LIFECYCLE_TOKEN`으로만 남긴다. 미설정 시 서버 메모리에서 무작위 생성하며 출력하지 않는다.
@@ -146,7 +147,7 @@
 
 ### S12 실제 기록 이동 (CODEX-RECORDING-001)
 
-소비자 타입 반영 후 연결할 계약: `GET /api/runs/{id}/recording` → `http.RecordingBundle`; `POST /api/recordings/import`(동일 세션/CSRF, 최대 16 MiB JSON) → `http.RecordingImportResult`. 같은 manifest의 import는 같은 읽기 전용 run을 돌려주며 원본 기록/기존 실행을 덮어쓰지 않는다. 파일/모델/키가 없는 별도 환경의 기록 열람용이다. 생성 코드·외부 URL·명령·승인·배포를 실행하지 않는다.
+소비자 타입 반영을 확인한 뒤 등록한 계약: `GET /api/runs/{id}/recording` → `http.RecordingBundle`; `POST /api/recordings/import`(동일 세션/CSRF, 최대 16 MiB JSON) → `http.RecordingImportResult`. 같은 manifest의 import는 같은 읽기 전용 run을 돌려주며 원본 기록/기존 실행을 덮어쓰지 않는다. 파일/모델/키가 없는 별도 환경의 기록 열람용이다. 생성 코드·외부 URL·명령·승인·배포를 실행하지 않는다.
 
 Bundle은 동결 snapshot/events와 거기에 참조된 **공개** artifact 원본만 포함한다. jobs/attempt prompts/requests 원문/토큰/grants/환경변수/DB 파일·모델 가중치는 포함하지 않는다. `manifest_digest`는 이 필드를 제외한 bundle의 canonical digest다. metadata/report hash·명세/후보 결속·이벤트 순서와 계약을 검증하며 비밀 형식/개인 호스트 경로가 검출되면 내보내기를 거부한다. 원본 증거를 몰래 수정해 해시만 바꾸지 않는다. `exporter`는 내보내기 코드/계약/Python 버전이며 과거 원장 생성 당시 버전이라는 뜻이 아니다. 원본 계획의 contract_digests는 그대로 남는다.
 

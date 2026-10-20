@@ -25,7 +25,7 @@ DB 기본 위치는 제외된 `runtime-data/lifecycle.sqlite3`다. 원문·명�
 
 구현 도구는 실제 stdio MCP로 명세·담당 파일·역할별 문서 검색을 제공한다. 서버가 발급한 시도·lease·상태 버전 권한만 허용하며 임의 shell·호스트 홈·환경·Docker socket을 모델이나 생성 앱에 제공하지 않는다. 기본은 고정 코퍼스 키워드 검색이다. 의미 검색은 운영자가 `ollama pull qwen3-embedding:0.6b`로 설치하고 API/worker 터미널에 `LIFECYCLE_EMBEDDING=qwen3-embedding:0.6b`를 설정한다. 다운로드·유료 전환은 자동 수행하지 않는다. 출처/버전/역할 ACL을 먼저 거르고 벡터 cache는 문서/모델 digest에 묶는다. 버전 충돌·모델 오류를 빈 결과로 숨기지 않는다.
 
-생성/임베딩은 MCP 프로세스와 공통 파일 lock으로 직렬화하고 `keep_alive=0`으로 순차 unload한다. 상주 모델이 남아 있으면 다른 사용자의 모델을 중단하지 않고 자원 대기한다. Ollama 서버도 `OLLAMA_NO_CLOUD=1`, `OLLAMA_MAX_LOADED_MODELS=1`, `OLLAMA_NUM_PARALLEL=1`로 운영한다. 이 앱 밖의 클라이언트는 앱 lock을 공유하지 않으므로 장비 전체 동시 추론을 보장하지 않는다. 검색/문맥 공개 artifact 연결은 CR-C12 소비자 타입 반영을 기다리며 내부 근거만 보존한다.
+생성/임베딩은 MCP 프로세스와 공통 파일 lock으로 직렬화하고 `keep_alive=0`으로 순차 unload한다. 상주 모델이 남아 있으면 다른 사용자의 모델을 중단하지 않고 자원 대기한다. Ollama 서버도 `OLLAMA_NO_CLOUD=1`, `OLLAMA_MAX_LOADED_MODELS=1`, `OLLAMA_NUM_PARALLEL=1`로 운영한다. 이 앱 밖의 클라이언트는 앱 lock을 공유하지 않으므로 장비 전체 동시 추론을 보장하지 않는다. 검색/문맥 공개 artifact는 CR-C12 본문과 사건/작업 참조로 연결하며 raw prompt나 상대 미확정 검토는 공개하지 않는다.
 
 격리 실행 이미지와 오프라인 스캐너 DB는 운영자가 먼저 [준비](../infra/README.md)한다. 실행 중 다운로드·패키지 설치·유료 API 전환은 하지 않는다. 프리뷰는 운영자 화면과 다른 hostname의 sandbox iframe이며, 프리뷰의 스타일 수정만 CSS 권한을 가진 구현 Sprint로 보낸다. 나머지 변경은 재승인한다. Git 후보는 로컬 격리 저장소에만 생성하며 원격 push·배포는 비활성이다.
 
@@ -37,3 +37,22 @@ backend/.venv/bin/python -m pip check
 ```
 
 직접 의존성은 `requirements.txt`, 이번 설치의 전이 의존성 핀은 `requirements.lock`이다. 다른 OS/Python의 재설치는 미확인이다. 외부 공개용 로그인/TLS·다중 사용자 지원은 없으며 loopback/Host/Origin 제한을 해제해 공개 서버로 사용하지 않는다.
+
+## 키·모델 없는 기록 열람
+
+프론트 lock으로 `cd frontend && npm ci && npm run build`를 수행한 뒤 worktree 루트로 돌아온다. 제출 패키지에 `frontend/dist`가 있으면 API가 같은 origin에서 사무실을 제공한다. worker/Ollama/Docker는 기록 열람에 필요 없다.
+
+```sh
+LIFECYCLE_DB=runtime-data/keyless.sqlite3 LIFECYCLE_MODEL='' LIFECYCLE_EMBEDDING='' LIFECYCLE_PORT=8016 backend/.venv/bin/python -m backend
+```
+
+`http://127.0.0.1:8016`에서 기록 파일을 가져온다. 파일은 `lifecycle-recording` v1, 최대 16 MiB다. 해시/계약/명세·보고서·작업 연결을 검사하며 기존 데이터를 덮어쓰지 않는다. "가져온 기록(서명 없음)"의 해시는 훼손 검출용이며 출처 인증이나 실제 사용자 승인 증명이 아니다. 외부 프리뷰·생성 코드·명령·배포는 실행하지 않는다. 공개 기록에는 사용자 입력/산출물이 포함될 수 있으므로 제출 전에 내용을 직접 검토한다. 비밀 형식/개인 호스트 경로가 감지되면 내보내기를 거절하며 원본을 몰래 고치지 않는다.
+
+브라우저의 "기록 파일" 또는 아래 CLI로 내보낼 수 있다. 원본 DB는 read-only로 읽으며 출력 파일이 이미 있으면 거절한다. `exporter`는 내보낸 열람기 버전이며 과거 실행 당시 버전을 보증하지 않는다.
+
+```sh
+backend/.venv/bin/python -m backend.archive export --database runtime-data/lifecycle.sqlite3 --run-id RUN_ID --file recording.json
+backend/.venv/bin/python -m backend.archive import --database runtime-data/keyless.sqlite3 --file recording.json
+```
+
+출시 어댑터 `runner/release.py`는 고정 Git/registry 조회·보호 프록시가 있는 로컬 Docker 환경·첫 출시 unpublish/볼륨 보존에 한정한 내부 구현이다. 실제 대상/무료 자격·권한과 정확한 사용자 승인 연결 전이므로 제품의 배포 API/worker는 비활성이다. cloud 배포·이미지 registry upload·이전 버전 복원/명세 간 데이터 이전은 제공하지 않는다.

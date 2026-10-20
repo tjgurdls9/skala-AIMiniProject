@@ -134,6 +134,20 @@ class Worker:
             return (self.owns(db) and self.attempt_active(db, job) and row[0] == "running" and snapshot["state_version"] == job["version"] and
                     snapshot["mode"] == "live" and snapshot["state"] in ("planning", "building", "reviewing", "preview_ready", "deploying"))
 
+    def publish_evidence(self, db, snapshot, job):
+        task_id = job["packet"]["options"].get("task_id")
+        for kind, schema, event in (("context", "ContextEvidence", "context_saved"), ("retrieval", "RetrievalEvidence", "retrieval_finished")):
+            body = job.get(kind + "_evidence")
+            if not body:
+                continue
+            validate(schema, body)
+            artifact = self.store.artifact(db, snapshot, kind, "문맥 준비 근거" if kind == "context" else "역할별 검색 근거", body)
+            for task in snapshot["tasks"]:
+                if task["id"] == task_id:
+                    task["artifact_ids"].append(artifact["id"])
+            self.store.save(db, snapshot, event, artifact["title"], bump=False,
+                            artifact_ids=[artifact["id"]], **({"task_id": task_id} if task_id else {}))
+
     def finish(self, job, proposal=None, failure=None):
         with self.store.transaction() as db:
             row = db.execute("SELECT state FROM jobs WHERE id=?", (job["id"],)).fetchone()
@@ -149,6 +163,7 @@ class Worker:
                         task.update(state="blocked", reason=reason)
                 db.execute("UPDATE runs SET resume_state=? WHERE id=?", (snapshot["state"], snapshot["run_id"]))
                 snapshot.update(state=state, reason=reason)
+                self.publish_evidence(db, snapshot, job)
                 self.store.save(db, snapshot, "resource_wait" if state == "waiting_resource" else "warning", reason)
             elif job["role"] == "planner":
                 validate("PlanDraft", proposal)
@@ -183,19 +198,17 @@ class Worker:
                     predecessor = [task_id]
                 if job.get("context_evidence"):
                     job["context_evidence"]["spec_version_id"] = spec_id
+                self.publish_evidence(db, snapshot, job)
                 self.store.save(db, snapshot, "plan_proposed", "기획 초안이 생성됐습니다. 내용을 확인하고 승인하세요.")
             else:
                 raise ValueError("Role must finish through its pipeline step")
-            for kind in ("context", "retrieval"):
-                if job.get(kind + "_evidence"):
-                    # CR-C12 consumer adoption precedes public task/artifact connection.
-                    self.store.artifact(db, snapshot, kind, "역할별 준비 근거", job[kind + "_evidence"], public=False)
             db.execute("UPDATE jobs SET state='finished' WHERE id=?", (job["id"],))
             db.execute("INSERT INTO attempt_results VALUES (?, ?, ?)",
                        (job["attempt_id"], "failed" if failure else "finished", now()))
             return True
 
     async def tick(self):
+        await asyncio.to_thread(self.pipeline.reconcile_cancelled, self)
         job = await asyncio.to_thread(self.claim)
         if not job:
             return False

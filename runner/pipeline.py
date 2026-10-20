@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import sys
 import socket
+import time
 
 import httpx
 
@@ -29,6 +30,31 @@ class Pipeline:
     def __init__(self, store, embedding=""):
         self.store, self.embedding = store, embedding
         self.engine = Sandbox(store.path.parent)
+        self.recovery_after = {}
+
+    def reconcile_cancelled(self, worker):
+        with self.store.transaction() as db:
+            if not worker.owns(db):
+                return
+            rows = [dict(row) for row in db.execute("SELECT o.* FROM operations o JOIN runs r ON r.id=o.run_id WHERE json_extract(r.snapshot,'$.state')='cancelled' AND o.state IN ('pending','applied','uncertain')")]
+        for row in rows:
+            operation = json.loads(row["result"])
+            if operation.get("kind") != "preview" or self.recovery_after.get(row["id"], 0) > time.monotonic():
+                continue
+            with self.store.transaction() as db:
+                if not worker.owns(db):
+                    return
+            stopped = self.cleanup_preview(operation)
+            state = ("superseded" if row["state"] == "applied" else "not_applied") if stopped else "uncertain"
+            self.recovery_after[row["id"]] = time.monotonic() + 30
+            with self.store.transaction() as db:
+                if not worker.owns(db):
+                    return
+                db.execute("UPDATE operations SET state=? WHERE id=?", (state, row["id"]))
+                snapshot = self.store.load(db, row["run_id"])
+                if snapshot["state"] == "cancelled" and state != row["state"]:
+                    self.store.save(db, snapshot, "tool_finished" if stopped else "operation_uncertain",
+                                    "취소된 프리뷰 자원을 정리했습니다. 데이터 볼륨은 보존합니다." if stopped else "프리뷰 자원 정리 결과를 확인할 수 없습니다.", bump=False)
 
     def valid(self, db, job, worker):
         snapshot = self.store.load(db, job["run_id"])
@@ -63,8 +89,7 @@ class Pipeline:
                             writable_files=list(writable), changes=changes, runtime_image=runtime_image)
                 artifact = self.store.artifact(db, snapshot, "contract" if mode == "prepare" else "code_diff", task["title"] + " 결과", body)
                 task["artifact_ids"].append(artifact["id"])
-                if job.get("retrieval_evidence"):
-                    self.store.artifact(db, snapshot, "retrieval", "구현 검색 근거", job["retrieval_evidence"], public=False)
+                worker.publish_evidence(db, snapshot, job)
             remaining = [t for t in snapshot["tasks"] if t["id"] != task["id"] and t["role"] == "builder" and
                          t["spec_version_id"] == snapshot["spec_version_id"] and t["state"] in ("pending", "ready", "running")]
             if remaining:
@@ -94,8 +119,8 @@ class Pipeline:
                        (key, snapshot["run_id"], snapshot["spec_version_id"], canonical(candidate)))
             public = {k: candidate[k] for k in ("commit_sha", "image_digest", "manifest")}
             artifact = self.store.artifact(db, snapshot, "build", "고정 구현 후보", public)
-            if job.get("retrieval_evidence"):
-                self.store.artifact(db, snapshot, "retrieval", "구현 검색 근거", job["retrieval_evidence"], public=False)
+            if mode == "freeze":
+                worker.publish_evidence(db, snapshot, job)
             for task in builders:
                 task.update(state="succeeded", artifact_ids=task["artifact_ids"] + [artifact["id"]])
             for role in ("validator", "security"):

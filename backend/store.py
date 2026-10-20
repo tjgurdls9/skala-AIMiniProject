@@ -50,6 +50,8 @@ class Store:
                 CREATE TABLE IF NOT EXISTS runs (
                     id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
                     snapshot TEXT NOT NULL, resume_state TEXT, source_run_id TEXT);
+                CREATE TABLE IF NOT EXISTS recording_imports (
+                    digest TEXT PRIMARY KEY, run_id TEXT UNIQUE NOT NULL REFERENCES runs(id));
                 CREATE TABLE IF NOT EXISTS events (
                     run_id TEXT NOT NULL REFERENCES runs(id), seq INTEGER NOT NULL,
                     body TEXT NOT NULL, PRIMARY KEY(run_id, seq));
@@ -105,7 +107,7 @@ class Store:
             """)
             if "attempt_id" not in {row[1] for row in db.execute("PRAGMA table_info(grants)")}:
                 db.execute("ALTER TABLE grants ADD COLUMN attempt_id TEXT REFERENCES attempts(id)")
-            for table in ("requests", "artifacts", "specs", "reviews", "events", "commands", "attempts", "attempt_results", "candidates", "task_scopes"):
+            for table in ("requests", "artifacts", "specs", "reviews", "events", "commands", "attempts", "attempt_results", "candidates", "task_scopes", "recording_imports"):
                 for action in ("UPDATE", "DELETE"):
                     db.execute(f"CREATE TRIGGER IF NOT EXISTS {table}_{action.lower()}_blocked BEFORE {action} ON {table} "
                                f"BEGIN SELECT RAISE(ABORT, 'immutable record'); END")
@@ -176,7 +178,7 @@ class Store:
         event = dict(kind="event", protocol_version=1, event_id=uid(),
                      seq=snapshot["last_event_seq"], run_id=snapshot["run_id"], mode=snapshot["mode"],
                      state_version=snapshot["state_version"], occurred_at=now(),
-                     event_type=event_type, summary=summary, artifact_ids=[], **fields)
+                     event_type=event_type, summary=summary, artifact_ids=fields.pop("artifact_ids", []), **fields)
         validate("Event", event)
         db.execute("INSERT INTO events VALUES (?, ?, ?)", (snapshot["run_id"], event["seq"], canonical(event)))
         db.execute("UPDATE runs SET snapshot=? WHERE id=?", (canonical(snapshot), snapshot["run_id"]))
@@ -194,13 +196,16 @@ class Store:
             run_id = uid()
             if data["mode"] == "replay":
                 source = self.load(db, data["source_run_id"])
-                require(source["project_id"] == project_id and source["mode"] == "live",
+                imported = db.execute("SELECT 1 FROM recording_imports WHERE run_id=?", (source["run_id"],)).fetchone()
+                require(source["project_id"] == project_id and (source["mode"] == "live" or imported),
                         "NOT_FOUND", "같은 프로젝트의 실제 기록이 필요합니다.", 404)
                 rows = db.execute("SELECT body FROM events WHERE run_id=? ORDER BY seq", (source["run_id"],)).fetchall()
                 manifest = {"snapshot": source, "events": [json.loads(r[0]) for r in rows]}
                 snapshot = copy.deepcopy(source)
-                snapshot.update(run_id=run_id, mode="replay", replay_source={
-                    "source_run_id": source["run_id"], "recorded_at": manifest["events"][-1]["occurred_at"], "manifest_digest": digest(manifest)})
+                provenance = source["replay_source"] if imported else {
+                    "source_run_id": source["run_id"], "recorded_at": manifest["events"][-1]["occurred_at"],
+                    "manifest_digest": digest(manifest), "provenance": "local_ledger"}
+                snapshot.update(run_id=run_id, mode="replay", replay_source=copy.deepcopy(provenance))
                 db.execute("INSERT INTO runs VALUES (?, ?, ?, NULL, ?)",
                            (run_id, project_id, canonical(snapshot), source["run_id"]))
                 # Artifact records are immutable; replay resolves IDs through its frozen source snapshot.
@@ -354,10 +359,14 @@ class Store:
             result = []
             for row in db.execute("SELECT r.snapshot, p.title FROM runs r JOIN projects p ON p.id=r.project_id ORDER BY r.rowid DESC"):
                 snapshot = json.loads(row[0])
-                if snapshot["mode"] != "live":
+                imported = db.execute("SELECT 1 FROM recording_imports WHERE run_id=?", (snapshot["run_id"],)).fetchone()
+                if snapshot["mode"] != "live" and not imported:
                     continue
                 events = [json.loads(r[0]) for r in db.execute(
                     "SELECT body FROM events WHERE run_id=? ORDER BY seq", (snapshot["run_id"],))]
+                frozen = snapshot.get("replay_source", {})
                 result.append(dict(project_id=snapshot["project_id"], title=row[1], source_run_id=snapshot["run_id"],
-                                   recorded_at=events[-1]["occurred_at"], manifest_digest=digest({"snapshot": snapshot, "events": events})))
+                                   recorded_at=frozen.get("recorded_at", events[-1]["occurred_at"]),
+                                   manifest_digest=frozen.get("manifest_digest", digest({"snapshot": snapshot, "events": events})),
+                                   provenance="imported_unsigned" if imported else "local_ledger"))
             return result

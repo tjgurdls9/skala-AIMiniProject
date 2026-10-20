@@ -38,7 +38,7 @@ def revise(previous, proposal, revisions, part):
     require(changed == proofs, 'INVALID_COMMAND', '기존 요구가 정정 근거 없이 누락됐습니다. 현재 원문의 명시 정정에 연결하거나 기존 유효 요구를 유지하세요.', 422)
     # This is a change log, never an active requirement union.
     proposal['changes'] = list(dict.fromkeys(proposal['changes'] + [
-        f"정정 이력({r['field']}, {r['previous_digest']}): {r['quote']}" for r in resolved]))
+        '사용자 정정: ' + r['quote'] for r in resolved]))
     return resolved
 
 
@@ -134,6 +134,7 @@ async def implement(store, session, job, worker, files, evidence, writable, sche
     with store.transaction() as db:
         db.execute('CREATE TABLE IF NOT EXISTS build_steps (source TEXT NOT NULL, step INTEGER NOT NULL, path TEXT NOT NULL, expected TEXT NOT NULL, content TEXT NOT NULL, state TEXT NOT NULL, PRIMARY KEY(source,step))')
         db.execute("CREATE TRIGGER IF NOT EXISTS build_steps_content_immutable BEFORE UPDATE ON build_steps WHEN OLD.source!=NEW.source OR OLD.step!=NEW.step OR OLD.path!=NEW.path OR OLD.expected!=NEW.expected OR OLD.content!=NEW.content BEGIN SELECT RAISE(ABORT, 'immutable patch intent'); END")
+        db.execute("CREATE TRIGGER IF NOT EXISTS build_steps_delete_blocked BEFORE DELETE ON build_steps BEGIN SELECT RAISE(ABORT, 'immutable patch intent'); END")
     for file_index, original in enumerate(f for f in files if f['path'] in writable):
         current = dict(original)
         for part_index, part in enumerate(parts):

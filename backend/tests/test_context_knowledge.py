@@ -75,9 +75,11 @@ class KnowledgeChecks(unittest.TestCase):
         self.assertFalse(snapshot['approvals'])
         with self.store.transaction() as db:
             self.assertEqual(db.execute('SELECT content FROM requests').fetchone()[0], raw)
-            private = json.loads(db.execute("SELECT content FROM artifacts WHERE public=0 AND json_extract(metadata,'$.kind')='context'").fetchone()[0])
-        self.assertEqual(private['status'], 'needs_input')
-        self.assertEqual(private['completed_fragments'], 1)
+        context = next(a for a in snapshot['artifacts'] if a['kind'] == 'context')
+        evidence = self.store.read_artifact(context['id'])
+        self.assertEqual(evidence['status'], 'needs_input')
+        self.assertEqual(evidence['completed_fragments'], 1)
+        self.assertNotIn(raw, canonical(evidence))
 
     def test_version_conflict_is_search_error(self):
         Corpus(self.store)

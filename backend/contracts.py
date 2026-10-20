@@ -40,7 +40,7 @@ def digest(value: object) -> str:
 def plan_inputs():
     files = ["docs/planning/" + name for name in SCHEMAS] + [
         "templates/requests-v1/contract.json", "templates/requests-v1/requirements.lock",
-        "infra/Dockerfile.runtime", "infra/Dockerfile.candidate", "infra/checks/validate.py", "infra/checks/security.py"]
+        "infra/Dockerfile.runtime", "infra/Dockerfile.candidate", "infra/checks/validate.py", "infra/checks/security.py", "infra/checks/preview.py"]
     return {name: "sha256:" + hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in files}
 
 

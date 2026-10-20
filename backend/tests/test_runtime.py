@@ -8,6 +8,7 @@ import unittest
 import subprocess
 import sys
 import time
+from unittest.mock import patch
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -76,6 +77,23 @@ class RuntimeChecks(unittest.TestCase):
         session = self.client.get("/api/session").json()
         self.assertEqual(self.client.delete("/api/session", headers={"Origin": ORIGIN, "X-CSRF-Token": session["csrf_token"]}).status_code, 204)
         self.assertEqual(self.client.get("/api/runtime").status_code, 401)
+
+    def test_packaged_same_origin_static_office_and_separate_cookie(self):
+        root = Path(self.temp.name) / "package"
+        static = root / "frontend/dist"
+        static.mkdir(parents=True)
+        (static / "index.html").write_text("<main>synthetic office build</main>")
+        with patch("backend.api.ROOT", root):
+            app = create_app(self.settings, self.store, FakeModel())
+        with TestClient(app, base_url="http://127.0.0.1:8016", client=("127.0.0.1", 12345)) as client:
+            self.assertEqual(client.get("/").status_code, 200)
+            self.assertIn("synthetic office build", client.get("/").text)
+            opened = client.post("/api/session", json={}, headers={"Origin": "http://127.0.0.1:8016"})
+            self.assertEqual(opened.status_code, 201)
+            self.assertIn("lifecycle_session_8016=", opened.headers["set-cookie"])
+            self.assertEqual(client.get("/api/session").status_code, 200)
+            self.assertEqual(client.get("/api/runtime", headers={"Origin": "http://127.0.0.1:8017"}).status_code, 403)
+            self.assertEqual(client.get("/api/runtime", headers={"Host": "attacker.invalid:8016"}).status_code, 403)
 
     def test_boundary_and_unavailable_runtime(self):
         value = self.client.get("/api/runtime").json()

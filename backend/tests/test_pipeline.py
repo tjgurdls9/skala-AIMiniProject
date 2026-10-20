@@ -252,6 +252,26 @@ class PipelineChecks(unittest.TestCase):
         with patch.object(engine, "docker", side_effect=["", "lifecycle-abc\n"]):
             self.assertFalse(engine.cleanup("lifecycle-abc"))
 
+    def test_cancelled_preview_reconciliation_preserves_unknown_and_data(self):
+        snapshot = self.live()
+        operation = dict(kind="preview", app="lifecycle-abc", proxy="lifecycle-def", network="lifecycle-aaa", data_volume="lifecycle-abc-data")
+        with self.store.transaction() as db:
+            db.execute("INSERT INTO operations VALUES ('synthetic', ?, ?, 'applied', ?)", (snapshot["run_id"], digest("synthetic"), canonical(operation)))
+        self.post_command(self.command(snapshot, "cancel"))
+        with patch.object(self.worker.pipeline, "cleanup_preview", return_value=False) as cleanup:
+            asyncio.run(self.worker.tick())
+            asyncio.run(self.worker.tick())
+            cleanup.assert_called_once_with(operation)
+        with self.store.transaction() as db:
+            self.assertEqual(db.execute("SELECT state FROM operations").fetchone()[0], "uncertain")
+        self.worker.pipeline.recovery_after.clear()
+        with patch.object(self.worker.pipeline, "cleanup_preview", return_value=True):
+            asyncio.run(self.worker.tick())
+        with self.store.transaction() as db:
+            row = db.execute("SELECT state,result FROM operations").fetchone()
+            self.assertEqual(row[0], "not_applied")
+            self.assertEqual(json.loads(row[1])["data_volume"], operation["data_volume"])
+
     def test_identical_outputs_keep_separate_run_and_spec_bindings(self):
         first = self.built()
         self.post_command(self.command(first, "pause"))
