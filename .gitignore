@@ -34,3 +34,4 @@ coverage/
 .mypy_cache/
 .ruff_cache/
 runtime-data/
+.coverage
