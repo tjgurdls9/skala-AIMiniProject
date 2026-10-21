@@ -85,8 +85,9 @@ class RealApi:
 
     def start_task(self, model, task):
         out = self.workdir / f"{model.replace(':', '-')}-{task}.json"
-        process = subprocess.Popen([sys.executable, str(ROOT / "infra/dev_checks/smoke_builder_loop.py"), *self.images, model, task],
-                                   stdout=out.open("w"), stderr=subprocess.DEVNULL)
+        script = ["infra/dev_checks/concurrent_load.py", model, self.images[0]] if task == "concurrent-load" else \
+                 ["infra/dev_checks/smoke_builder_loop.py", *self.images, model, task]
+        process = subprocess.Popen([sys.executable, str(ROOT / script[0]), *script[1:]], stdout=out.open("w"), stderr=subprocess.DEVNULL)
 
         class Handle:
             def poll(self):

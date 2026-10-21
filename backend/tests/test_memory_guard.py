@@ -6,6 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'infra' / 'dev_checks'))
 import compare_models as cm  # noqa: E402
+import concurrent_load as cl  # noqa: E402
 import memory_guard as mg  # noqa: E402
 
 
@@ -193,6 +194,18 @@ class ComparisonRunner(unittest.TestCase):
         report = cm.run_comparison(['m1'], ['t1', 't2'], api)
         self.assertEqual(report['status'], 'stopped_before_run')
         self.assertEqual(len(report['runs']), 1)
+
+
+class ConcurrentLoad(unittest.TestCase):
+    def test_the_model_is_loaded_with_the_same_context_the_builder_uses_and_the_container_is_a_guardable_lifecycle_one(self):
+        payload = cl.chat_payload('m')
+        self.assertEqual(payload['options']['num_ctx'], 16384)
+        self.assertEqual(payload['keep_alive'], '2m')
+        self.assertIs(payload['think'], False)
+        args = cl.container_args('lifecycle-memcheck-1', 'python@sha256:' + 'a' * 64)
+        self.assertEqual(args[args.index('--name') + 1], 'lifecycle-memcheck-1')
+        for needle in ('--network', 'none', '--memory-swap', '512m', '--read-only', '--cap-drop', 'ALL'):
+            self.assertIn(needle, args)
 
 
 if __name__ == '__main__':
