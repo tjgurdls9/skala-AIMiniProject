@@ -21,7 +21,7 @@ os.environ["LANGSMITH_TRACING"] = "false"
 os.environ["LANGCHAIN_TRACING_V2"] = "false"
 from langgraph.graph import END, START, StateGraph
 
-POLICY = "Local Ollama Qwen/DeepSeek only; no paid fallback or external API."
+POLICY = "Inference: local Ollama Qwen/DeepSeek only; no paid fallback or external model API. External data: verified free terms, explicit consent, fixed isolated access, no paid overage."
 
 
 def failure_reason(error):
@@ -187,7 +187,7 @@ class Worker:
                 snapshot.update(spec_version_id=spec_id, state="awaiting_plan_approval")
                 snapshot.pop("reason", None)
                 if not package["support"]["implementation_allowed"]:
-                    snapshot["reason"] = "기획별 지원 공백 해소가 필요합니다. 외부 연결 결정 보류는 구현 승인으로 바뀌지 않습니다."
+                    snapshot["reason"] = "기획별 지원 공백 해소가 필요합니다. 공급자 선택은 무료 자격·키·격리 검증이나 구현 승인을 대신하지 않습니다."
                 phase_id, sprint_id = uid(), uid()
                 snapshot["phases"].append(dict(id=phase_id, title="설계·구현", order=len(snapshot["phases"])))
                 snapshot["sprints"].append(dict(id=sprint_id, phase_id=phase_id, title="승인 기획 구현", goal=proposal["goal"],

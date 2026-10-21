@@ -36,7 +36,7 @@ class CorrectionChecks(unittest.TestCase):
         plan = self.store.read_artifact(artifact['id'])
         for key in ('goal', 'features', 'non_goals', 'constraints', 'acceptance'):
             self.assertEqual(plan[key], NEW[key])
-        self.assertEqual(plan['free_policy'], 'Local Ollama Qwen/DeepSeek only; no paid fallback or external API.')
+        self.assertEqual(plan['free_policy'], 'Inference: local Ollama Qwen/DeepSeek only; no paid fallback or external model API. External data: verified free terms, explicit consent, fixed isolated access, no paid overage.')
         with self.store.transaction() as db:
             checkpoints = [json.loads(r[0]) for r in db.execute('SELECT body FROM context_steps ORDER BY rowid')]
         self.assertEqual(len(checkpoints[-1]['revisions']), 5)

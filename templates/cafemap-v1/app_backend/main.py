@@ -37,8 +37,8 @@ def health():
 
 @app.get("/api/map/source")
 def source():
-    return {"status": "unconfigured", "provider": None, "external_requests": False,
-            "message": "외부 지도·장소 연결은 결정 보류입니다. 실제 검색/추천 결과가 없습니다."}
+    return {"status": "unconfigured", "provider": "kakao", "external_requests": False,
+            "message": "카카오맵을 선택했지만 무료 자격·키·격리 연결 검증 전입니다. 실제 검색/추천 결과가 없습니다."}
 
 
 @app.post("/api/map/search")

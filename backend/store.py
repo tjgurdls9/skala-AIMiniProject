@@ -331,7 +331,7 @@ class Store:
                         "STALE_APPROVAL", "저장된 기획과 승인 대상이 일치하지 않습니다.")
                 package = json.loads(spec[0])
                 require(package.get("support", {}).get("implementation_allowed", True) or payload["decision"] == "reject",
-                        "INVALID_STATE", "기획의 지원 공백을 먼저 해소하세요. 외부 연결 결정 보류는 구현 승인이 아닙니다.")
+                        "INVALID_STATE", "기획의 지원 공백을 먼저 해소하세요. 공급자 선택이나 키 준비는 구현 승인이 아닙니다.")
                 require(package["contract_digests"] == plan_inputs(self.template_id(db, run_id)),
                         "STALE_APPROVAL", "계약·템플릿·검사 입력이 바뀌었습니다. 재기획 후 승인하세요.")
                 approval.update(state="approved" if payload["decision"] == "approve" else "rejected",

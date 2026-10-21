@@ -69,8 +69,8 @@ class PostIntegrationChecks(unittest.TestCase):
         self.assertEqual(support['spec_version_id'], snapshot['spec_version_id'])
         self.assertEqual(support['unsupported'][0]['request_quote'], request)
         self.assertFalse(support['implementation_allowed'])
-        self.assertEqual(support['external'][0]['status'], 'deferred')
-        self.assertIsNone(support['external'][0]['provider'])
+        self.assertEqual(support['external'][0]['status'], 'unconfirmed')
+        self.assertEqual(support['external'][0]['provider'], 'kakao')
         planner = next(t for t in snapshot['tasks'] if t['role'] == 'planner')
         self.assertEqual({a['kind'] for a in snapshot['artifacts'] if a['id'] in planner['artifact_ids']}, {'spec','context','retrieval'})
         approval = snapshot['approvals'][-1]

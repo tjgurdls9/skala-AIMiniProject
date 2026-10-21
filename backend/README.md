@@ -67,3 +67,10 @@ backend/.venv/bin/python -m backend.archive import --database runtime-data/keyle
 실제 지도/장소 검색·위치 동의·추천은 보호된 validator에서 not_run으로 남고 프리뷰/출시를 통과하지 못한다. 신뢰 프록시도 /api/map/*의 실제 검색을 차단하며 geolocation 권한을 열지 않는다. 공급자 선택 후 무료 자격/키/쿼터·출처 표시, 위치 사용과 외부 전송 동의, 격리된 경로를 확인하고 새 기획 승인을 받아야 한다. 소스 템플릿의 준비 코드는 제품 런타임이 생성한 완성 앱 증거가 아니다.
 
 CR-C14는 각 PlanView.support의 지원 공백, CR-C15는 GET /api/runs/{id}/release의 읽기 전용 출시/복구 원장이다. Runtime.template_id/data_source_status는 보조 안내다. release 조회는 공급자 재조회/실행을 하지 않으며 과거 조회 시각/볼륨 보존의 근거가 없으면 null을 반환한다. 실제 출시 API/승인은 계속 비활성이다.
+
+
+### 카카오맵 키 준비(외부 연결 보류 해제 이후)
+
+사용자는 카카오맵을 선택했으며 무료 쿼터 배지는 아직 확인하지 못했다. [정확한 키·등록 주소·저장 경로](../docs/setup/kakao-local.md)를 따른다. JavaScript/REST 두 키를 Git 제외 `runtime-data/secrets/kakao.json`(권한 600)에 저장하되 무료 배지를 확인하기 전에는 `free_quota_confirmed=false`를 유지한다. 실제 값은 모델·생성 앱·로그/기록으로 전달하지 않는다.
+
+`backend.kakao`의 신뢰 검색 어댑터는 키/무료 자격/유료 API 비활성/명시 동의가 없으면 네트워크를 호출하지 않는다. 고정 Kakao CE7 카페 검색만 사용하고 로컬 일 200회 시도 제한·429 후 당일 중단·응답 크기/형식 제한을 적용한다. 현재는 MockTransport 검사만 했으며 API/worker·지도 화면·생성 앱 프리뷰에 연결하지 않았다. 예약 도메인 `http://localhost:8017`은 아직 기동된 서비스가 아니다. 실제 기획·배포 승인은 별도다.
