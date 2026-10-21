@@ -150,6 +150,14 @@
 
 - **배포 대상은 만들어지지 않는다.** 워커가 만드는 기획의 `repository`/`deployment`는 항상 null이라 실서버 run에서는 `ReleaseOperations.prepare`가 STALE_APPROVAL로 거절된다. 저장소·환경 선택은 사용자·운영자 결정(S10)이므로 설정 경로를 만들지 않았다. 흐름은 모든 승인(기획, 사람 확인)과 두 PASS 보고서를 갖춘 `preview_ready`에서 멈춘다. `test_full_flow`가 이를 명시적으로 검증한다.
 - `DockerEnvironment.observe`(배포 환경 관찰)는 아직 `/health`와 `{"status":"ok"}`로 고정돼 있다. 배포가 연결될 때 매니페스트에 앱이 선언한 health 경로를 담아야 한다.
-- C6 독립 코드·보안 리뷰는 서브 에이전트가 필요해 하지 않았다(관제 지시: 추가 agent 금지, 사용자 확인 필요).
-- C7 AC 추적표 증거 연결, C10 관제·사용자 확인은 남았다. 프론트 대기 커밋(§7)의 통합도 사용자 허용이 필요하다.
+- C6 독립 코드·보안 리뷰는 §11에서 진행한다.
+- C7 AC 추적표 증거 연결, C10 관제·사용자 확인은 남았다. 프론트 대기 커밋(§7)은 아래 §11에서 통합했다.
 - 실서버 전체 흐름(실 Ollama·실 Docker)은 아직 한 번도 돌리지 않았다. 돌릴 때 필요한 것: `LIFECYCLE_PYTHON_IMAGE`, `LIFECYCLE_NODE_IMAGE`(digest 고정, 로컬에 `python:3.13-slim`, `node:24-slim` 이미지가 있다), `LIFECYCLE_MODEL=qwen3.5:4b`, `LIFECYCLE_DB`(별도 새 파일), 메모리 시작 조건과 감시자. 관제·사용자와 함께 시작한다.
+
+## 11. 통합·push·리뷰 상태 (사용자 결정 "일단 머지 커밋 푸시 해. 문서들 갱신하고. 코드리뷰 다 돌면 그 때 다시 물어봐", 관제 전달)
+
+- **merge**: `work/claude-office`를 `b525f81`까지 병합했다(`2df120c`). 충돌 없음. 계약 파일은 런타임 쪽 그대로이며 sha256이 `http.v1` `c30058ea…` / `protocol.v1` `8dc0d7eb…`로 db1300f와 같다. `npm run gen:types` 결과에 diff 없음.
+- **merge 뒤 확인**: 백엔드 317건 OK, 프론트 vitest 338건 OK(21개 파일), `vite build` 통과.
+- **관제 문서 채택**: `docs/handoffs/control-tower.md`(sha256 `53f178d0…`)와 `claude-control-tower.md`(`1bf3215e…`)를 원본에서 바이트 그대로 복사했다. 관제 소유이며 이 브랜치에서 수정하지 않는다.
+- **push**: 이 문서를 포함한 커밋 뒤에 `origin/work/codex-runtime`, `origin/work/claude-office`로 올린다. `main`은 건드리지 않는다. 결과(원격 해시)는 관제 보고에 적었다.
+- **리뷰(C6)**: 독립 리뷰 1회(sonnet, high), 대상은 6cc9a0b 이후 `backend/`·`runner/`·`infra/`. 원문은 `docs/reports/code-review-f0-f6.md`. CRITICAL/HIGH는 고치지 않고 목록만 관제에 보고했다. 수정 여부는 사용자 결정이다.
