@@ -1,4 +1,5 @@
 import type { Snapshot } from '../api/types'
+import { currentAcceptance } from './acceptanceApproval'
 import { pendingApproval, reviewPair } from './derive'
 import { VERDICT, type Tone } from './labels'
 
@@ -22,7 +23,14 @@ export function runAlerts(snapshot: Snapshot): Alert[] {
     alerts.push({ key: 'plan', tone: 'warn', glyph: '⚑', text: '기획 승인 대기 — 승인 전에는 구현이 시작되지 않습니다', action: { kind: 'plan' } })
   }
   if (snapshot.state === 'preview_ready') {
-    alerts.push({ key: 'preview', tone: 'warn', glyph: '⚑', text: '프리뷰 확인 대기 — 수정 요청 또는 다음 단계를 결정하세요', action: { kind: 'preview' } })
+    const manual = currentAcceptance(snapshot)?.state === 'pending'
+    alerts.push({
+      key: 'preview',
+      tone: 'warn',
+      glyph: '⚑',
+      text: manual ? '프리뷰 확인 대기 — 사람 확인 AC를 승인·거절하거나 수정을 요청하세요' : '프리뷰 확인 대기 — 수정 요청 또는 다음 단계를 결정하세요',
+      action: { kind: 'preview' },
+    })
   }
   if (pendingApproval(snapshot, 'release')) {
     alerts.push({ key: 'release', tone: 'warn', glyph: '⚑', text: '배포 승인 대기 — 고정된 커밋·이미지·환경을 확인하세요', action: { kind: 'release' } })

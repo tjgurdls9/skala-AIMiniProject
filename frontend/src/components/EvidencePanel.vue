@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { ApiError, errorHint } from '../api/errors'
 import type { RunSource } from '../api/source'
 import type { AcceptanceItem, RunEvent, Snapshot } from '../api/types'
+import { manualAcStates } from '../model/acceptanceApproval'
 import { indexById, reviewPair, waitingReason } from '../model/derive'
 import { isContextEvidence, isRetrievalEvidence } from '../model/evidence'
 import { isPlanView } from '../model/planView'
@@ -29,6 +30,7 @@ const tasksById = computed(() => indexById(props.snapshot.tasks))
 const task = computed(() => (props.taskId ? tasksById.value.get(props.taskId) ?? null : null))
 const artifact = computed(() => props.snapshot.artifacts.find((a) => a.id === props.artifactId) ?? null)
 const pair = computed(() => reviewPair(props.snapshot))
+const manual = computed(() => manualAcStates(props.snapshot))
 const taskEvents = computed(() => (task.value ? props.events.filter((e) => e.task_id === task.value?.id).slice(-8).reverse() : []))
 const EVIDENCE_KINDS = new Set(['retrieval', 'context'])
 /** 작업에 연결된 공개 검색·문맥 근거. 없으면 없음으로 표시하고 검색 결과로 추정하지 않는다 */
@@ -98,7 +100,7 @@ watch(
         <dt>인수 기준</dt>
         <dd>
           <p v-if="acNotice" class="small tone-warn">{{ acNotice }}</p>
-          <AcceptanceList :ids="task.acceptance_ids" :index="acIndex" :reports="snapshot.reports" @artifact="emit('artifact', $event)" />
+          <AcceptanceList :ids="task.acceptance_ids" :index="acIndex" :reports="snapshot.reports" :manual="manual" @artifact="emit('artifact', $event)" />
         </dd>
         <template v-if="waitingReason(task, tasksById)">
           <dt>대기·차단 이유</dt><dd>{{ waitingReason(task, tasksById) }}</dd>

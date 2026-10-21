@@ -1,5 +1,6 @@
 // 생성 타입의 별칭. DOM의 Event/Error와 이름이 겹치는 타입만 바꿔 부른다. 필드는 generated/ 원본 그대로다.
 export type {
+  AcceptanceTarget,
   Approval,
   Artifact,
   ChangePayload,

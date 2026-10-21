@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { AcceptanceItem, Snapshot } from '../api/types'
 import { AC_STATE, tallyAc } from '../model/acceptance'
+import { manualAcStates } from '../model/acceptanceApproval'
 import { orderedPhases, sprintsOf, tallySprint } from '../model/derive'
 import AcceptanceList from './AcceptanceList.vue'
 
@@ -26,6 +27,7 @@ const path = computed(() =>
 const selected = computed(() => props.snapshot.sprints.find((s) => s.id === props.sprintId) ?? null)
 const tally = computed(() => (selected.value ? tallySprint(props.snapshot, selected.value) : null))
 const reportIds = computed(() => new Set(props.snapshot.reports.map((r) => r.id)))
+const manual = computed(() => manualAcStates(props.snapshot))
 const acTally = computed(() => (selected.value ? tallyAc(props.acIndex, selected.value.acceptance_ids, reportIds.value) : null))
 </script>
 
@@ -81,7 +83,7 @@ const acTally = computed(() => (selected.value ? tallyAc(props.acIndex, selected
           </span>
           <span class="small muted">· 서버 판정{{ isReplay ? '(기록 당시 동결)' : '' }}, 작업 완료 수와 별개</span>
           <p v-if="acNotice" class="small tone-warn">{{ acNotice }}</p>
-          <AcceptanceList :ids="selected.acceptance_ids" :index="acIndex" :reports="snapshot.reports" @artifact="emit('artifact', $event)" />
+          <AcceptanceList :ids="selected.acceptance_ids" :index="acIndex" :reports="snapshot.reports" :manual="manual" @artifact="emit('artifact', $event)" />
         </dd>
       </dl>
     </div>

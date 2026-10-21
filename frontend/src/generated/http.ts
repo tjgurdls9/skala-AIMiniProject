@@ -1008,6 +1008,7 @@ export interface ReleaseTarget {
    * @maxItems 2
    */
   review_report_ids: [string, string]
+  acceptance_approval_id?: string
 }
 /**
  * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
@@ -1126,7 +1127,7 @@ export interface Approval {
   id: string
   state: 'pending' | 'approved' | 'rejected' | 'invalidated'
   target_digest: string
-  target: PlanTarget | ReleaseTarget
+  target: PlanTarget | AcceptanceTarget | ReleaseTarget
   decided_by?: string
   decided_at?: string
   feedback?: string
@@ -1135,6 +1136,20 @@ export interface PlanTarget {
   gate: 'plan'
   spec_version_id: string
   plan_digest: string
+}
+export interface AcceptanceTarget {
+  gate: 'acceptance'
+  spec_version_id: string
+  plan_digest: string
+  commit_sha: string
+  image_digest: string
+  /**
+   * @minItems 1
+   * @maxItems 50
+   */
+  ac_ids: [string, ...string[]]
+  validator_report_id: string
+  validator_report_digest: string
 }
 export interface ReviewReport {
   id: string

@@ -1,4 +1,4 @@
-/* 자동 생성 파일 — 수정 금지. 원본: docs/planning/protocol.v1.schema.json sha256:68059821bced483c0b094c499ad3cbc8e3a570f635db39fbcc51f339102a9829. 재생성: npm run gen:types */
+/* 자동 생성 파일 — 수정 금지. 원본: docs/planning/protocol.v1.schema.json sha256:8dc0d7eb71d1f9c36342526d36f17c3083cdde7346c8e2e00bd7025cd0e9d8f3. 재생성: npm run gen:types */
 
 export type DevelopmentLifecycleProtocolV1DesignNotImplemented = Snapshot | Command | Event
 export type Id = string
@@ -108,7 +108,7 @@ export interface Approval {
   id: Id
   state: 'pending' | 'approved' | 'rejected' | 'invalidated'
   target_digest: Digest
-  target: PlanTarget | ReleaseTarget
+  target: PlanTarget | AcceptanceTarget | ReleaseTarget
   decided_by?: Id
   decided_at?: string
   feedback?: string
@@ -117,6 +117,20 @@ export interface PlanTarget {
   gate: 'plan'
   spec_version_id: Id
   plan_digest: Digest
+}
+export interface AcceptanceTarget {
+  gate: 'acceptance'
+  spec_version_id: Id
+  plan_digest: Digest
+  commit_sha: Commit
+  image_digest: Digest
+  /**
+   * @minItems 1
+   * @maxItems 50
+   */
+  ac_ids: [string, ...string[]]
+  validator_report_id: Id
+  validator_report_digest: Digest
 }
 export interface ReleaseTarget {
   gate: 'release'
@@ -132,6 +146,7 @@ export interface ReleaseTarget {
    * @maxItems 2
    */
   review_report_ids: [Id, Id]
+  acceptance_approval_id?: Id
 }
 export interface ReviewReport {
   id: Id
