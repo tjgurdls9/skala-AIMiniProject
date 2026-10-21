@@ -6,11 +6,44 @@
 
 이 절은 아래의 이전 기록보다 우선한다. 지시는 원본의 `docs/prompts/CLAUDE_PHASE_COMPLETION.md`와 `docs/planning/phase-completion.md`를 따른다. 기준은 Claude `b3a52bc`, Codex `c3e11c1`이다.
 
-**현재 상태: `WAITING_FOR_INTEGRATION`** (2026-10-21 사용자 지시: "여기까지 해놓고 백이랑 통합 후에 API 연결 잘 되는지 확인하고 그 다음에 관제탑에서 확인한 뒤에 진행")
-- 프론트 최신 완료 커밋은 `work/claude-office`의 `d85ea5a`이고 worktree는 clean이다. 디자인은 사용자 지시와 피드백 3건, 후속 확인까지 반영했다. CT36 수정은 `f5a26d5`.
-- 다음 순서: ① Codex가 `0dbe45e` 이후 프론트 커밋(`f5a26d5`·`a19f763` 포함)을 백엔드와 통합 → ② 통합본에서 Claude가 실제 API 연결을 확인(세션, runtime, 실행 생성·재생, Snapshot/SSE, AC 판정, 명령 접수와 반영, 프리뷰) → ③ 관제탑 확인 → ④ 그다음에 진행.
-- 대기 중 착수하지 않는 것: P05 배포·복구 표시, 추가 디자인 변경. (CR-C12·S12 소비는 Codex 요청으로 `d85ea5a`에서 완료)
-- 확인용으로 띄웠던 Claude 측 서버(Vite 5173, c3e11c1 사본 API 8000)는 종료했다. 포트를 비워 두었다.
+**현재 상태: `WAITING_FOR_CONTROL_TOWER`** (2026-10-21 사용자 지시: "여기까지 해놓고 백이랑 통합 후에 API 연결 잘 되는지 확인하고 그 다음에 관제탑에서 확인한 뒤에 진행")
+- ① 통합: Codex `b7f01f0`이 `c054287`까지 병합했다. ② 통합본 API 확인: 아래 "통합본 API 확인" 절에 결과를 적었다. ③ 관제탑 확인을 기다린다. ④ 그 전에는 다음 작업을 시작하지 않는다.
+- 프론트 최신 완료 커밋은 `work/claude-office`의 `efb73f4`이다(`b7f01f0` 이후 `a8e1590` CT46, `7da9bac`, `efb73f4`). Codex는 이 세 커밋을 추가로 통합해야 한다.
+- 대기 중 착수하지 않는 것: P05 배포·복구 표시, 추가 디자인 변경.
+- 확인용으로 띄웠던 Claude 측 서버(API 8000, Vite 5173, 임시 파일 서버 8099)는 종료했다. 포트를 비워 두었다.
+
+### 통합본 API 확인 — Codex `b7f01f0` (2026-10-21)
+
+**방법**: `b7f01f0`의 backend·runner·knowledge·templates·infra·docs/planning을 `git archive`로 scratchpad에 내보냈다. Codex `runtime-data/submission-check/keyless.sqlite3`는 `sqlite3 .backup`으로 사본을 만들었고, 빈 DB(`fresh.sqlite3`)도 따로 썼다. 서버는 Codex venv Python으로 `LIFECYCLE_MODEL=''`, `LIFECYCLE_EMBEDDING=''` 설정에서 띄웠다(키·모델·worker 없음). 프론트는 `work/claude-office`의 Vite(5173)를 썼다. `b7f01f0`의 frontend는 CT46 커밋을 빼면 이 브랜치와 같다. Codex worktree와 원본 DB에는 쓰지 않았다. 브라우저 확인은 Chrome DevTools MCP의 격리 컨텍스트에서 했다.
+
+| 항목 | 결과 |
+|---|---|
+| 세션·CSRF | 첫 GET `/api/session`은 401, 이어서 POST로 201과 쿠키·CSRF를 받았다 |
+| runtime | `live_available=false`와 이유 3개를 표시했고, 시작 버튼은 막혀 있었다 |
+| replays | `provenance=imported_unsigned`, `recorded_at` 2026-10-20T12:22:05Z(원본 마지막 사건 시각, CR-C13), manifest `sha256:1890a39a…`. 목록에 "가져온 기록 · 서명 없음"이 표시됐다 |
+| 재생 생성·Snapshot·SSE | POST runs 201, GET snapshot, `/acceptance`, `/events?after=0`이 모두 200이었다. 배지 "가져온 기록(서명 없음) · 읽기 전용", 원본 실행 `ae947cc5…`, 해시 안내를 표시했다 |
+| AC 판정 | 서버 판정 6개가 모두 met이고 근거는 검증 보고서였다. "기록 당시 동결"로 표시했다. 두 검토 PASS의 같은 대상(커밋·이미지·명세)과 원본 해시도 표시했다 |
+| 프리뷰 | iframe 0개(재생·가져온 기록 모두) |
+| 명령 | 화면에 승인·중지·재개 버튼이 없다. 가져온 실행에 계약 형식의 pause를 직접 보내면 서버가 `409 REPLAY_READ_ONLY`로 거절한다 |
+| export | `GET /api/runs/{id}/recording` 200(`lifecycle-recording` v1). "기록 내보내기"를 누르면 222 KB JSON blob과 manifest 표시가 나왔다 |
+| import(같은 DB) | 실제 `recording.json`(134,260 B, 파일 SHA256 `b04dccb1…`)으로 `f53b2fd05bbd47609fe16e2fc896d636`을 재사용해 열었다(Codex 보고와 같은 ID). 멱등 |
+| import(빈 DB) | 새 실행 `c0d9901623484792949c595873d473df`가 생겼다. manifest는 같은 `1890a39a…`이고 읽기 전용, iframe 0개 |
+| import(변조) | 사건 요약 한 곳을 바꾸면 `422 INVALID_COMMAND` "기록 manifest 해시가 일치하지 않습니다."로 거절됐고, 화면에 서버 문구를 표시했다 |
+| 콘솔 | 첫 세션 확인 401 한 건 외에 오류가 없다 |
+
+**확인하며 고친 것**
+- `a8e1590` CT46: 근거 가드가 `sources[].roles`가 배열인지만 확인했다. 원소 열거, 빈 배열, 중복, 빈 버전·라이선스, `error_code` 열거, 추가 필드(additionalProperties), 정수 최소값까지 스키마 수준으로 확인하게 했다. 테스트 14개를 추가했고 수정 전에는 14개 모두 실패했다. `roles:["unknown"]` 본문은 이전에는 근거 패널 렌더가 깨져 본문이 사라졌다. 이제 "근거 본문 형식이 계약과 맞지 않아 표시하지 않습니다"로 표시하고 콘솔 오류가 없다. 각 변형은 ajv 스키마 검사도 거절하는지 함께 확인한다(uri·date-time 형식 검사는 대조에서 뺐다).
+- `7da9bac`: 내보내기 안내가 "원문 요청은 들어가지 않습니다"라고 했다. 실제 bundle에는 변경 요청 원문("버튼 배경색을 파랑으로…")과 명세 본문이 들어 있었다. 안내를 "사용자 입력과 산출물이 들어 있을 수 있으니 공유 전에 내용을 확인하세요"로 바꿨다(Codex README와 같은 취지).
+- `efb73f4`: `422 INVALID_COMMAND`에 기본 안내 "잠시 후 다시 시도하세요"가 붙었다. 같은 내용으로 다시 보내도 결과가 같으므로 그렇게 안내한다. 공용 `errorHint`에서 고쳐 명령·가져오기에 모두 적용된다.
+- 확인: 217개 테스트 통과, coverage 구문 93.1%·분기 87.4%, `vue-tsc` 0, build JS gzip 70.3KB.
+
+**확인하지 못한 것**
+- 브라우저 파일 선택 창: 확장의 파일 접근 권한이 scratchpad 경로를 막았다. 같은 파일 내용을 DataTransfer로 실제 `<input type=file>`의 change 처리기에 넣었다. 서버 POST와 화면 전환은 실제 경로로 확인했지만, OS 파일 선택 창 조작은 확인하지 않았다.
+- 실제 retrieval/context 근거 표시: 복사한 원장 5개(keyless·development-check·semantic-check·preview-fixture·s09-cafemap) 모두 retrieval/context 아티팩트가 0건이다. `a514b05` 이후 새 LIVE 실행이 있어야 발급된다. 표시는 합성 본문과 테스트로만 확인했다.
+- LIVE 흐름: 실행 생성, 기획 승인, 명령 202 뒤 같은 `command_id` 사건으로 확인, 프리뷰 iframe, SSE 재연결·resync. 모델·worker가 없어 확인하지 않았다(LIVE 불가 상태). CT36의 LIVE 화면 수용도 여기에 묶여 남아 있다.
+- Firefox·Safari·실기기.
+
+**Codex에게**: `a8e1590`, `7da9bac`, `efb73f4`를 통합해 달라. 프론트 파일만 바뀌었고 계약 변경은 없다. CT46의 프론트 몫은 `a8e1590`으로 보완했다. 관제탑이 통합본에서 확인하기 전에는 해소로 보지 않는다.
 
 **사용자 디자인 지시 원문**
 > 빈 화면에 텍스트 입력창 하나, 볼드한 타이포로 문구 하나
