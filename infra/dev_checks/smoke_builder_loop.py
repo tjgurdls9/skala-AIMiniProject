@@ -2,7 +2,7 @@
 
 Runs ONE generic micro task through BuilderLoop with the real Ollama model and real Docker containers, in a temporary
 workspace and database. No prompt hint or answer is added. Limits: 40 model calls or 20 minutes, whichever comes first.
-Usage: backend/.venv/bin/python infra/dev_checks/smoke_builder_loop.py <python@sha256:...> <node@sha256:...> <model> <add|reverse>"""
+Usage: backend/.venv/bin/python infra/dev_checks/smoke_builder_loop.py <python@sha256:...> <node@sha256:...> <model> <add|reverse> [think]"""
 import asyncio
 import json
 from pathlib import Path
@@ -58,10 +58,11 @@ class Metered:
         return action
 
 
-async def main(python_image, node_image, model_name, task_name):
+async def main(python_image, node_image, model_name, task_name, think=False):
     task = TASKS[task_name]
     work = Path(tempfile.mkdtemp(prefix="lc-smoke-"))
     (work / "ws").mkdir()
+    (work / "deps").mkdir()   # the executor bind-mounts it; a missing source made docker fail with exit 125
     store = Store(work / "state.sqlite3")
     project = store.project(dict(title="smoke", request="smoke"))
     run_id = store.create_run(project["project_id"], dict(mode="live"), template_id="blank-v1")["run_id"]
@@ -72,7 +73,7 @@ async def main(python_image, node_image, model_name, task_name):
                options=dict(task_id="t1", task_kind="backend", task_title=task["label"], acceptance_ids=["AC1"], write_scope=["**"])))
     who = dict(role="builder", run_id=run_id, job_id="smoke", attempt_id="smoke", task_id="t1", task_kind="backend")
     toolbox = ToolBox(lambda: who, store, Workspace(work / "ws"), DockerExecutor(dict(python=python_image, node=node_image)), deps_dir=work / "deps")
-    metered, outcome, began = Metered(Ollama(model_name)), "unknown", time.monotonic()
+    metered, outcome, began = Metered(Ollama(model_name, think=think)), "unknown", time.monotonic()
     try:
         result = await BuilderLoop(store).run(job, metered, toolbox)
         outcome = "finished: " + result["summary"][:200]
@@ -85,7 +86,7 @@ async def main(python_image, node_image, model_name, task_name):
     entries = store.tool_calls(run_id, "t1")
     phases = [progress(entries[: i + 1], "backend").phase for i in range(len(entries))]
     observations = [s["observation_of_previous"] for s in metered.steps[1:] if s.get("observation_of_previous")]
-    summary = dict(task=task_name, model=model_name, outcome=outcome, seconds=round(time.monotonic() - began, 1), model_calls=len(metered.steps),
+    summary = dict(task=task_name, think=think, model=model_name, outcome=outcome, seconds=round(time.monotonic() - began, 1), model_calls=len(metered.steps),
                    schema_valid=sum(1 for s in metered.steps if s.get("schema_valid")), model_errors=sum(1 for s in metered.steps if "error" in s),
                    observations_ok=sum(1 for o in observations if o.get("ok")), observations_error=sum(1 for o in observations if not o.get("ok")),
                    tool_calls=len(entries), tool_denied=sum(1 for e in entries if not e["ok"]),
@@ -100,4 +101,4 @@ async def main(python_image, node_image, model_name, task_name):
 
 
 if __name__ == "__main__":
-    asyncio.run(main(*sys.argv[1:5]))
+    asyncio.run(main(*sys.argv[1:5], think=len(sys.argv) > 5 and sys.argv[5] == "think"))
