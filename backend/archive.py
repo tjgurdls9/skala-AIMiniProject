@@ -90,12 +90,15 @@ def export_recording(database, run_id):
             content = artifact_content(row)
             require(json.loads(row['metadata']) == metadata, 'TEMPORARILY_UNAVAILABLE', '공개 아티팩트 연결이 손상됐습니다.', 503)
             artifacts.append(dict(metadata=metadata, content=content))
-    revision = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT, capture_output=True, text=True, check=False)
-    status = subprocess.run(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=ROOT, capture_output=True, text=True, check=False)
+    revision, dirty = None, True
+    if (ROOT / '.git').exists():
+        head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT, capture_output=True, text=True, check=False)
+        status = subprocess.run(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=ROOT, capture_output=True, text=True, check=False)
+        revision = head.stdout.strip() if head.returncode == 0 else None
+        dirty = bool(status.stdout) or status.returncode != 0
     bundle = dict(format='lifecycle-recording', version=1, recorded_at=events[-1]['occurred_at'], project=project,
                   snapshot=snapshot, events=events, artifacts=artifacts,
-                  exporter=dict(revision=revision.stdout.strip() if revision.returncode == 0 else None,
-                                dirty=bool(status.stdout) or status.returncode != 0, python=platform.python_version(), contract_digests=contract_digests()))
+                  exporter=dict(revision=revision, dirty=dirty, python=platform.python_version(), contract_digests=contract_digests()))
     bundle['manifest_digest'] = digest(bundle)
     check(bundle)
     return bundle

@@ -12,7 +12,7 @@ from jsonschema import ValidationError
 from backend.api import create_app
 from backend.config import Settings
 from backend.archive import check, export_recording, import_recording, load_recording
-from backend.contracts import DomainError, canonical, digest
+from backend.contracts import ROOT, DomainError, canonical, digest
 from backend.store import Store
 from runner.review import Reviewer
 import test_pipeline as fixtures
@@ -157,3 +157,37 @@ class ArchiveChecks(unittest.TestCase):
         with destination.transaction() as db:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM projects').fetchone()[0], 1)
             self.assertEqual(db.execute('SELECT COUNT(*) FROM runs').fetchone()[0], 1)
+
+    def test_long_history_pages_and_transfer_preserve_all_event_ids(self):
+        source = self.planned()
+        with self.store.transaction() as db:
+            for index in range(1200):
+                self.store.save(db, source, 'warning', f'synthetic long-history fixture {index}', bump=False)
+        events, cursor = [], 0
+        while batch := self.store.events(source['run_id'], cursor):
+            self.assertLessEqual(len(batch), 200)
+            events.extend(batch)
+            cursor = batch[-1]['seq']
+        self.assertEqual(cursor, source['last_event_seq'])
+        self.assertEqual([e['seq'] for e in events], list(range(1, cursor + 1)))
+        bundle = export_recording(self.store.path, source['run_id'])
+        self.assertEqual(bundle['events'], events)
+        destination = Store(Path(self.temp.name) / 'long-history.sqlite3')
+        result = import_recording(destination, bundle)
+        cursor, imported = 0, []
+        while batch := destination.events(result['run_id'], cursor):
+            imported.extend(batch)
+            cursor = batch[-1]['seq']
+        self.assertEqual([e['event_id'] for e in imported], [e['event_id'] for e in events])
+        self.assertEqual(export_recording(destination.path, result['run_id'])['recorded_at'], bundle['recorded_at'])
+
+    def test_exported_source_copy_does_not_claim_parent_repository_revision(self):
+        source = self.planned()
+        package = Path(self.temp.name) / 'unversioned-package'
+        package.mkdir()
+        (package / 'docs').symlink_to(ROOT / 'docs', target_is_directory=True)
+        with patch('backend.archive.ROOT', package), patch('backend.archive.subprocess.run') as git:
+            bundle = export_recording(self.store.path, source['run_id'])
+            git.assert_not_called()
+        self.assertIsNone(bundle['exporter']['revision'])
+        self.assertTrue(bundle['exporter']['dirty'])
