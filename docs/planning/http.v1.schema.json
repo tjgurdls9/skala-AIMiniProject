@@ -678,7 +678,10 @@
           ]
         },
         "free_policy": {
-          "const": "Local Ollama Qwen/DeepSeek only; no paid fallback or external API."
+          "enum": [
+            "Local Ollama Qwen/DeepSeek only; no paid fallback or external API.",
+            "Inference: local Ollama Qwen/DeepSeek only; no paid fallback or external model API. External data: verified free terms, explicit consent, fixed isolated access, no paid overage."
+          ]
         },
         "allowed_tools": {
           "type": "array",
