@@ -20,6 +20,7 @@ from backend.contracts import ROOT, SECRET, canonical, digest, require
 from backend.store import now, uid
 from runner.access import WRITABLE_FILES, RoleScope, issue_grant
 from runner.builder_loop import BuilderLoop
+from runner.candidate import commit_task, freeze_model
 from runner.commands import DockerExecutor
 from runner.tools import ToolBox
 from runner.context import implement
@@ -108,6 +109,9 @@ class Pipeline:
         if mode == "edit":
             await (self.model_edit(job, worker, workspace) if authoring else self.edit(job, worker, workspace))
         after = self.read_tree(workspace) if authoring else {path: (workspace / path).read_text() for path in writable}
+        commit = None
+        if authoring and mode == "edit":   # one commit per finished task keeps the history reviewers and rollbacks need
+            commit = await asyncio.to_thread(commit_task, workspace, job["packet"]["options"]["task_id"], job["packet"]["options"].get("task_title", "작업"))
         with self.store.transaction() as db:
             snapshot = self.valid(db, job, worker)
             if snapshot is None:
@@ -118,7 +122,7 @@ class Pipeline:
                             "diff": "".join(difflib.unified_diff(before.get(path, "").splitlines(True), after.get(path, "").splitlines(True), fromfile=path, tofile=path))}
                            for path in sorted(set(before) | set(after)) if before.get(path) != after.get(path)]
                 body = dict(spec_version_id=snapshot["spec_version_id"], task_id=task["id"], mode=mode,
-                            writable_files=list(writable), changes=changes, runtime_image=runtime_image)
+                            writable_files=list(writable), changes=changes, runtime_image=runtime_image, **({"commit": commit} if commit else {}))
                 artifact = self.store.artifact(db, snapshot, "contract" if mode == "prepare" else "code_diff", task["title"] + " 결과", body)
                 task["artifact_ids"].append(artifact["id"])
                 worker.publish_evidence(db, snapshot, job)
@@ -138,7 +142,10 @@ class Pipeline:
                 self.store.save(db, snapshot, "tool_finished", "담당 파일 변경을 보존했습니다. 후보 고정이 필요합니다.", bump=False, task_id=task["id"])
         if not await asyncio.to_thread(worker.current, job):
             return
-        candidate = await asyncio.to_thread(self.engine.freeze, workspace)
+        if authoring:
+            candidate = await asyncio.to_thread(freeze_model, self.engine, workspace, Path(str(workspace) + ".deps"), self.tool_executor().images)
+        else:
+            candidate = await asyncio.to_thread(self.engine.freeze, workspace)
         candidate["template_id"] = template_id
         with self.store.transaction() as db:
             snapshot = self.valid(db, job, worker)

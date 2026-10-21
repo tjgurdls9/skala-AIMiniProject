@@ -16,7 +16,8 @@ SCRIPTS = dict(
              ('write_file', dict(path='server/main.py', content='c')), ('run_tests', dict(argv=['python', '-m', 'pytest'])), ('finish', None)],
     frontend=[('write_file', dict(path='web/app.test.js', content='t')), ('run_tests', dict(argv=['node', '--test'])),
               ('write_file', dict(path='web/app.js', content='c')), ('run_tests', dict(argv=['node', '--test'])), ('finish', None)],
-    integration=[('write_file', dict(path='integration/flow.py', content='c')), ('run_tests', dict(argv=['python', '-m', 'pytest'])), ('finish', None)])
+    integration=[('write_file', dict(path='lifecycle.app.json', content=json.dumps(dict(runtime='python', start=['python', '-m', 'http.server', '8080'], port=8080, health='/')))),
+                 ('write_file', dict(path='integration/flow.py', content='c')), ('run_tests', dict(argv=['python', '-m', 'pytest'])), ('finish', None)])
 
 
 class BuildScripted(extras.Scripted):
@@ -58,9 +59,14 @@ class ModelBuildChecks(unittest.TestCase):
         self.assertEqual(response.status_code, 202, response.text)
         self.executor = FakeExecutor(codes)
         self.worker.pipeline.executor = self.executor
-        self.frozen = []
-        candidate = dict(candidate_id='c' * 64, commit_sha='a' * 40, image_digest='sha256:' + 'b' * 64, manifest={'x': '0' * 64}, path=str(self.temp.name))
-        self.worker.pipeline.engine.freeze = lambda workspace: self.frozen.append(Path(workspace)) or dict(candidate)
+        self.builds = []
+
+        def docker(*args, timeout=120):                # the offline image build is the only docker call a model-authored freeze makes
+            self.builds.append([str(a) for a in args])
+            if args[0] == 'build':
+                Path(args[args.index('--iidfile') + 1]).write_text('sha256:' + 'b' * 64)
+            return ''
+        self.worker.pipeline.engine.docker = docker
         return run_id
 
     def drain(self, run_id, limit=30):
@@ -85,18 +91,18 @@ class ModelBuildChecks(unittest.TestCase):
             '계약': [('write_file', None)],
             '서버': [('write_file', None), ('run_tests', 1), ('write_file', None), ('run_tests', 0)],
             '화면': [('write_file', None), ('run_tests', 1), ('write_file', None), ('run_tests', 0)],
-            '통합': [('write_file', None), ('run_tests', 0)]})
+            '통합': [('write_file', None), ('write_file', None), ('run_tests', 0)]})
         order = [titles[c['task_id']] for c in calls if c['tool'] == 'write_file']
         self.assertLess(order.index('계약'), order.index('서버'))
         self.assertLess(max(i for i, t in enumerate(order) if t in ('서버', '화면')), order.index('통합'))
-        self.assertEqual(len(self.frozen), 1)
+        self.assertEqual(len([b for b in self.builds if b[0] == 'build']), 1)
 
     def test_the_diff_artifact_lists_the_files_the_model_created(self):
         run_id = self.approved_run(BuildScripted())
         snapshot = self.drain(run_id)
         diffs = [self.store.read_artifact(a['id']) for a in snapshot['artifacts'] if a['kind'] == 'code_diff']
         changed = sorted(c['path'] for d in diffs for c in d['changes'])
-        self.assertEqual(changed, ['contract/api.json', 'integration/flow.py', 'server/main.py', 'server/test_main.py', 'web/app.js', 'web/app.test.js'])
+        self.assertEqual(changed, ['contract/api.json', 'integration/flow.py', 'lifecycle.app.json', 'server/main.py', 'server/test_main.py', 'web/app.js', 'web/app.test.js'])
         self.assertTrue(all(c['diff'].startswith('---') for d in diffs for c in d['changes']))
 
     def test_writes_outside_the_task_scope_are_refused_and_recorded(self):
@@ -169,6 +175,33 @@ class ModelBuildChecks(unittest.TestCase):
         self.approved_run(BuildScripted())
         job = self.worker.claim()
         self.assertEqual(job['packet']['options']['allowed_dependencies'], {'pip': ['fastapi'], 'npm': []})
+
+
+    def test_each_task_is_one_commit_and_the_candidate_is_the_last_commit(self):
+        import subprocess
+        from runner.candidate import git_dir_of
+        run_id = self.approved_run(BuildScripted())
+        snapshot = self.drain(run_id)
+        workspace = next(p for p in (Path(self.temp.name) / 'workspaces' / run_id).iterdir() if not p.name.endswith(('.git', '.deps')))
+        history = subprocess.run(['git', '--git-dir', str(git_dir_of(workspace)), 'log', '--format=%H|%s'], capture_output=True, text=True).stdout.splitlines()
+        self.assertEqual(len(history), 4)
+        self.assertEqual([h.split('|', 1)[1].split(' [')[0] for h in reversed(history)], ['task: 계약', 'task: 서버', 'task: 화면', 'task: 통합'])
+        with self.store.transaction() as db:
+            candidate = json.loads(db.execute('SELECT body FROM candidates WHERE run_id=?', (run_id,)).fetchone()[0])
+        self.assertEqual(candidate['commit_sha'], history[0].split('|')[0])
+        self.assertEqual(candidate['app']['health'], '/')
+        diffs = [self.store.read_artifact(a['id']) for a in snapshot['artifacts'] if a['kind'] == 'code_diff']
+        self.assertEqual(sorted(d['commit'] for d in diffs), sorted(h.split('|')[0] for h in history))
+
+    def test_a_green_builder_never_marks_any_criterion_met_and_waits_for_independent_review(self):
+        run_id = self.approved_run(BuildScripted())
+        snapshot = self.drain(run_id)
+        self.assertEqual(snapshot['state'], 'reviewing')
+        statuses = {item['status'] for item in self.store.acceptance_status(run_id)['items']}
+        self.assertEqual(statuses, {'unmet'})                                   # only a validator report can say `met`
+        self.assertEqual(snapshot['reports'], [])
+        roles = sorted(t['role'] for t in snapshot['tasks'] if t['state'] in ('ready', 'pending') and t['role'] in ('validator', 'security'))
+        self.assertEqual(roles, ['security', 'validator'])
 
 
 if __name__ == '__main__':

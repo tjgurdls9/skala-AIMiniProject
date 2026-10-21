@@ -22,7 +22,7 @@ def plan_items():
     return [dict(id='c1', kind='contract', title='계약', depends_on=[], acceptance_ids=['AC1', 'AC2'], write_scope=['contract/**']),
             dict(id='b1', kind='backend', title='서버', depends_on=['c1'], acceptance_ids=['AC1', 'AC2'], write_scope=['server/**']),
             dict(id='f1', kind='frontend', title='화면', depends_on=['c1'], acceptance_ids=['AC1', 'AC2'], write_scope=['web/**']),
-            dict(id='i1', kind='integration', title='통합', depends_on=['b1', 'f1'], acceptance_ids=['AC1'], write_scope=['integration/**'])]
+            dict(id='i1', kind='integration', title='통합', depends_on=['b1', 'f1'], acceptance_ids=['AC1'], write_scope=['integration/**', 'lifecycle.app.json'])]
 
 
 def http_check(ac):

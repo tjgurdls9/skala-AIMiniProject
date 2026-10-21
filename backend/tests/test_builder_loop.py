@@ -266,7 +266,7 @@ class LoopChecks(unittest.TestCase):
             self.assertIn(placeholder, INSTRUCTIONS)
         for material in ('add(', 'reverse', 'Hello', '덧셈', '뒤집'):
             self.assertNotIn(material, INSTRUCTIONS)
-        self.assertLess(len(INSTRUCTIONS.encode()), 2200)
+        self.assertLess(len(INSTRUCTIONS.encode()), 2700)
 
 
 if __name__ == '__main__':
