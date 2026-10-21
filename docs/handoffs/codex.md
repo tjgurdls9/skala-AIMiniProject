@@ -11,8 +11,12 @@
 - 제공자 구현 점검: 새 고정 cafemap-v1 프로필/run별 불변 선택·기획별 support/approve 차단·planner 실제 코퍼스 검색/공개 문맥을 planner 작업에 연결·출시 원장 GET/operation별 실제 조회 시각과 사건/artifact 연결을 구현했다. 공급자 미설정은 독립 검토 not_run·신뢰 프록시 차단이며 가짜 장소/실제 앱 완료로 취급하지 않는다. backend 자체 검사 **61개/43.281초** 통과(합성 결정/도구 fixture 포함, 실제 사용자 승인 아님). 실제 모델 새 실행/서버 연결은 다음 단계다.
 - 실제 모델 1차 실행: 1cb6e5674eaaa9f83083d5f15a4617eb3c424f34의 API/worker에서 실제 qwen3.5:4b·로컬 embedding을 사용했다. S09 run **846eed645f8245909d72cff799099d0b**, DB `runtime-data/s09-cafemap.sqlite3`. 원래 사용자 요청과 **“외부 연결은 나중에 결정”** 답변은 보존했다. 모델이 첫 조각에 존재하지 않는 이전 요구의 정정 근거를 생성하여 `needs_input`으로 안전하게 차단됐다. 승인/구현/외부 연결은 없었다.
 - 정정: 최초 조각 출력 스키마의 revisions를 빈 배열로 제한하고 기존 정정 검증을 유지했다. checkpoint 입력 버전을 올려 실패 원문/기록을 덮어쓰지 않고 새 시도를 구별한다. 회귀 포함 backend 전체 **62개/43.546초** 통과. 합성 검사와 실제 모델 실패를 구분한다.
-- **LIVE 일시 중지**: 수정 적용을 위해 Codex 소유 API PID 3704/PTY 41829와 worker PTY 55970을 종료했다. 현재 8000 서버 없음. 기존 Ollama PID 25744는 종료하지 않았다. 재기동 후 정확한 코드·주소·소유자·가용 조건을 이 절에 다시 기록한다.
-- Claude 완료 소비자 `d625f74`/인계 `4f396c8`을 확인했다. CR-C14/CR-C15를 원래 ID로 연결한 완료 커밋을 통합한 후 실제 서버 경로를 확인한다. 미완료 diff 복사/상대 파일 직접 수정은 하지 않는다.
+- **실제 서버 상태 정정**: 두 번째 시도는 첫 조각 1/2 저장 뒤 두 번째 입력 14,928bytes가 예산 14,000을 넘어 needs_input으로 차단됐다. 앞선 기획 전체 2,853bytes를 accumulated_plan과 prior_values에 중복한 것이 원인이다. 원문/계획을 자르지 않고 prior_values를 같은 위치의 hash만 전달하도록 수정했으며 CT40의 원문 인용/hash 검증은 유지한다. 관련 6개 검사는 통과, 전체 검사 중이다. 수정 적용을 위해 Codex 소유 API/worker를 종료 중이며 8000 확인은 재기동 뒤 진행한다.
+- **LIVE 재기동 완료**: 실제 실행 코드 **f5a2bc0d5dd0dcc13ea4c08351295fcf22199f31** (최초 조각 수정 151cb86 + Claude 완료 소비자 4f396c8 통합). API/빌드된 사무실 **http://127.0.0.1:8000**, 직접 run 주소 **http://127.0.0.1:8000/?run=846eed645f8245909d72cff799099d0b**. API PID **5398**/PTY **36745**, worker PTY **4627**. 기동·종료 소유자는 Codex다. Claude는 이 서비스와 기존 Ollama PID 25744를 임의 종료하지 않는다. 자기 Vite 127.0.0.1:5173 사용 시 API 프록시 8000이다.
+- 실제 runtime: qwen3.5:4b ready·worker ready·live_available=true·추론 슬롯 1, 로컬 qwen3-embedding:0.6b. 외부 지도/키/좌표 전송·배포는 비활성, 데이터 unconfigured. LIVE는 키 없는 재생 사본이 아니며 지도 지원/수용 통과를 뜻하지 않는다. DB는 Codex worktree `runtime-data/s09-cafemap.sqlite3`다.
+- 같은 실제 run을 **Codex 개발자 제어로 resume**했고 같은 command_id 재전송의 동일 receipt를 확인했다. 사용자 기획/배포 승인은 보내지 않았다. 명령/주체는 `runtime-data/s09-resume-20261021.json`에 별도 보존한다. 새 기획/근거 생성 결과는 다음 기록에 남긴다.
+- Claude 완료 소비자 `d625f74`/인계 `4f396c8`을 f5a2bc0에 통합했다. 프론트 **239개/5.99초** 통과·vue-tsc/Vite build 통과(JS gzip 74.95KB). 직접 frontend 수정/미완료 diff 복사는 하지 않았다. 실제 support/release UI와 중지·재연결 수용은 아직 확인 전이다.
+- **Claude 다음 확인 요청**: 위 실제 LIVE run에서 검색/문맥 근거와 CR-C14 기획별 지원 공백·CR-C15 출시 미설정 상태를 확인한다. 실제 사용자 승인/거절을 대신 생성하지 않는다. 기획 중이면 근거 생성 결과를 기다리되 외부 연결·사람 승인까지 성공으로 보고하지 않는다.
 
 
 

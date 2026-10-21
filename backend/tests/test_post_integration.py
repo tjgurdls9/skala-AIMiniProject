@@ -13,9 +13,9 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from backend.contracts import ROOT, SCHEMAS, DomainError, validate
+from backend.contracts import ROOT, SCHEMAS, DomainError, canonical, digest, validate
 from jsonschema import Draft202012Validator, ValidationError
-from runner.context import plan_step_schema
+from runner.context import BUDGET, PlanningContext, plan_step_schema
 import test_runtime as fixtures
 
 
@@ -31,6 +31,28 @@ class PostIntegrationChecks(unittest.TestCase):
             Draft202012Validator(plan_step_schema(schema)).validate(proposal)
         proposal['revisions'] = []
         Draft202012Validator(plan_step_schema(schema)).validate(proposal)
+
+    def test_followup_keeps_complete_plan_without_duplicating_prior_values(self):
+        calls = []
+        plan = dict(fixtures.PLAN, goal='x' * 4000)
+        class Model(fixtures.FakeModel):
+            async def generate(self, packet, schema):
+                calls.append(packet)
+                return dict(plan)
+        self.worker.model = Model()
+        self.worker.heartbeat()
+        project = self.store.project(dict(title='synthetic bounded context', request='x' * 2401))
+        self.store.create_run(project['project_id'], dict(mode='live'))
+        job = self.worker.claim()
+        documents = [dict(text='r' * 3800)]
+        job['packet']['retrieved_documents'] = documents
+        result = asyncio.run(PlanningContext(self.store).plan(job, self.worker, SCHEMAS['http.v1.schema.json']['$defs']['PlanDraft']))
+        self.assertEqual(result, plan)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[1]['accumulated_plan'], plan)
+        self.assertEqual(calls[1]['retrieved_documents'], documents)
+        self.assertEqual(calls[1]['prior_values']['goal'], [digest(plan['goal'])])
+        self.assertTrue(all(len(canonical(call).encode()) <= BUDGET for call in calls))
 
     def test_support_is_per_plan_frozen_and_blocks_approve_without_mutation(self):
         self.worker.heartbeat()
