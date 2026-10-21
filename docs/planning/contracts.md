@@ -154,18 +154,32 @@ Bundle은 동결 snapshot/events와 거기에 참조된 **공개** artifact 원�
 `ReplayRecording.provenance`, `ReplaySource.provenance`는 선택적 추가 필드다. 없으면 기존 local_ledger 기록이다. import 결과와 재생에는 `imported_unsigned`를 보존한다. UI는 **가져온 기록(서명 없음)**을 로컬 원장/새 LIVE와 구분하고 프리뷰 iframe·승인·실행을 금지한다. 해시는 훼손 검출이며 원장 출처의 서명/검토 진위 보증이 아니다. import된 승인/보고서를 LIVE 출시 권한으로 재사용하지 않는다.
 
 
-### POST-INTEGRATION / CR-C14 출시·복구 공개 근거
+### POST-INTEGRATION / CR-C15 출시·복구 공개 근거
 
 `GET /api/runs/{id}/release` → `http.ReleaseView`를 추가한다(기존 세션/읽기 전용). 현재 `enabled=false`이며 승인·push·배포·복구 실행 엔드포인트를 뜻하지 않는다. 실제 대상/기획·출시 승인 전 외부 작업은 비활성이다. 202 접수나 예시를 실제 완료로 바꾸지 않는다.
 
 - `unconfigured`는 등록된 manifest가 없음, target/details는 null·operations는 빈 목록이다. reason으로 준비 조건을 설명한다.
 - manifest가 있으면 `target`은 저장된 정확한 ReleaseTarget이며 details는 저장소/branch·push 자동 배포 여부, 환경, registry 참조, 확인한 무료 정책, 첫 출시 공개 중단/볼륨 보존 계획이다. candidate 호스트 경로·키·내부 쓰기 권한은 제공하지 않는다.
-- operations는 서버 원장에 보존한 operation_id/action(push/deploy/rollback)/state다. 단순 GET으로 공급자 재조회나 재실행을 하지 않는다. pending은 실행 의도 기록, applied는 어댑터가 실제 조회로 확인했던 결과, uncertain은 불명이며 자동 재실행/성공으로 바꾸지 않는다. not_applied/superseded도 성공이 아니다.
+- operations는 서버 원장에 보존한 operation_id/action(push/deploy/rollback)/state다. 단순 GET으로 공급자 재조회나 재실행을 하지 않는다. accepted는 서버의 실행 의도 기록(SQL pending에 대응), applied는 어댑터가 실제 조회로 확인했던 결과, uncertain은 불명이며 자동 재실행/성공으로 바꾸지 않는다. not_applied/superseded도 성공이 아니다.
 - state는 마지막 공개 원장 결과를 요약한다. rollback applied의 rolled_back은 이 어댑터에서 **첫 출시 서비스 공개 중단과 볼륨 보존**이며 이전 버전/DB 복원을 뜻하지 않는다. 실패·응답 유실은 reason/원장 상태 그대로 보여준다.
 - 재생은 동결된 공개 deployment artifact가 있으면 그 기록만 표시하고 실행은 계속 불가다. 기록이 없으면 unconfigured다. GET 결과를 새 LIVE 승인 권한으로 재사용하지 않는다.
 
-### CR-C15 로컬 템플릿 가용 조건
+### Runtime 보조 정보 (CR-C14 기획별 지원 공백을 대체하지 않음)
 
 `Runtime.template_id`와 `data_source_status`를 선택적 추가한다. 기존 소비자는 무시할 수 있다. template_id는 운영자가 선택한 고정 requests-v1/cafemap-v1 기본값이며 각 실제 run의 프로필은 생성 시 서버가 불변으로 기록한다. requests-v1은 data_source_status=not_required, cafemap-v1은 현재 unconfigured다. `live_available=true`는 로컬 모델/worker가 준비됐다는 뜻이며 외부 지도 검색·추천/프리뷰 수용 성공이 아니다. 외부 데이터는 사용자 결정으로 보류했고 `external_api_enabled=false`, 공급자/키/좌표 전송은 없다. reason에 지원 공백과 실제 승인 전 확인할 조건을 제공한다.
 
 카공지도 앱은 기존 opaque sandbox를 풀어 위치 권한을 우회하지 않는다. 위치는 명시 동의와 secure origin 경로를 별도로 준비해야 하며 거절/미지원 시 수동 위치 입력을 유지한다. 실제 지도/장소 데이터가 없는 상태에서 가짜 장소·CRUD를 수용으로 제시하지 않는다.
+
+
+### CR-C14 기획별 지원 공백·외부 의존
+
+Claude가 먼저 부여한 원래 번호를 유지한다: **CR-C14는 기획 지원 공백**, **CR-C15는 출시·복구 결과**다. 8ff4ca1의 번호 배정은 잘못됐으며 이 정정 계약이 대체한다. Runtime 템플릿 상태만으로 CR-C14를 충족했다고 판단하지 않는다.
+
+`PlanView.support` → 선택적 `http.PlanSupport`를 추가한다. 기존 기록에 없으면 "지원 정보 미제공/미확인"이며 지원 완료로 추정하지 않는다. 새 제공자는 각 기획에 서버 계산 값을 저장한다.
+
+- template_id, spec_version_id, request_digest는 **그 기획을 만든 요청 원문/정정 묶음과 명세**에 결속된다. 다른 기획/실행의 support를 재사용하지 않고 현재 Runtime 상태로 덮지 않는다. support 본문은 승인할 PlanView digest에 포함되고 재생/export/import에도 동결된다. 소비자는 spec_version_id 불일치 시 표시/승인을 막고 다시 읽는다.
+- unsupported는 요청했으나 현재 지원되지 않는 기능의 실제 request_quote·reason·requires를 제공한다. non_goals와 분리한다. 원문/정정은 원장에 보존하며 모델이 임의로 요청을 축소해 공백을 없애지 않는다.
+- external은 provider(미정은 null), purpose, needs(무료 자격/키/쿼터/attribution/위치 동의/격리 경로), status(unconfirmed/confirmed/deferred), reason이다. 사용자 선택 "외부 연결은 나중에 결정"은 deferred이며 무료 자격/공급자 연결을 확정으로 표시하지 않는다. 브라우저 위치 동의와 외부 공급자로의 위치 전송 승인은 별개다.
+- implementation_allowed=false면 현재 공백 때문에 구현 승인이 불가하다. 프론트는 공백과 필요한 입력을 별도 구역에 표시하고 기획 approve를 막는다. 서버도 같은 저장된 support를 검사해 INVALID_STATE로 거절하며 승인/작업 예약을 만들지 않는다. reject/수정 요청은 유지한다. true는 알려진 지원 공백이 없다는 뜻이며 AC 충족·검토/출시 수용 성공이 아니다. 실제 승인은 여전히 사용자가 한다.
+
+CR-C15 operations는 accepted/applied/uncertain/failed/rolled_back/not_applied/superseded를 구분한다. accepted_at은 실행 의도를 저장한 시각, observed_at은 실제 공급자 조회가 완료된 시각이며 과거 원장에 없으면 null이다. GET 시각으로 만들지 않는다. reason은 응답 유실/미확인 등의 안전한 근거이며 내부 예외/키를 노출하지 않는다. volume_preserved는 실제 볼륨 조회를 확인한 경우만 boolean이고 미확인이면 null이다. true도 데이터 내용/DB 이전 검증을 뜻하지 않는다. target에 환경 설정 해시·commit·registry digest·두 보고서·rollback hash가 결속된다. 관련 공개 사건은 operation_id와 공개 artifact_ids로 같은 결과를 연결하며 상대 미확정 검토는 포함하지 않는다.

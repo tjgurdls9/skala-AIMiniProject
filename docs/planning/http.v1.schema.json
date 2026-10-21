@@ -58,6 +58,115 @@
         "reasons": {"type": "array", "items": {"type": "string"}}
       }
     },
+    "PlanSupport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "template_id",
+        "spec_version_id",
+        "request_digest",
+        "implementation_allowed",
+        "unsupported",
+        "external"
+      ],
+      "properties": {
+        "template_id": {
+          "enum": [
+            "requests-v1",
+            "cafemap-v1"
+          ]
+        },
+        "spec_version_id": {
+          "$ref": "protocol.v1.schema.json#/$defs/Id"
+        },
+        "request_digest": {
+          "$ref": "protocol.v1.schema.json#/$defs/Digest"
+        },
+        "implementation_allowed": {
+          "type": "boolean"
+        },
+        "unsupported": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "request_quote",
+              "reason",
+              "requires"
+            ],
+            "properties": {
+              "request_quote": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "requires": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        },
+        "external": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "provider",
+              "purpose",
+              "needs",
+              "status",
+              "reason"
+            ],
+            "properties": {
+              "provider": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "purpose": {
+                "type": "string",
+                "minLength": 1
+              },
+              "needs": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "free_eligibility",
+                    "key",
+                    "quota",
+                    "attribution",
+                    "consent",
+                    "isolation"
+                  ]
+                }
+              },
+              "status": {
+                "enum": [
+                  "unconfirmed",
+                  "confirmed",
+                  "deferred"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
     "ReleaseView": {
       "type": "object",
       "additionalProperties": false,
@@ -81,7 +190,7 @@
           "enum": [
             "unconfigured",
             "prepared",
-            "pending",
+            "accepted",
             "applied",
             "uncertain",
             "not_applied",
@@ -178,7 +287,11 @@
             "required": [
               "operation_id",
               "action",
-              "state"
+              "state",
+              "accepted_at",
+              "observed_at",
+              "reason",
+              "volume_preserved"
             ],
             "properties": {
               "operation_id": {
@@ -193,11 +306,37 @@
               },
               "state": {
                 "enum": [
-                  "pending",
+                  "accepted",
                   "applied",
                   "uncertain",
+                  "failed",
+                  "rolled_back",
                   "not_applied",
                   "superseded"
+                ]
+              },
+              "accepted_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "observed_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "volume_preserved": {
+                "type": [
+                  "boolean",
+                  "null"
                 ]
               }
             }
@@ -416,6 +555,7 @@
         "contract_digests"
       ],
       "properties": {
+        "support": {"$ref": "#/$defs/PlanSupport"},
         "goal": {
           "type": "string",
           "minLength": 1,
