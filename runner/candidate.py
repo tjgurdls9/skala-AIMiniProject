@@ -5,6 +5,7 @@ hooks, config or filters that the host's git would execute. The Dockerfile is ge
 it installs and runs nothing while building."""
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -12,6 +13,7 @@ import tempfile
 
 from backend.contracts import DomainError, digest, require
 from runner.commands import IMAGE, DockerExecutor, validate_command
+from runner.tdd_gate import is_test_path
 from runner.workspace import Workspace
 
 APP_FILE = "lifecycle.app.json"
@@ -51,6 +53,36 @@ def commit_task(workspace, task_id, title):
     if changed or not _has_head(workspace):
         _git(workspace, "commit", "-q", "--allow-empty", "-m", f"task: {title} [{task_id}]")
     return _git(workspace, "rev-parse", "HEAD")
+
+
+def installed_modules(deps):
+    """Import names each installed Python distribution provides ({normalised distribution: [top-level modules]}), read from its metadata."""
+    result = {}
+    for info in sorted(Path(deps).glob("py/*.dist-info")):
+        meta = info / "METADATA"
+        found = re.search(r"^Name:\s*(\S+)", meta.read_text(errors="replace"), re.M) if meta.is_file() else None
+        if not found:
+            continue
+        top = info / "top_level.txt"
+        if top.is_file():
+            modules = top.read_text().split()
+        else:
+            record = info / "RECORD"
+            modules = []
+            for line in (record.read_text(errors="replace").splitlines() if record.is_file() else []):
+                first = line.split(",")[0].split("/")[0]
+                if first and not first.startswith(".") and ".dist-info" not in first and first != "__pycache__":
+                    modules.append(first[:-3] if first.endswith(".py") else first)
+        result[re.sub(r"[-_.]+", "-", found.group(1)).lower()] = sorted(set(modules))
+    return result
+
+
+def _leave_out_tests(root):
+    def ignore(directory, names):
+        relative = Path(directory).relative_to(root)
+        return [n for n in names if n == ".git" or n in ("tests", "__tests__") or
+                ((Path(directory) / n).is_file() and is_test_path((relative / n).as_posix()))]
+    return ignore
 
 
 def validate_app_manifest(value):
@@ -99,10 +131,12 @@ def freeze_model(engine, workspace, deps, base_image):
                        capture_output=True, stdin=subprocess.DEVNULL, env={"PATH": os.environ.get("PATH", os.defpath), "GIT_CONFIG_GLOBAL": os.devnull})
     with tempfile.TemporaryDirectory(dir=engine.root) as temp:
         context = Path(temp)
-        shutil.copytree(candidate, context / "app", ignore=shutil.ignore_patterns(".git"), symlinks=True)
+        # The image carries the app, not the builder's tests: a check can then only exercise the implementation itself.
+        shutil.copytree(candidate, context / "app", ignore=_leave_out_tests(candidate), symlinks=True)
         shutil.copytree(deps, context / "deps", symlinks=True) if deps.exists() else (context / "deps").mkdir()
         (context / "Dockerfile").write_text(render_dockerfile(base, app))
         iid = context / "image-id"
         engine.docker("build", "--network=none", "--iidfile", iid, "-f", context / "Dockerfile", context, timeout=300)
         image = iid.read_text().strip()
-    return dict(candidate_id=candidate_id, commit_sha=commit, image_digest=image, manifest=manifest, path=str(candidate), app=app)
+    return dict(candidate_id=candidate_id, commit_sha=commit, image_digest=image, manifest=manifest, path=str(candidate), app=app,
+                excluded_tests=sorted(p for p in manifest if is_test_path(p)), dependency_modules=installed_modules(deps) if deps.exists() else {})

@@ -85,7 +85,8 @@ class VerificationChecks(unittest.TestCase):
         return check_verification(verification, list(manual), acceptance)
 
     def test_valid_specs_have_no_errors(self):
-        specs = [http('h1', ['AC1']), dict(id='c1', ac_ids=['AC2'], kind='command', argv=['python', '-m', 'pytest'], expect=dict(exit=0)),
+        inline = ['python', '-c', 'from reverse import reverse; assert reverse("abc") == "cba"']
+        specs = [http('h1', ['AC1']), dict(id='c1', ac_ids=['AC2'], kind='command', argv=inline, expect=dict(exit=0)),
                  dict(id='f1', ac_ids=['AC2'], kind='file', path='README.md', expect=dict(exists=True))]
         self.assertEqual(self.errors(specs), [])
 
@@ -96,6 +97,22 @@ class VerificationChecks(unittest.TestCase):
         self.assertTrue(any('c2' in e for e in self.errors([bad])))
         bad = dict(id='c3', ac_ids=['AC1'], kind='command', argv=['python'], cwd='..', expect=dict(exit=0))
         self.assertTrue(any('c3' in e for e in self.errors([bad])))
+
+    def test_command_checks_must_be_self_contained_inline_code(self):
+        # a check that runs builder-written tests would pass a build whose tests never touch the implementation
+        def bad(argv):
+            return self.errors([dict(id='c9', ac_ids=['AC1'], kind='command', argv=argv, expect=dict(exit=0))])
+        for argv in (['python', '-m', 'pytest'], ['python', '-m', 'unittest', 'discover'], ['python3', '-m', 'unittest'], ['node', '--test'],
+                     ['npm', 'test'], ['npm', 'run', 'test'], ['python', 'tests/test_a.py'], ['node', 'a.test.js'], ['python', 'check.py'],
+                     ['node', 'server.js'], ['python', '-c', 'import unittest; unittest.main()'], ['python', '-c', 'import test_reverse'],
+                     ['python', '-c', 'import reverse_test'], ['python', '-c', 'import pytest; pytest.main()'], ['python', '-c'],
+                     ['node', '-e', 'require("./a.test.js")']):
+            errors = bad(argv)
+            self.assertTrue(any('c9' in e and '자기 완결' in e for e in errors), argv)
+        for argv in (['python', '-c', 'from reverse import reverse; assert reverse("ab") == "ba"'],
+                     ['python3', '-c', 'import json, os; print(json.dumps({}))'], ['node', '-e', 'const f = require("./reverse"); if (f("ab") !== "ba") process.exit(1)'],
+                     ['node', '--eval', 'process.exit(0)']):
+            self.assertEqual(bad(argv), [], argv)
 
     def test_file_specs_stay_inside_the_workspace(self):
         bad = dict(id='f1', ac_ids=['AC1'], kind='file', path='../etc/passwd', expect=dict(exists=True))

@@ -26,7 +26,7 @@ from runner.tools import ToolBox
 from runner.context import implement
 from runner.model import ModelUnavailable
 from runner.sandbox import PATCH_SCHEMA, Sandbox
-from runner.review import REVIEW_SCHEMA, Reviewer
+from runner.review import REVIEW_SCHEMA, Reviewer, model_validation_body
 from knowledge import Corpus
 
 
@@ -212,6 +212,10 @@ class Pipeline:
         try:
             if previous:
                 body = json.loads(previous[0])
+            elif job["role"] == "validator" and "app" in candidate:   # model-authored: the approved checks decide, no model is asked
+                outcomes, info = await asyncio.to_thread(reviewer.model_validation, candidate, spec.get("verification", []),
+                                                         self.tool_executor().images["python"])
+                body = model_validation_body(spec, outcomes, info)
             elif job["role"] == "validator":
                 tools = await asyncio.to_thread(reviewer.validation, candidate)
                 code = {name: (Path(candidate["path"]) / name).read_text() for name in WRITABLE_FILES}
@@ -227,6 +231,8 @@ class Pipeline:
                 covered = (len(actual) == len(expected) and {a["id"] for a in actual} == expected and
                            all(a["status"] == "met" and a["evidence"] and set(a["evidence"]).issubset(tools["checks"]) for a in actual))
                 body = dict(verdict="fail" if not all(tools["checks"].values()) else "not_run" if tools.get("not_run") else "pass" if covered else "fail", tools=tools, judgement=judgement)
+            elif "app" in candidate:
+                body = await asyncio.to_thread(reviewer.security, candidate, self.tool_executor().images["python"], spec.get("dependencies"))
             else:
                 body = await asyncio.to_thread(reviewer.security, candidate)
         except Exception as error:

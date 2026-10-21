@@ -204,5 +204,47 @@ class ModelBuildChecks(unittest.TestCase):
         self.assertEqual(roles, ['security', 'validator'])
 
 
+    def finish_reviews(self, run_id, outcomes, security='pass'):
+        from unittest import mock
+        from runner.check_runner import CheckOutcome
+        from runner.review import Reviewer
+        with self.store.transaction() as db:
+            spec = json.loads(db.execute('SELECT package FROM specs WHERE run_id=?', (run_id,)).fetchone()[0])
+        results = [CheckOutcome(c['id'], outcomes.get(c['id'], 'passed'), '', {}) for c in spec['verification']]
+        secure = dict(verdict=security, checks=dict(static=security == 'pass'), tools_note='faked')
+        with mock.patch.object(Reviewer, 'model_validation', lambda self, candidate, specs, image: (results, dict(healthy=True))), \
+                mock.patch.object(Reviewer, 'security', lambda self, candidate, image=None, deps=None: dict(secure)):
+            for _ in range(4):
+                if not asyncio.run(self.worker.tick()) or self.store.snapshot(run_id)['state'] == 'preview_ready':
+                    break              # the release job needs real containers; stop where the preview becomes possible
+        return self.store.snapshot(run_id)
+
+    def test_validator_and_security_review_a_model_candidate_and_only_passing_checks_open_the_preview(self):
+        run_id = self.approved_run(BuildScripted())
+        self.assertEqual(self.drain(run_id)['state'], 'reviewing')
+        snapshot = self.finish_reviews(run_id, {})
+        self.assertEqual(snapshot['state'], 'preview_ready')
+        self.assertEqual({r['role']: r['verdict'] for r in snapshot['reports']}, {'validator': 'pass', 'security': 'pass'})
+        self.assertEqual({i['status'] for i in self.store.acceptance_status(run_id)['items']}, {'met'})
+
+    def test_a_formally_green_builder_whose_implementation_fails_the_approved_check_does_not_pass_review(self):
+        run_id = self.approved_run(BuildScripted())
+        self.drain(run_id)
+        with self.store.transaction() as db:
+            check = json.loads(db.execute('SELECT package FROM specs WHERE run_id=?', (run_id,)).fetchone()[0])['verification'][0]
+        snapshot = self.finish_reviews(run_id, {check['id']: 'failed'})
+        self.assertNotEqual(snapshot['state'], 'preview_ready')
+        self.assertEqual({r['role']: r['verdict'] for r in snapshot['reports']}, {'validator': 'fail', 'security': 'pass'})
+        statuses = {i['id']: i['status'] for i in self.store.acceptance_status(run_id)['items']}
+        self.assertEqual(sorted(statuses.values()), ['met', 'unmet'])                    # the criterion the check covers stays unmet
+        self.assertFalse([t for t in snapshot['tasks'] if t['role'] == 'release' and t['state'] == 'ready'])
+
+    def test_a_failed_security_review_blocks_even_when_every_check_passes(self):
+        run_id = self.approved_run(BuildScripted())
+        self.drain(run_id)
+        snapshot = self.finish_reviews(run_id, {}, security='fail')
+        self.assertNotEqual(snapshot['state'], 'preview_ready')
+
+
 if __name__ == '__main__':
     unittest.main()

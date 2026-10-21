@@ -1,9 +1,23 @@
 """Supervisor-side validation of a model-proposed work plan and verification specs; pure functions, no model."""
+import re
+
 from backend.contracts import DomainError
 from runner.commands import validate_command
 from runner.workspace import relative_parts
 
 AREAS = ("infra", "backend", "frontend", "ai_data")
+INLINE_FLAGS = dict(python=("-c",), python3=("-c",), node=("-e", "--eval"))
+TEST_WORDS = re.compile(r"\b(?:unittest|pytest|nose|mocha|jest|vitest)\b|\btest_\w+|\w+_test\b|\.test\.|\.spec\.|__tests__|\btests?/", re.I)
+
+
+def self_contained_problem(argv):
+    """A verification command must carry its own expectation as inline code; it may not run builder-written tests or a test runner,
+    because those can pass without ever exercising the implementation."""
+    if len(argv) != 3 or argv[1] not in INLINE_FLAGS.get(argv[0], ()):
+        return "인라인 코드(python -c, node -e)만 허용되며 파일이나 시험 실행기를 실행할 수 없습니다"
+    if TEST_WORDS.search(argv[2]):
+        return "코드가 시험 실행기나 builder가 쓴 테스트 파일을 가리킵니다"
+    return None
 WILDCARDS = "*?["
 
 
@@ -70,6 +84,9 @@ def check_verification(verification, manual_acceptance, acceptance):
         try:
             if spec["kind"] == "command":
                 validate_command(spec["argv"], spec.get("cwd", "."))
+                problem = self_contained_problem(spec["argv"])
+                if problem:
+                    errors.append(f"{spec['id']}: command 점검은 승인된 명세 안에서 자기 완결이어야 합니다 ({problem}).")
             elif spec["kind"] == "file":
                 relative_parts(spec["path"])
         except DomainError as error:

@@ -5,12 +5,18 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import re
+import subprocess
 import tempfile
+import time
 
-from backend.contracts import ROOT, digest, require
+from backend.contracts import ROOT, DomainError, digest, require
 from backend.store import uid
+from runner.check_runner import CheckOutcome, acceptance_verdicts, evaluate
+from runner.commands import CommandResult, redact
 from runner.model import ModelUnavailable
 from runner.sandbox import Sandbox
+from runner.workspace import Workspace
 
 REVIEW_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["summary", "acceptance"], "properties": {
     "summary": {"type": "string", "maxLength": 2000},
@@ -28,9 +34,70 @@ def scan_covered(report, scanner):
             all(m["vulnerability"]["severity"].casefold() in ("negligible", "low", "medium", "high", "critical") for m in report["matches"]))
 
 
+HEALTH_TRIES, HEALTH_WAIT, PROBE_BODY = 30, 0.5, 4096
+INFRASTRUCTURE_CODES = (125, 126, 127)   # docker could not start / invoke / find the program: not a verdict on the app
+UNHEALTHY = "앱이 시작되지 않았거나 상태 확인에 응답하지 않았습니다."
+
+
+def model_validation_body(spec, outcomes, info):
+    """The validator report for a model-authored candidate, derived only from executed approved checks."""
+    verdicts = acceptance_verdicts(spec["acceptance"], spec.get("verification", []), spec.get("manual_acceptance", []), outcomes)
+    states = {v["status"] for v in verdicts}
+    verdict = ("error" if any(o.status == "error" for o in outcomes) else "fail" if "unmet" in states else
+               "not_run" if "not_run" in states else "pass")
+    problems = [] if info.get("healthy", True) else [UNHEALTHY]
+    summary = " ".join(problems + [f"{sum(v['status'] == 'met' for v in verdicts)}/{len(verdicts)}개 기준이 승인된 점검으로 충족됐습니다."])
+    return dict(verdict=verdict, tools=dict(mechanical=True, healthy=info.get("healthy", True),
+                                            checks={o.id: o.status == "passed" for o in outcomes},
+                                            outcomes=[dict(id=o.id, status=o.status, detail=o.detail, evidence=o.evidence) for o in outcomes]),
+                judgement=dict(summary=summary, acceptance=[dict(id=v["id"], status=v["status"], evidence=v["check_ids"]) for v in verdicts]))
+
+
+class CandidateEnv:
+    """Where approved checks run: http through a checker container on the internal network, commands inside the candidate image
+    (no network), files in the candidate checkout."""
+    def __init__(self, reviewer, candidate, network, app, checker_image):
+        self.reviewer, self.candidate, self.network, self.app, self.checker_image = reviewer, candidate, network, app, checker_image
+        self.checkers = []
+
+    def http(self, method, path, body=None):
+        name = "lifecycle-" + uid()
+        self.checkers.append(name)
+        args = ["run", "--rm", *self.reviewer.engine.limits(name, self.network), "--mount", f"type=bind,src={ROOT / 'infra/checks'},dst=/checks,readonly",
+                self.checker_image, "python", "/checks/http_probe.py", f"http://{self.app}:8080", method, path]
+        result = json.loads(self.reviewer.engine.docker(*args, *([json.dumps(body)] if body is not None else []), timeout=30))
+        if "error" in result:
+            raise OSError(result["error"])
+        return result["status"], result["body"]
+
+    def run(self, argv, cwd, timeout):
+        name = "lifecycle-" + uid()
+        self.checkers.append(name)
+        workdir = [] if cwd == "." else ["--workdir", f"/app/{cwd}"]
+        args = ["docker", "run", "--rm", *self.reviewer.engine.limits(name, "none"), *workdir, self.candidate["image_digest"], *argv]
+        try:
+            done = self.reviewer.runner(args, capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL)
+        except subprocess.TimeoutExpired:
+            self.reviewer.engine.cleanup(name)
+            return CommandResult(None, "", "", True, False)
+        if done.returncode in INFRASTRUCTURE_CODES:
+            raise DomainError("RUNTIME_UNAVAILABLE", "격리 컨테이너가 점검 명령을 실행하지 못했습니다: " + redact(done.stderr.decode(errors="replace"))[:200], 503)
+        cap = 65536
+        return CommandResult(done.returncode, redact(done.stdout[:cap].decode(errors="replace")), redact(done.stderr[:cap].decode(errors="replace")),
+                             False, len(done.stdout) > cap or len(done.stderr) > cap)
+
+    def read_text(self, path):
+        try:
+            return Workspace(Path(self.candidate["path"])).read(path)["content"]
+        except DomainError as error:
+            if error.code == "NOT_FOUND":
+                return None
+            raise
+
+
 class Reviewer:
-    def __init__(self, engine, current=lambda: True):
-        self.engine, self.current = engine, current
+    def __init__(self, engine, current=lambda: True, runner=subprocess.run, sleep=time.sleep):
+        self.engine, self.current, self.runner, self.sleep = engine, current, runner, sleep
 
     def check_current(self):
         if not self.current():
@@ -66,6 +133,43 @@ class Reviewer:
             except ModelUnavailable:
                 pass
 
+    def model_validation(self, candidate, specs, checker_image):
+        """Run the approved check specs against the frozen image; returns (outcomes, {"healthy": bool}). No model is involved."""
+        network, app = "lifecycle-" + uid(), "lifecycle-" + uid()
+        env = CandidateEnv(self, candidate, network, app, checker_image)
+        try:
+            self.check_current()
+            self.engine.docker("network", "create", "--internal", network)
+            self.engine.start_candidate(candidate, network, app)
+            healthy = self.wait_healthy(env, candidate["app"]["health"])
+            outcomes = []
+            for spec in specs:
+                self.check_current()
+                if spec["kind"] == "http" and not healthy:
+                    outcomes.append(CheckOutcome(spec["id"], "failed", UNHEALTHY, dict(healthy=False)))
+                else:
+                    outcomes.append(evaluate(spec, env))
+            return outcomes, dict(healthy=healthy)
+        finally:
+            for name in [app, *env.checkers]:
+                self.engine.cleanup(name)
+            try:
+                self.engine.docker("network", "rm", network)
+            except ModelUnavailable:
+                pass
+
+    def wait_healthy(self, env, path):
+        for _ in range(HEALTH_TRIES):
+            self.check_current()
+            try:
+                status, _ = env.http("GET", path)
+                if 200 <= status < 400:
+                    return True
+            except (OSError, ValueError, KeyError):
+                pass
+            self.sleep(HEALTH_WAIT)
+        return False
+
     def prepare_scanner(self):
         image = self.engine.docker("image", "inspect", "anchore/grype:v0.121.0", "--format", "{{.Id}}").strip()
         cache = self.engine.root / "grype-db"
@@ -79,14 +183,20 @@ class Reviewer:
         (self.engine.root / "scanner.json").write_text(json.dumps(result, indent=2) + "\n")
         return result
 
-    def security(self, candidate):
+    def security(self, candidate, checker_image=None, approved_dependencies=None):
         name = "lifecycle-" + uid()
         checks = ROOT / "infra/checks"
+        command = ["python", "/checks/security.py"]
+        if checker_image is not None:   # model-authored candidate: allow only what the approved dependencies provide, resolved from the installed distributions
+            known = candidate.get("dependency_modules", {})
+            approved = [re.sub(r"[-_.]+", "-", d.split("==")[0]).lower() for d in (approved_dependencies or {}).get("pip", [])]
+            command += ["--model-authored", ",".join(sorted({m for d in approved for m in known.get(d, [])})),
+                        "--unverified", ",".join(d for d in approved if d not in known)]
         try:
             self.check_current()
             value = json.loads(self.engine.docker("run", *self.engine.limits(name),
                 "--mount", f"type=bind,src={checks},dst=/checks,readonly",
-                "--mount", f"type=bind,src={candidate['path']},dst=/candidate,readonly", self.engine.runtime(), "python", "/checks/security.py"))
+                "--mount", f"type=bind,src={candidate['path']},dst=/candidate,readonly", checker_image or self.engine.runtime(), *command))
             inspect = json.loads(self.engine.docker("inspect", name))[0]
             host = inspect["HostConfig"]
             value["checks"]["isolation"] = (host["ReadonlyRootfs"] and not host["Privileged"] and

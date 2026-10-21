@@ -115,7 +115,8 @@ class PlanExtras:
                 features=plan["features"], work_areas=areas,
                 instructions="Propose up to 3 declarative checks (http, command or file) that demonstrate this single acceptance criterion "
                              "against the finished app. Give each a unique short id and put this criterion's id in ac_ids. If it cannot be "
-                             "checked mechanically return no checks and explain in manual_reason."), VERIFICATION_SCHEMA, check)
+                             "checked mechanically return no checks and explain in manual_reason. A command check must be self-contained inline code "
+                             "(python -c or node -e that imports the implementation and asserts the expected value); it must never run test files or a test runner."), VERIFICATION_SCHEMA, check)
             prefix = re.sub(r"[^A-Za-z0-9_-]", "_", ac["id"])[:30] or "ac"
             specs += [dict(c, id=f"{prefix}-{n}", ac_ids=[ac["id"]]) for n, c in enumerate(value["checks"], 1)]
             if not value["checks"] and value.get("manual_reason"):

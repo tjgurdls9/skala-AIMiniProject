@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from backend.contracts import DomainError, digest
-from runner.candidate import APP_FILE, commit_task, freeze_model, git_dir_of, render_dockerfile, validate_app_manifest
+from runner.candidate import APP_FILE, commit_task, freeze_model, git_dir_of, installed_modules, render_dockerfile, validate_app_manifest
 
 BASE = 'python@sha256:' + 'a' * 64
 APP = dict(runtime='python', start=['python', '-m', 'http.server', '8080'], port=8080, health='/')
@@ -144,6 +144,51 @@ class FreezeChecks(unittest.TestCase):
         self.assertIn('deps/py/lib.py', seen['files'])
         self.assertIn('Dockerfile', seen['files'])
         self.assertFalse([f for f in seen['files'] if '.git' in f.split('/')])
+
+    def test_builder_test_files_are_left_out_of_the_image_but_stay_in_the_history(self):
+        (self.workspace / 'server' / 'test_main.py').write_text('assert True')
+        (self.workspace / 'web').mkdir()
+        (self.workspace / 'web' / 'app.test.js').write_text('x')
+        (self.workspace / 'tests').mkdir()
+        (self.workspace / 'tests' / 'helper.py').write_text('x')
+        commit_task(self.workspace, 'task-1', '작업')
+        seen = {}
+
+        def docker(*args, timeout=120):
+            if args[0] == 'build':
+                context = Path(args[-1])
+                seen['files'] = sorted(p.relative_to(context / 'app').as_posix() for p in (context / 'app').rglob('*') if p.is_file())
+                Path(args[args.index('--iidfile') + 1]).write_text('sha256:' + 'c' * 64)
+            return ''
+        self.engine.docker = docker
+        candidate = freeze_model(self.engine, self.workspace, self.deps, BASE)
+        self.assertEqual(seen['files'], [APP_FILE, 'server/main.py'])
+        self.assertEqual(sorted(candidate['excluded_tests']), ['server/test_main.py', 'tests/helper.py', 'web/app.test.js'])
+        self.assertTrue((Path(candidate['path']) / 'server' / 'test_main.py').exists())       # the candidate checkout and history keep them
+        self.assertIn('server/test_main.py', candidate['manifest'])
+
+    def test_installed_distributions_are_mapped_to_their_import_names(self):
+        for name, top, body in (('python_dateutil-2.9.0', 'dateutil', 'Name: python-dateutil\n'), ('PyYAML-6.0', 'yaml', 'Name: PyYAML\n')):
+            info = self.deps / 'py' / f'{name}.dist-info'
+            info.mkdir()
+            (info / 'METADATA').write_text('Metadata-Version: 2.1\n' + body)
+            (info / 'top_level.txt').write_text(top + '\n')
+        info = self.deps / 'py' / 'plainpkg-1.0.dist-info'
+        info.mkdir()
+        (info / 'METADATA').write_text('Name: plainpkg\n')
+        (info / 'RECORD').write_text('plainpkg/__init__.py,sha256=x,1\nplainpkg/core.py,sha256=x,1\nplainpkg-1.0.dist-info/METADATA,sha256=x,1\n../../bin/tool,,\n')
+        modules = installed_modules(self.deps)
+        self.assertEqual(modules['python-dateutil'], ['dateutil'])
+        self.assertEqual(modules['pyyaml'], ['yaml'])
+        self.assertEqual(modules['plainpkg'], ['plainpkg'])                                  # derived from RECORD when top_level.txt is absent
+
+    def test_the_candidate_records_which_import_names_its_dependencies_provide(self):
+        info = self.deps / 'py' / 'PyYAML-6.0.dist-info'
+        info.mkdir()
+        (info / 'METADATA').write_text('Name: PyYAML\n')
+        (info / 'top_level.txt').write_text('yaml\n')
+        commit_task(self.workspace, 'task-1', '작업')
+        self.assertEqual(freeze_model(self.engine, self.workspace, self.deps, BASE)['dependency_modules'], {'pyyaml': ['yaml']})
 
     def test_the_same_commit_gives_the_same_candidate(self):
         commit_task(self.workspace, 'task-1', '작업')
