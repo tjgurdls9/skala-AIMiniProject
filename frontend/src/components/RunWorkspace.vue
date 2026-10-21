@@ -4,8 +4,11 @@ import { ApiError } from '../api/errors'
 import type { RunSource } from '../api/source'
 import type { Task } from '../api/types'
 import type { SendResult } from '../composables/useCommandForm'
+import { useElevator } from '../composables/useElevator'
+import { useFloorSelection } from '../composables/useFloorSelection'
 import { useRelease } from '../composables/useRelease'
 import { useRun, type CommandInput } from '../composables/useRun'
+import { useSnapScroll } from '../composables/useSnapScroll'
 import { acIndex as indexAcceptance } from '../model/acceptance'
 import { runAlerts, type AlertAction } from '../model/alerts'
 import { deriveCurrentSprintId, orderedPhases, pendingApproval, sprintsOf, tallySprint, tasksOf } from '../model/derive'
@@ -42,6 +45,14 @@ const motion = ref(true)
 const headerError = ref<ApiError | null>(null)
 const announce = ref('')
 
+// 모션 감소 설정이면 엘리베이터 연출 없이 바로 전환한다
+const reducedMq = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null
+const prefersReduced = ref(reducedMq?.matches ?? false)
+const onReducedChange = (): void => {
+  prefersReduced.value = reducedMq?.matches ?? false
+}
+const effectiveMotion = computed(() => motion.value && !prefersReduced.value)
+
 const currentSprintId = computed(() => (snapshot.value ? deriveCurrentSprintId(snapshot.value) : null))
 const sceneTasks = computed(() => (snapshot.value && view.sprintId ? snapshot.value.tasks.filter((t) => t.sprint_id === view.sprintId) : []))
 const alerts = computed(() => (snapshot.value ? runAlerts(snapshot.value) : []))
@@ -70,13 +81,12 @@ const sceneWaiting = computed(() => {
 })
 const specArtifactId = computed(() => [...(snapshot.value?.artifacts ?? [])].reverse().find((a) => a.kind === 'spec')?.id ?? null)
 
-// 최초 1회와 사용자가 아직 Sprint를 고르지 않았을 때만 현재 Sprint를 따라간다
-watch(currentSprintId, (id) => {
-  if (!view.sprintId) view.sprintId = id ?? snapshot.value?.sprints[0]?.id ?? null
+// 층(Sprint) 선택: 직접 고른 적이 없을 때만 현재 Sprint를 따라가고, 고른 뒤에는 알림만 띄운다
+const firstSprintId = computed(() => snapshot.value?.sprints[0]?.id ?? null)
+const selection = useFloorSelection({ currentId: currentSprintId, firstId: firstSprintId })
+watch(selection.selectedId, (id) => {
+  view.sprintId = id
 }, { immediate: true })
-watch(() => snapshot.value?.sprints.length, () => {
-  if (!view.sprintId) view.sprintId = currentSprintId.value ?? snapshot.value?.sprints[0]?.id ?? null
-})
 watch(() => snapshot.value?.state, (state, prev) => {
   if (state && prev && state !== prev) {
     announce.value = `실행 상태: ${RUN_STATE[state].text}`
@@ -90,11 +100,11 @@ watch(() => alerts.value.filter((a) => a.action && a.action.kind !== 'task').map
 })
 
 function selectSprint(id: string): void {
-  view.sprintId = id
+  selection.pick(id)
 }
 function selectTask(id: string): void {
   const task = snapshot.value?.tasks.find((t) => t.id === id)
-  if (task) view.sprintId = task.sprint_id
+  if (task && task.sprint_id !== view.sprintId) selection.pick(task.sprint_id)
   view.taskId = id
   view.artifactId = null
 }
@@ -122,12 +132,27 @@ function act(action: AlertAction): void {
   else dialog.value = action.kind
 }
 
-// ── 건물형 사무실(사용자 디자인 지시): 실행 = 건물, Sprint = 층. 위층일수록 나중 단계 ──
+// ── 건물형 사무실(사용자 디자인 지시: 컷 A) ──
+// 처음에는 현재 층 단면이 화면 전체를 채우고, 충분히 누적된 스크롤·드래그(저항)로 줄어들며 상세가 드러난다.
+/** 상세 상태의 스크롤 위치(화면 높이 비율). 축소 애니메이션의 길이이기도 하다 */
+const SHRINK_RATIO = 0.55
+const HERO_ALERT_LIMIT = 3
 const headerH = ref(64)
+const shrinkPx = ref(Math.max(1, Math.round(window.innerHeight * SHRINK_RATIO)))
 let headerObserver: ResizeObserver | null = null
 
-/** 결정·문제 배너: 동작이 있는 알림만 고정 순서로(나머지는 오른쪽 패널) */
-const actionAlerts = computed(() => alerts.value.filter((a) => a.action))
+const snap = useSnapScroll({ distance: () => shrinkPx.value, reducedMotion: () => prefersReduced.value })
+const progress = snap.progress
+
+function onResize(): void {
+  shrinkPx.value = Math.max(1, Math.round(window.innerHeight * SHRINK_RATIO))
+}
+function scrollToDetails(): void {
+  snap.commit('detail')
+}
+
+/** 전체 화면일 때 사무실 위에 띄울 결정·문제 알림(고정 순서, 나머지는 패널) */
+const heroAlerts = computed(() => alerts.value.filter((a) => a.action).slice(0, HERO_ALERT_LIMIT))
 
 interface Floor extends FloorEntry { tasks: Task[]; goal: string }
 const floors = computed<Floor[]>(() => {
@@ -148,11 +173,22 @@ const floors = computed<Floor[]>(() => {
     })
     .reverse()
 })
+const floorOrder = computed(() => floors.value.map((f) => f.id))
+const elevator = useElevator({ target: selection.selectedId, order: () => floorOrder.value, motion: () => effectiveMotion.value })
+/** 화면에 보이는 층: 엘리베이터 문이 열릴 때 바뀐다 */
+const shownFloor = computed(() => floors.value.find((f) => f.id === elevator.shownId.value) ?? floors.value.find((f) => f.id === selection.selectedId.value) ?? floors.value[0] ?? null)
+const inTransit = computed(() => elevator.phase.value === 'closing' || elevator.phase.value === 'moving')
 /** 결정 대기 실루엣은 현재 Sprint 층에만(없으면 고른 층) */
 const ghostFloorId = computed(() => currentSprintId.value ?? view.sprintId)
+const followNotice = computed(() => floors.value.find((f) => f.id === selection.notice.value) ?? null)
+function goToNotice(): void {
+  if (followNotice.value) selection.pick(followNotice.value.id)
+}
 
 onMounted(() => {
   void run.start()
+  window.addEventListener('resize', onResize)
+  reducedMq?.addEventListener?.('change', onReducedChange)
   const header = document.querySelector<HTMLElement>('.run-header')
   if (header && 'ResizeObserver' in window) {
     headerObserver = new ResizeObserver(() => {
@@ -163,12 +199,14 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   run.dispose()
+  window.removeEventListener('resize', onResize)
+  reducedMq?.removeEventListener?.('change', onReducedChange)
   headerObserver?.disconnect()
 })
 </script>
 
 <template>
-  <div class="workspace-root" :style="{ '--header-h': `${headerH}px` }">
+  <div class="workspace-root" :style="{ '--p': progress.toFixed(3), '--header-h': `${headerH}px`, '--shrink-px': `${shrinkPx}px` }">
     <RunHeader
       v-model:motion="motion"
       :kind="source.kind"
@@ -194,77 +232,55 @@ onBeforeUnmount(() => {
 
     <template v-else>
       <main id="workspace-main" class="office-page" tabindex="-1" aria-label="작업 공간">
-        <BuildingRail class="rail-cell" :floors="floors" :selected-id="view.sprintId" :current-id="currentSprintId" :motion="motion" @select="selectSprint" />
-
-        <div class="building-cell">
-          <ul v-if="actionAlerts.length" class="plain decision-banner" aria-label="결정·문제 알림">
-            <li v-for="a in actionAlerts" :key="a.key">
-              <button type="button" :class="['banner-item', `tone-${a.tone}`]" @click="a.action && act(a.action)">
-                <span class="banner-glyph" aria-hidden="true">{{ a.glyph }}</span>
-                <span class="banner-text">{{ a.text }}</span>
-                <span class="banner-go" aria-hidden="true">열기 →</span>
+        <section class="scene-cell" :class="{ 'in-transit': inTransit }" aria-label="현재 층 사무실">
+          <OfficeScene
+            v-if="shownFloor"
+            :key="shownFloor.id"
+            :tasks="shownFloor.tasks"
+            :selected-task-id="view.taskId"
+            :motion="effectiveMotion"
+            :subscribe="run.onLiveEvent"
+            :waiting="shownFloor.id === ghostFloorId ? sceneWaiting : null"
+            :doors-open="elevator.doorsOpen.value"
+            :floor-label="shownFloor.num"
+            @select="selectTask"
+          />
+          <BuildingRail
+            class="rail-overlay"
+            :floors="floors"
+            :selected-id="view.sprintId"
+            :current-id="currentSprintId"
+            :cab-id="elevator.cabId.value"
+            :display-id="elevator.displayId.value"
+            :direction="elevator.direction.value"
+            :ride-ms="elevator.rideMs.value"
+            @select="selectSprint"
+          />
+          <div v-if="shownFloor" class="floor-title" :class="{ gone: progress > 0.6 }" :aria-hidden="progress > 0.6">
+            <span class="title-line"><span class="floor-num">{{ shownFloor.num }}</span><span class="floor-name">{{ shownFloor.title }}</span><span v-if="shownFloor.id === currentSprintId" class="floor-now">현재 Sprint</span></span>
+            <span class="title-sub">{{ shownFloor.sub }}</span>
+            <span class="title-goal">{{ shownFloor.goal }}</span>
+          </div>
+          <ul class="plain scene-alerts" :class="{ gone: progress > 0.6 }" :aria-hidden="progress > 0.6" aria-label="결정·문제 알림">
+            <li v-if="followNotice" class="follow-chip">
+              <span class="chip-glyph" aria-hidden="true">↕</span>
+              <span class="chip-text">현재 Sprint가 {{ followNotice.num }}로 바뀜 · {{ followNotice.title }}</span>
+              <button type="button" class="go" @click="goToNotice">이동</button>
+              <button type="button" class="close" aria-label="알림 닫기" @click="selection.dismiss()">✕</button>
+            </li>
+            <li v-for="a in heroAlerts" :key="a.key">
+              <button type="button" :class="['alert-chip', `tone-${a.tone}`]" @click="a.action && act(a.action)">
+                <span class="chip-glyph" aria-hidden="true">{{ a.glyph }}</span>
+                <span class="chip-text">{{ a.text }}</span>
+                <span class="chip-go" aria-hidden="true">열기 →</span>
               </button>
             </li>
+            <li v-if="alerts.length > heroAlerts.length" class="more-chip">외 {{ alerts.length - heroAlerts.length }}건 · 아래 패널</li>
           </ul>
-
-          <section
-            v-for="f in floors"
-            :id="`floor-${f.id}`"
-            :key="f.id"
-            class="floor"
-            :class="{ selected: f.id === view.sprintId, current: f.id === currentSprintId }"
-            :aria-label="`${f.num} ${f.title}`"
-          >
-            <button type="button" class="floor-head" :aria-pressed="f.id === view.sprintId" @click="selectSprint(f.id)">
-                <span class="floor-line"><span class="floor-num">{{ f.num }}</span><span class="floor-name">{{ f.title }}</span><span v-if="f.id === currentSprintId" class="floor-now">현재 Sprint</span></span>
-                <span class="floor-sub"><span :class="['dot', `tone-${f.tone}`]" aria-hidden="true" />{{ f.sub }}</span>
-                <span class="floor-goal">{{ f.goal }}</span>
-              </button>
-            <div class="floor-box">
-              <OfficeScene
-                :tasks="f.tasks"
-                :selected-task-id="view.taskId"
-                :motion="motion"
-                :subscribe="run.onLiveEvent"
-                :waiting="f.id === ghostFloorId ? sceneWaiting : null"
-                :doors-open="f.id === view.sprintId"
-                :floor-label="f.num"
-                @select="selectTask"
-              />
-
-              <p v-if="!f.tasks.length" class="floor-empty">아직 이 층에 배정된 작업이 없습니다</p>
-            </div>
-          </section>
-
-          <section class="below-cell" aria-label="상세 작업 정보">
-            <SprintBoard
-              :snapshot="snapshot"
-              :sprint-id="view.sprintId"
-              :current-sprint-id="currentSprintId"
-              :ac-index="acIndex"
-              :ac-notice="acNotice"
-              :is-replay="run.isReplay.value"
-              @sprint="selectSprint"
-              @artifact="selectArtifact"
-            />
-            <SceneRoster :tasks="sceneTasks" :selected-task-id="view.taskId" @select="selectTask" />
-            <div class="below-split">
-              <WorkTree
-                :snapshot="snapshot"
-                :sprint-id="view.sprintId"
-                :task-id="view.taskId"
-                :artifact-id="view.artifactId"
-                :current-sprint-id="currentSprintId"
-                @sprint="selectSprint"
-                @task="selectTask"
-                @artifact="selectArtifact"
-              />
-              <EventLog :events="run.events.value" :tasks="snapshot.tasks" @task="selectTask" />
-            </div>
-            <ReleasePanel :view="release.view.value" :error="release.error.value" :kind="source.kind" />
-            <RecordingExport :source="source" :run-id="snapshot.run_id" />
-          </section>
-        </div>
+          <button type="button" class="scroll-cue" :tabindex="progress > 0.5 ? -1 : 0" @click="scrollToDetails">
+            상세 작업 정보 <span aria-hidden="true">↓</span>
+          </button>
+        </section>
 
         <aside class="side-cell" aria-label="결정·근거 패널">
           <AlertStrip :alerts="alerts" :notices="notices" @act="act" />
@@ -288,6 +304,35 @@ onBeforeUnmount(() => {
             @artifact="selectArtifact"
           />
         </aside>
+
+        <section class="below-cell" aria-label="상세 작업 정보">
+          <SprintBoard
+            :snapshot="snapshot"
+            :sprint-id="view.sprintId"
+            :current-sprint-id="currentSprintId"
+            :ac-index="acIndex"
+            :ac-notice="acNotice"
+            :is-replay="run.isReplay.value"
+            @sprint="selectSprint"
+            @artifact="selectArtifact"
+          />
+          <SceneRoster :tasks="sceneTasks" :selected-task-id="view.taskId" @select="selectTask" />
+          <div class="below-split">
+            <WorkTree
+              :snapshot="snapshot"
+              :sprint-id="view.sprintId"
+              :task-id="view.taskId"
+              :artifact-id="view.artifactId"
+              :current-sprint-id="currentSprintId"
+              @sprint="selectSprint"
+              @task="selectTask"
+              @artifact="selectArtifact"
+            />
+            <EventLog :events="run.events.value" :tasks="snapshot.tasks" @task="selectTask" />
+          </div>
+          <ReleasePanel :view="release.view.value" :error="release.error.value" :kind="source.kind" />
+          <RecordingExport :source="source" :run-id="snapshot.run_id" />
+        </section>
       </main>
 
       <PlanApprovalDialog
@@ -330,23 +375,87 @@ onBeforeUnmount(() => {
 <style scoped>
 .loading { padding: calc(var(--header-h) + 32px) 16px 32px; }
 
-/* 건물형 사무실: 왼쪽 층 목록 · 가운데 층 단면(위층부터) · 오른쪽 결정·근거 */
+/*
+ * 처음에는 현재 층 단면이 화면 전체를 채운다(컷 A). 스크롤 진행도 --p(0→1)에 따라 줄어들며
+ * 오른쪽 결정·근거 패널과 아래 상세 정보가 드러난다. 엘리베이터는 장면 왼쪽에 항상 붙어 있다.
+ */
 .office-page {
-  --rail-w: 232px;
   --side-w: 380px;
+  --gap-p: calc(16px * var(--p));
   display: grid;
-  grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--side-w);
-  grid-template-areas: "rail building side";
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) var(--side-w);
+  grid-template-areas: "scene side" "below side";
+  column-gap: 16px;
+  row-gap: 16px;
   align-items: start;
-  padding: calc(var(--header-h) + 12px) 16px 32px;
+  /* 축소 구간에서는 스크롤만큼 위 여백을 늘려 사무실을 화면에 고정한다(축소가 끝나면 함께 스크롤) */
+  padding: calc((var(--shrink-px) + var(--header-h) + 12px) * var(--p)) var(--gap-p) 32px;
+  overflow-anchor: none;
   background: var(--iso-bg);
-  min-height: 100dvh;
-  box-sizing: border-box;
 }
 .office-page:focus { outline: none; }
-.rail-cell { grid-area: rail; position: sticky; top: calc(var(--header-h) + 12px); max-height: calc(100dvh - var(--header-h) - 24px); overflow: auto; }
-.building-cell { grid-area: building; display: grid; gap: 16px; min-width: 0; }
+
+.scene-cell {
+  grid-area: scene;
+  position: relative;
+  z-index: 2;
+  height: calc(100dvh - (100dvh - var(--scene-min, 60vh)) * var(--p));
+  /* p=0이면 오른쪽 패널 위까지 덮어 화면 전체를 채운다 */
+  margin-right: calc((var(--side-w) + 16px + var(--gap-p)) * (var(--p) - 1));
+  border-radius: calc(14px * var(--p));
+  overflow: hidden;
+  background: var(--iso-bg);
+}
+/* 전체 화면일 때 장면은 떠 있는 헤더 아래부터, 왼쪽 엘리베이터 오른쪽부터 그린다 */
+.scene-cell :deep(.stage) { top: calc(var(--header-h) * (1 - var(--p))); left: 128px; transition: opacity 260ms; }
+.scene-cell.in-transit :deep(.stage) { opacity: 0.55; }
+
+.rail-overlay { position: absolute; left: 16px; top: calc(var(--header-h) * (1 - var(--p)) + 16px); z-index: 3; max-height: calc(100% - var(--header-h) * (1 - var(--p)) - 32px); overflow: auto; }
+
+.floor-title {
+  position: absolute; left: 144px; top: calc(var(--header-h) * (1 - var(--p)) + 12px); z-index: 3; display: flex; flex-direction: column; gap: 2px; max-width: 34%;
+  pointer-events: none; opacity: clamp(0, calc(1 - var(--p) * 1.6), 1);
+}
+.floor-title.gone { visibility: hidden; }
+.title-line { display: flex; align-items: baseline; gap: 8px; }
+.floor-num { font-size: clamp(22px, 2.6vw, 32px); font-weight: 750; color: #4a5a8a; letter-spacing: -0.02em; }
+.floor-name { font-size: 14px; font-weight: 700; }
+.floor-now { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: #fff1dc; color: #7a4300; }
+.title-sub, .title-goal { font-size: 11px; color: var(--ink-3); }
+
+/* 우상단 알림(컷 B에서 가져옴): 현재 Sprint 변화와 결정·문제 */
+.scene-alerts {
+  position: absolute; right: 16px; top: calc(var(--header-h) * (1 - var(--p)) + 12px); z-index: 3; display: grid; gap: 8px; justify-items: end; max-width: min(380px, 44%);
+  opacity: clamp(0, calc(1 - var(--p) * 1.6), 1);
+}
+.scene-alerts.gone { visibility: hidden; }
+.scene-alerts > li { width: 100%; }
+.alert-chip, .follow-chip {
+  width: 100%; min-height: var(--tap); box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  border-radius: 14px; border: 1px solid #f4d7a8; background: #fff7ea; color: #3c2a10; font: inherit; font-size: 0.85rem; text-align: left;
+  box-shadow: 0 2px 10px var(--iso-shadow);
+}
+.alert-chip { cursor: pointer; }
+.alert-chip:hover { filter: brightness(0.98); }
+.alert-chip.tone-danger { border-color: #f1b8b0; background: #fff1ee; color: #5a1a12; }
+.follow-chip { border-color: #c9cdf0; background: #eef0fc; color: #252a5a; }
+.chip-glyph { flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: #ffe7c2; font-weight: 700; }
+.alert-chip.tone-danger .chip-glyph { background: #ffd9d3; }
+.follow-chip .chip-glyph { background: #dfe3fb; }
+.chip-text { flex: 1 1 auto; font-weight: 650; min-width: 0; }
+.chip-go, .follow-chip .go { flex: 0 0 auto; font-size: 0.78rem; font-weight: 700; padding: 6px 12px; border-radius: 10px; background: #2f3370; color: #fff; border: 0; font-family: inherit; cursor: pointer; }
+.follow-chip .close { flex: 0 0 auto; width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; }
+.follow-chip .close:hover { background: #dfe3fb; }
+.more-chip { font-size: 0.78rem; color: var(--ink-3); background: var(--surface); padding: 4px 12px; border-radius: 999px; width: auto !important; }
+
+.scroll-cue {
+  position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 3;
+  min-height: var(--tap); padding: 0 20px; border-radius: 999px; border: 0;
+  background: #2f3370; color: #fff; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px var(--iso-shadow);
+  opacity: calc(1 - var(--p) * 2);
+  pointer-events: auto;
+}
+
 .side-cell {
   grid-area: side;
   position: sticky;
@@ -356,56 +465,38 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 12px;
   align-content: start;
+  z-index: 1;
+  opacity: clamp(0, calc(var(--p) * 1.6 - 0.4), 1);
 }
 .side-cell :deep(.alerts) { padding: 0; }
 
-.decision-banner { display: grid; gap: 8px; }
-.banner-item {
-  width: 100%; min-height: var(--tap); display: flex; align-items: center; gap: 12px; padding: 10px 14px;
-  border-radius: 16px; border: 1px solid #f4d7a8; background: #fff7ea; color: #3c2a10; font: inherit; text-align: left; cursor: pointer;
+.below-cell {
+  grid-area: below;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  opacity: clamp(0, calc(var(--p) * 2 - 0.6), 1);
 }
-.banner-item:hover { filter: brightness(0.98); }
-.banner-item.tone-danger { border-color: #f1b8b0; background: #fff1ee; color: #5a1a12; }
-.banner-glyph { flex: 0 0 auto; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: #ffe7c2; font-weight: 700; }
-.banner-item.tone-danger .banner-glyph { background: #ffd9d3; }
-.banner-text { flex: 1 1 auto; font-weight: 650; font-size: 0.9rem; }
-.banner-go { flex: 0 0 auto; font-size: 0.8rem; font-weight: 700; padding: 6px 12px; border-radius: 10px; background: #2f3370; color: #fff; }
-
-.floor { scroll-margin-top: calc(var(--header-h) + 12px); }
-.floor-box { position: relative; aspect-ratio: 960 / 580; border-radius: 18px; overflow: hidden; background: var(--iso-bg); }
-.floor.selected .floor-box { box-shadow: 0 0 0 2px #f2a33a inset; }
-.floor-head {
-  display: flex; flex-direction: column; gap: 2px; max-width: 100%; margin: 0 0 4px 6px;
-  padding: 4px 8px; border: 0; border-radius: 10px; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer;
-}
-.floor-head:hover { background: color-mix(in srgb, var(--surface) 70%, transparent); }
-.floor-line { display: flex; align-items: baseline; gap: 8px; }
-.floor-num { font-size: clamp(20px, 2.4vw, 30px); font-weight: 750; color: #4a5a8a; letter-spacing: -0.02em; }
-.floor-name { font-size: 14px; font-weight: 700; }
-.floor-now { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: #fff1dc; color: #7a4300; }
-.floor-sub { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ink-3); }
-.floor-goal { font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; background: var(--tone-neutral); }
-.dot.tone-ok { background: var(--tone-ok); }
-.dot.tone-active { background: var(--tone-active); }
-.dot.tone-danger { background: var(--tone-danger); }
-.floor-empty { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); margin: 0; font-size: 12px; color: var(--ink-3); background: var(--surface); padding: 4px 12px; border-radius: 999px; }
-
-.below-cell { display: grid; gap: 16px; min-width: 0; }
 .below-split { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: 16px; align-items: start; }
 
 .decisions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border-left: 4px solid var(--tone-warn); }
 .decisions h2 { margin-right: 8px; }
 
-@media (max-width: 1180px) {
-  .office-page { grid-template-columns: minmax(0, 1fr) 340px; grid-template-areas: "rail rail" "building side"; }
-  .rail-cell { position: static; max-height: none; }
+@media (max-width: 1100px) {
+  .office-page { --side-w: 320px; }
   .below-split { grid-template-columns: minmax(0, 1fr); }
 }
-/* 작은 화면: 층 목록 → 층 단면 → 결정·근거 */
+/* 작은 화면: 장면 → 결정·근거 → 상세. 엘리베이터는 장면 아래 가로 줄 */
 @media (max-width: 860px) {
-  .office-page { grid-template-columns: minmax(0, 1fr); grid-template-areas: "rail" "building" "side"; padding-inline: 10px; }
+  .office-page { grid-template-columns: minmax(0, 1fr); grid-template-areas: "scene" "side" "below"; }
+  .scene-cell { margin-right: 0; --scene-min: 56vh; }
+  .scene-cell :deep(.stage) { left: 0; bottom: calc(88px + 64px * (1 - var(--p))); }
+  .rail-overlay { left: 10px; right: 10px; top: auto; bottom: 72px; max-height: none; }
+  .rail-overlay :deep(.elevator-display) { flex: 0 0 auto; }
+  .floor-title { left: 12px; max-width: 60%; }
+  .title-goal { display: none; }
+  .scene-alerts { max-width: 60%; }
+  .scene-alerts > li:nth-child(n + 2):not(.follow-chip) { display: none; }
   .side-cell { position: static; max-height: none; overflow: visible; }
-  .floor-goal { display: none; }
 }
 </style>
