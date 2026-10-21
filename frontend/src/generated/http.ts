@@ -1,4 +1,4 @@
-/* 자동 생성 파일 — 수정 금지. 원본: docs/planning/http.v1.schema.json sha256:f35c48532161dbc2adb6ff3c4538c8563541e8c9d05687a351ed2b96dda61c81. 재생성: npm run gen:types */
+/* 자동 생성 파일 — 수정 금지. 원본: docs/planning/http.v1.schema.json sha256:6b48afe375253346fe7defb686b599e2ecaf3dc3c23b32039f19208c2ae6b9ba. 재생성: npm run gen:types */
 
 /**
  * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
@@ -419,7 +419,9 @@ export interface PlanView {
     branch: string
   }
   deployment: null | Environment
-  free_policy: 'Local Ollama Qwen/DeepSeek only; no paid fallback or external API.'
+  free_policy:
+    | 'Local Ollama Qwen/DeepSeek only; no paid fallback or external API.'
+    | 'Inference: local Ollama Qwen/DeepSeek only; no paid fallback or external model API. External data: verified free terms, explicit consent, fixed isolated access, no paid overage.'
   /**
    * @maxItems 50
    */
