@@ -1,4 +1,4 @@
-// DEV-S08 사용자 디자인 지시 구현: 빈 화면 입력 → 전환 → 전체 화면 사무실 → 스크롤 축소
+// DEV-S08 사용자 디자인 지시 구현: 빈 화면 입력 → 전환 → 건물형 사무실(층 = Sprint)
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import App from '../src/App.vue'
@@ -92,44 +92,74 @@ describe('팟 전환(빛 고리 어둠)', () => {
   })
 })
 
-describe('전체 화면 사무실 → 스크롤 축소', () => {
-  test('스크롤 진행도에 따라 --p가 0→1로 바뀌고, 축소되면 사무실 위 칩을 숨긴다', async () => {
-    const w = mount(RunWorkspace, { attachTo: document.body, props: { source: exampleSource(findScenario('review-split')!) } })
+describe('건물형 사무실: 실행 = 건물, Sprint = 층', () => {
+  async function open(id: string) {
+    const w = mount(RunWorkspace, { attachTo: document.body, props: { source: exampleSource(findScenario(id)!) } })
     await flush()
-    const root = () => (w.element as HTMLElement).style
-    expect(root().getPropertyValue('--p')).toBe('0.000')
-    expect(w.find('.scene-hud').text()).toContain('보안 점검 실패')
-    Object.defineProperty(window, 'scrollY', { value: window.innerHeight, configurable: true })
-    window.dispatchEvent(new Event('scroll'))
-    await new Promise((r) => setTimeout(r, 50))
-    await flushPromises()
-    expect(root().getPropertyValue('--p')).toBe('1.000')
-    expect(w.find('.scene-hud').classes()).toContain('gone')
-    expect(w.find('.scene-hud').attributes('aria-hidden')).toBe('true')
-    Object.defineProperty(window, 'scrollY', { value: 0, configurable: true })
+    return w
+  }
+
+  test('Sprint마다 층 하나를 위층부터 쌓고, 왼쪽 층 목록도 같은 순서다', async () => {
+    const w = await open('building')
+    const sprints = findScenario('building')!.snapshot.sprints
+    const floors = w.findAll('section.floor')
+    expect(floors).toHaveLength(sprints.length)
+    expect(floors[0].find('.floor-num').text()).toBe(`${sprints.length}F`)
+    expect(floors[0].text()).toContain(sprints[sprints.length - 1].title)
+    expect(floors.at(-1)!.find('.floor-num').text()).toBe('1F')
+    const links = w.findAll('nav.building-rail a.rail-floor')
+    expect(links.map((a) => a.find('.floor-num').text())).toEqual(floors.map((f) => f.find('.floor-num').text()))
+    // 현재 Sprint 층이 선택돼 있다
+    expect(w.find('section.floor.selected').text()).toContain('Sprint 2')
+    expect(w.find('nav.building-rail a[aria-current="true"]').text()).toContain('Sprint 2')
     w.unmount()
   })
 
-  test('사무실 위 알림 칩은 결정·문제만, 최대 3개를 고정 순서로 보이고 누르면 해당 동작을 연다', async () => {
-    const w = mount(RunWorkspace, { attachTo: document.body, props: { source: exampleSource(findScenario('plan-approval')!) } })
+  test('층 목록을 누르면 그 Sprint 층을 고르고, 층의 사람을 누르면 근거 패널이 그 작업을 연다', async () => {
+    const w = await open('building')
+    await w.findAll('nav.building-rail a.rail-floor').find((a) => a.text().includes('Sprint 1'))!.trigger('click')
     await flush()
-    const chip = w.findAll('.hud-chip.alert')
-    expect(chip).toHaveLength(1)
-    await chip[0].trigger('click')
+    expect(w.find('section.floor.selected').text()).toContain('Sprint 1')
+    const person = w.findAll('button.person').find((b) => b.attributes('aria-label')!.includes('문의 조회·상태 변경 API'))!
+    await person.trigger('click')
+    await flush()
+    expect(w.find('aside.evidence').text()).toContain('문의 조회·상태 변경 API')
+    expect(w.find('section.floor.selected').text()).toContain('Sprint 2')
+    w.unmount()
+  })
+
+  test('층 이동은 엘리베이터: 표시창이 고른 층과 방향을 보이고, 칸이 그 층 자리로 가며 그 층 문만 열린다', async () => {
+    const w = await open('building')
+    const floors = w.findAll('section.floor')
+    const indexOf = (label: string) => floors.findIndex((f) => f.text().includes(label))
+    expect(w.find('.elevator-display').text()).toContain('2F')
+    expect(w.find('.cab').attributes('style')).toContain(`--stop: ${indexOf('Sprint 2')}`)
+    expect(w.findAll('.elevator.open')).toHaveLength(1)
+    expect(w.find('section.floor.selected .elevator.open').exists()).toBe(true)
+    await w.findAll('nav.building-rail a.rail-floor').find((a) => a.text().includes('Sprint 4'))!.trigger('click')
+    await flushPromises()
+    expect(w.find('.elevator-display').text()).toContain('4F')
+    expect(w.find('.elevator-display').text()).toContain('▲')
+    expect(w.find('.cab').attributes('style')).toContain(`--stop: ${indexOf('Sprint 4')}`)
+    expect(w.find('section.floor.selected .elevator.open').exists()).toBe(true)
+    expect(w.findAll('.elevator.open')).toHaveLength(1)
+    w.unmount()
+  })
+
+  test('결정·문제 배너는 고정 순서로 보이고, 누르면 해당 동작을 연다', async () => {
+    const w = await open('plan-approval')
+    const items = w.findAll('.decision-banner button')
+    expect(items).toHaveLength(1)
+    await items[0].trigger('click')
     await flush()
     expect(document.querySelector('dialog[open]')?.textContent).toContain('기획 승인')
     w.unmount()
   })
 
-  test('상세 작업 정보 버튼은 저항 없이 바로 상세로 전환한다', async () => {
-    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
-    const w = mount(RunWorkspace, { attachTo: document.body, props: { source: exampleSource(findScenario('building')!) } })
-    await flush()
-    await w.find('.scroll-cue').trigger('click')
-    await new Promise((r) => setTimeout(r, 600))
-    const last = scrollTo.mock.calls.at(-1) as unknown as [number, number]
-    expect(last[1]).toBe(Math.round(window.innerHeight * 0.55))
-    scrollTo.mockRestore()
+  test('사람의 결정 대기는 현재 Sprint 층에만 점선 실루엣으로 보인다', async () => {
+    const w = await open('plan-approval')
+    expect(w.findAll('.ghost')).toHaveLength(1)
+    expect(w.find('section.floor.current .ghost').text()).toContain('답 기다림 · 기획 승인')
     w.unmount()
   })
 })

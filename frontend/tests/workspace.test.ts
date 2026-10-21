@@ -7,8 +7,6 @@ import RunWorkspace from '../src/components/RunWorkspace.vue'
 import StartScreen from '../src/components/StartScreen.vue'
 import { exampleSource } from '../src/examples/exampleSource'
 import { findScenario } from '../src/examples/scenarios'
-import { drawScene, readPalette } from '../src/office/draw'
-import { computeLayout } from '../src/office/layout'
 
 beforeAll(() => {
   const proto = HTMLDialogElement.prototype as HTMLDialogElement & { showModal(): void }
@@ -256,55 +254,5 @@ describe('App 라우팅', () => {
     window.dispatchEvent(new PopStateEvent('popstate'))
     w.unmount()
     vi.unstubAllGlobals()
-  })
-})
-
-describe('장면 그리기', () => {
-  test('구역·좌석·패킷을 그리고 선택 좌석을 강조한다', () => {
-    const calls: string[] = []
-    const PROPS = ['fillStyle', 'strokeStyle', 'font', 'lineWidth', 'textAlign', 'textBaseline', 'globalAlpha', 'globalCompositeOperation', 'imageSmoothingEnabled']
-    const ctx = new Proxy({} as CanvasRenderingContext2D, {
-      get: (_t, key) => {
-        if (typeof key !== 'string' || PROPS.includes(key)) return undefined
-        if (key === 'createRadialGradient') return () => ({ addColorStop: () => {} })
-        if (key === 'measureText') return (text: string) => ({ width: text.length * 7 })
-        return (...args: unknown[]) => calls.push(`${key}:${String(args[0] ?? '')}`)
-      },
-      set: () => true,
-    })
-    const tasks = findScenario('building')!.snapshot.tasks.filter((t) => t.sprint_id === 'sp-2')
-    const layout = computeLayout(1600, 900, tasks)
-    const palette = readPalette(document.body)
-    drawScene(ctx, {
-      layout,
-      tasks: new Map(tasks.map((t) => [t.id, t])),
-      selectedTaskId: 't-api',
-      packets: [{ from: { x: 0, y: 0 }, to: { x: 10, y: 10 }, startedAt: 0, kind: 'alert' }],
-      frame: 1,
-      now: 450,
-    }, palette)
-    expect(calls).toContain('fillText:명세 회의실')
-    expect(calls).toContain('fillText:구현 구역  4')
-    expect(calls).toContain('fillText:● 진행 중')
-    expect(calls).toContain('fillText:⊘ 차단')
-    expect(calls).toContain('fillText:!') // 차단 말풍선
-    expect(calls).toContain('fillText:✓') // 완료 말풍선
-    expect(calls.filter((c) => c.startsWith('stroke')).length).toBeGreaterThan(0) // 선택 테두리
-    expect(calls.some((c) => c.startsWith('fillRect'))).toBe(true)
-  })
-
-  test('첫 진입 인트로 초반에는 글자층을 그리지 않는다(불이 켜진 뒤 명판·이름표)', () => {
-    const calls: string[] = []
-    const ctx = new Proxy({} as CanvasRenderingContext2D, {
-      get: (_t, key) => {
-        if (key === 'createRadialGradient') return () => ({ addColorStop: () => {} })
-        if (key === 'measureText') return () => ({ width: 10 })
-        return typeof key === 'string' ? (...args: unknown[]) => calls.push(`${key}:${String(args[0] ?? '')}`) : undefined
-      },
-      set: () => true,
-    })
-    const tasks = findScenario('building')!.snapshot.tasks.filter((t) => t.sprint_id === 'sp-2')
-    drawScene(ctx, { layout: computeLayout(1600, 900, tasks), tasks: new Map(tasks.map((t) => [t.id, t])), selectedTaskId: null, packets: [], frame: 0, now: 0, intro: 0.2 }, readPalette(document.body))
-    expect(calls.some((c) => c.startsWith('fillText'))).toBe(false)
   })
 })
