@@ -51,9 +51,162 @@
         "model_status": {"enum": ["not_configured", "unavailable", "ready"]},
         "runner_status": {"enum": ["unavailable", "ready"]},
         "inference_slots": {"const": 1},
+        "template_id": {"enum": ["requests-v1", "cafemap-v1"]},
+        "data_source_status": {"enum": ["not_required", "unconfigured"]},
         "external_api_enabled": {"const": false},
         "deployment_enabled": {"const": false},
         "reasons": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "ReleaseView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "enabled",
+        "state",
+        "target",
+        "details",
+        "operations",
+        "reason"
+      ],
+      "properties": {
+        "run_id": {
+          "$ref": "protocol.v1.schema.json#/$defs/Id"
+        },
+        "enabled": {
+          "const": false
+        },
+        "state": {
+          "enum": [
+            "unconfigured",
+            "prepared",
+            "pending",
+            "applied",
+            "uncertain",
+            "not_applied",
+            "superseded",
+            "rolled_back",
+            "failed"
+          ]
+        },
+        "target": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "protocol.v1.schema.json#/$defs/ReleaseTarget"
+            }
+          ]
+        },
+        "details": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "repository",
+                "environment",
+                "image_reference",
+                "free_policy",
+                "rollback"
+              ],
+              "properties": {
+                "repository": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "url",
+                    "branch",
+                    "auto_deploy"
+                  ],
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "format": "uri",
+                      "pattern": "^https://"
+                    },
+                    "branch": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "auto_deploy": {
+                      "type": "boolean"
+                    }
+                  }
+                },
+                "environment": {
+                  "$ref": "#/$defs/Environment"
+                },
+                "image_reference": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "free_policy": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "rollback": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "action",
+                    "data_policy"
+                  ],
+                  "properties": {
+                    "action": {
+                      "const": "unpublish_first_release"
+                    },
+                    "data_policy": {
+                      "const": "preserve_volume_no_schema_migration"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "operation_id",
+              "action",
+              "state"
+            ],
+            "properties": {
+              "operation_id": {
+                "$ref": "protocol.v1.schema.json#/$defs/Digest"
+              },
+              "action": {
+                "enum": [
+                  "push",
+                  "deploy",
+                  "rollback"
+                ]
+              },
+              "state": {
+                "enum": [
+                  "pending",
+                  "applied",
+                  "uncertain",
+                  "not_applied",
+                  "superseded"
+                ]
+              }
+            }
+          }
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "Error": {
