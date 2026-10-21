@@ -52,6 +52,8 @@ export function errorHint(error: ApiError): string {
       return '대상이 바뀌었습니다. 최신 상태를 다시 불러왔으니 내용을 확인한 뒤 다시 결정하세요. 입력한 의견은 보존됩니다.'
     case 'COMMAND_CONFLICT':
       return '같은 명령 ID로 다른 내용이 접수돼 있습니다. 새 명령으로 다시 보내세요.'
+    case 'INVALID_COMMAND':
+      return '요청 내용이 계약 검사를 통과하지 못했습니다. 같은 내용으로 다시 보내도 결과는 같습니다.'
     case 'REPLAY_READ_ONLY':
       return '실제 기록 재생은 읽기 전용입니다. 새 LIVE 실행을 만들어야 명령을 보낼 수 있습니다.'
     case 'RUNTIME_UNAVAILABLE':
