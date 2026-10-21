@@ -1,103 +1,119 @@
-import { describe, expect, test } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeAll, describe, expect, test } from 'vitest'
+import type { RunEvent } from '../src/api/types'
+import OfficeScene from '../src/components/OfficeScene.vue'
 import { buildEvents } from '../src/examples/base'
 import { findScenario } from '../src/examples/scenarios'
 import { runAlerts } from '../src/model/alerts'
-import { packetFor } from '../src/office/draw'
-import { chooseMap, computeLayout, fitMap, hitSeat, seatSlots, TILE, zoneCenter } from '../src/office/layout'
+import { bubbleFor, flashFor, ISO_ZONES, placeSeats, project } from '../src/office/iso'
 import { resolveTheme } from '../src/composables/theme'
 
 const snap = (id: string) => findScenario(id)!.snapshot
-const inside = (s: { x: number; y: number; w: number; h: number }, z: { x: number; y: number; w: number; h: number }) =>
-  s.x >= z.x - 0.01 && s.y >= z.y - 0.01 && s.x + s.w <= z.x + z.w + 0.01 && s.y + s.h <= z.y + z.h + 0.01
 
-describe('사무실 배치(타일 지도)', () => {
-  test('가로 화면은 회의실→구현→검증·보안→출시 한 줄, 세로·좁은 화면은 두 줄 지도', () => {
-    const wide = chooseMap(1400, 800)
-    expect(wide.compact).toBe(false)
-    expect(wide.map.rooms.map((r) => r.id)).toEqual(['meeting', 'build', 'validate', 'security', 'release'])
-    const v = wide.map.rooms.find((r) => r.id === 'validate')!
-    const sec = wide.map.rooms.find((r) => r.id === 'security')!
-    expect(v.y + v.h).toBeLessThan(sec.y) // 검증실과 보안실 사이에 벽
-    expect(chooseMap(390, 760).compact).toBe(true)
+beforeAll(() => {
+  if (!('ResizeObserver' in globalThis)) {
+    ;(globalThis as Record<string, unknown>).ResizeObserver = class { observe() {} disconnect() {} }
+  }
+})
+afterEach(() => {
+  document.body.innerHTML = ''
+})
+
+describe('등각 사무실 배치', () => {
+  test('평면 좌표를 등각 투영한다(평면 중심 → 층 상자 중심, 길이 축은 오른쪽 아래로)', () => {
+    expect(project(200, 450)).toEqual({ x: 480, y: 310 })
+    const near = project(200, 100)
+    const far = project(200, 800)
+    expect(far.x).toBeGreaterThan(near.x)
+    expect(far.y).toBeGreaterThan(near.y)
   })
 
-  test('지도를 화면에 맞추고 1배 이상은 0.25 단위로 내린다', () => {
-    const { map } = chooseMap(1400, 800)
-    const fit = fitMap(map, 1400, 800)
-    expect(fit.scale % 0.25).toBe(0)
-    expect(map.w * TILE * fit.scale).toBeLessThanOrEqual(1400)
-    expect(map.h * TILE * fit.scale).toBeLessThanOrEqual(800)
-    expect(fitMap(map, 300, 200).scale).toBeLessThan(1)
+  test('구역은 업무 흐름 순서이고 검증실과 보안실은 나뉘어 있다', () => {
+    expect(ISO_ZONES.map((z) => z.id)).toEqual(['meeting', 'build', 'validate', 'security', 'release'])
+    const v = ISO_ZONES.find((z) => z.id === 'validate')!
+    const s = ISO_ZONES.find((z) => z.id === 'security')!
+    expect(v.x >= s.x + s.w || s.x >= v.x + v.w).toBe(true)
   })
 
-  test('좌석은 표지판 아래, 큰 방의 가구 자리 위에 놓인다', () => {
-    const { map } = chooseMap(1400, 800)
-    for (const room of map.rooms) {
-      for (const slot of seatSlots(room)) {
-        expect(slot.ty).toBeGreaterThan(room.y + 1)
-        expect(slot.ty + 3).toBeLessThanOrEqual(room.y + room.h)
-        expect(slot.tx + 3).toBeLessThanOrEqual(room.x + room.w)
-      }
+  test('작업은 역할 구역의 자리에 겹치지 않게 앉고, 대체된 작업은 놓지 않으며 넘친 수를 남긴다', () => {
+    const tasks = [...snap('building').tasks.filter((t) => t.sprint_id === 'sp-2'), ...snap('review-split').tasks.filter((t) => t.sprint_id === 'sp-4')]
+    const { seats } = placeSeats(tasks)
+    expect(seats.length).toBe(6)
+    for (const seat of seats) {
+      const z = ISO_ZONES.find((zone) => zone.id === seat.zone)!
+      expect(seat.px).toBeGreaterThanOrEqual(z.x)
+      expect(seat.px).toBeLessThanOrEqual(z.x + z.w)
+      expect(seat.py).toBeGreaterThanOrEqual(z.y)
+      expect(seat.py).toBeLessThanOrEqual(z.y + z.h)
     }
+    expect(new Set(seats.map((s) => `${s.px},${s.py}`)).size).toBe(seats.length)
+    const one = snap('building').tasks.find((t) => t.role === 'security') ?? { ...tasks[0], role: 'security' as const }
+    const crowd = Array.from({ length: 6 }, (_, i) => ({ ...one, id: `sec-${i}`, role: 'security' as const, state: 'pending' as const }))
+    const placed = placeSeats([...crowd, { ...crowd[0], id: 'gone', state: 'superseded' as const }])
+    expect(placed.seats.every((s) => s.taskId !== 'gone')).toBe(true)
+    expect(placed.overflow.security).toBe(6 - placed.seats.length)
   })
 
-  test.each([[1400, 800], [1000, 600], [390, 760]])('%ix%i: 좌석이 역할 구역 안에 겹치지 않게 놓인다', (w, h) => {
-    const tasks = snap('building').tasks.filter((t) => t.sprint_id === 'sp-2')
-    const layout = computeLayout(w, h, [...tasks, ...snap('review-split').tasks.filter((t) => t.sprint_id === 'sp-4')])
-    expect(layout.seats.length).toBe(6)
-    for (const seat of layout.seats) {
-      expect(inside(seat, layout.zones.find((z) => z.id === seat.zone)!)).toBe(true)
-    }
-    for (let i = 0; i < layout.seats.length; i++) {
-      for (let j = i + 1; j < layout.seats.length; j++) {
-        const a = layout.seats[i]
-        const b = layout.seats[j]
-        const overlap = a.x < b.x + b.w - 0.01 && b.x < a.x + a.w - 0.01 && a.y < b.y + b.h - 0.01 && b.y < a.y + a.h - 0.01
-        expect(overlap).toBe(false)
-      }
-    }
+  test('말풍선은 스냅샷 상태에서만 정하고, 대기 작업에는 띄우지 않는다', () => {
+    const t = snap('building').tasks[0]
+    expect(bubbleFor({ ...t, state: 'running' })?.text).toBe('작업 중')
+    expect(bubbleFor({ ...t, state: 'failed' })?.tone).toBe('danger')
+    expect(bubbleFor({ ...t, state: 'blocked' })?.text).toBe('막힘')
+    expect(bubbleFor({ ...t, state: 'succeeded' })?.text).toBe('완료')
+    expect(bubbleFor({ ...t, state: 'pending' })).toBeNull()
+    expect(bubbleFor({ ...t, state: 'ready' })).toBeNull()
   })
 
-  test('방에 다 못 놓은 작업 수를 남기고, 대체된 작업은 놓지 않는다', () => {
-    const [t] = snap('building').tasks
-    const many = Array.from({ length: 30 }, (_, i) => ({ ...t, id: `t${i}`, role: 'validator' as const }))
-    const layout = computeLayout(1400, 800, many)
-    expect(layout.overflow.validate).toBeGreaterThan(0)
-    expect(layout.seats.length + (layout.overflow.validate ?? 0)).toBe(30)
-    expect(computeLayout(800, 300, [{ ...t, state: 'superseded' }]).seats).toHaveLength(0)
-  })
-
-  test('클릭 좌표로 좌석을 찾고, 표지판 위치는 지도 좌표다', () => {
-    const tasks = snap('building').tasks.filter((t) => t.sprint_id === 'sp-2')
-    const layout = computeLayout(1400, 800, tasks)
-    const seat = layout.seats[0]
-    expect(hitSeat(layout, seat.x + 2, seat.y + 2)).toBe(seat.taskId)
-    expect(hitSeat(layout, 1, 1)).toBeNull()
-    expect(zoneCenter(layout, 'release').x).toBeGreaterThan(zoneCenter(layout, 'meeting').x)
+  test('최근 공개 사건은 잠깐 보이는 말풍선이 되고, 상태 사건·작업 없는 사건은 무시한다', () => {
+    const ev = (type: RunEvent['event_type'], taskId?: string) => ({ ...buildEvents([[type, 's', taskId ? { task_id: taskId } : {}]])[0] })
+    expect(flashFor(ev('task_finished', 't-api'))).toBe('방금 끝남')
+    expect(flashFor(ev('review_submitted', 't-api'))).toBe('보고서 제출')
+    expect(flashFor(ev('tool_finished', 't-api'))).toBe('근거 저장')
+    expect(flashFor(ev('warning', 't-api'))).toBe('확인 필요')
+    expect(flashFor(ev('task_started', 't-api'))).toBeNull()
+    expect(flashFor(ev('task_finished'))).toBeNull()
   })
 })
 
-describe('사건 연출', () => {
+describe('등각 사무실 장면', () => {
   const tasks = snap('building').tasks.filter((t) => t.sprint_id === 'sp-2')
-  const layout = computeLayout(1400, 800, tasks)
-  const byId = new Map(tasks.map((t) => [t.id, t]))
-  const ev = (type: Parameters<typeof buildEvents>[0][0][0], taskId?: string) =>
-    buildEvents([[type, 's', taskId ? { task_id: taskId } : {}]])[0]
+  function scene(extra: Record<string, unknown> = {}) {
+    let push: ((e: RunEvent) => void) | null = null
+    const w = mount(OfficeScene, {
+      attachTo: document.body,
+      props: { tasks, selectedTaskId: 't-api', motion: false, subscribe: (fn: (e: RunEvent) => void) => { push = fn; return () => {} }, ...extra },
+    })
+    return { w, push: (e: RunEvent) => push!(e) }
+  }
 
-  test('근거 사건은 근거 패킷, 장면에 없는 작업·상태 사건은 연출하지 않는다', () => {
-    expect(packetFor(ev('tool_finished', 't-api'), layout, byId, 0)?.kind).toBe('evidence')
-    expect(packetFor(ev('review_submitted', 't-api'), layout, byId, 0)?.kind).toBe('report')
-    expect(packetFor(ev('warning', 't-api'), layout, byId, 0)?.kind).toBe('alert')
-    expect(packetFor(ev('tool_finished', 't-ui'), layout, byId, 0)).toBeNull()
-    expect(packetFor(ev('run_state_changed'), layout, byId, 0)).toBeNull()
-    expect(packetFor(ev('task_started', 't-api'), layout, byId, 0)).toBeNull()
+  test('앉은 작업마다 이름이 붙은 버튼이 있고, 누르면 선택한다', async () => {
+    const { w } = scene()
+    const people = w.findAll('button.person')
+    expect(people.length).toBe(tasks.length)
+    const api = people.find((b) => b.attributes('aria-label')!.includes('할 일 조회·상태 변경 API'))!
+    expect(api.attributes('aria-pressed')).toBe('true')
+    expect(api.attributes('aria-label')).toContain('구현')
+    await people.find((b) => b !== api)!.trigger('click')
+    expect(w.emitted('select')).toHaveLength(1)
+    w.unmount()
   })
 
-  test('작업 종료 색은 스냅샷 상태가 확인된 경우에만 성공/실패로 칠한다', () => {
-    expect(packetFor(ev('task_finished', 't-data'), layout, byId, 0)?.kind).toBe('done')
-    expect(packetFor(ev('task_finished', 't-api'), layout, byId, 0)?.kind).toBe('evidence')
-    const failed = new Map([...byId, ['t-api', { ...byId.get('t-api')!, state: 'failed' as const }]])
-    expect(packetFor(ev('task_finished', 't-api'), layout, failed, 0)?.kind).toBe('alert')
+  test('사람의 결정을 기다리면 점선 실루엣과 대기 말풍선을 보인다', () => {
+    const { w } = scene({ waiting: { text: '답 기다림 · 기획 승인', zone: 'meeting' } })
+    expect(w.find('.ghost').text()).toContain('답 기다림 · 기획 승인')
+    w.unmount()
+    const none = scene()
+    expect(none.w.find('.ghost').exists()).toBe(false)
+    none.w.unmount()
+  })
+
+  test('작업 종료 사건이 오면 그 자리에 "방금 끝남"이 잠깐 뜬다', async () => {
+    const { w, push } = scene()
+    push({ ...buildEvents([['task_finished', '끝', { task_id: 't-api' }]])[0] })
+    await flushPromises()
+    const api = w.findAll('button.person').find((b) => b.attributes('aria-label')!.includes('할 일 조회·상태 변경 API'))!
+    expect(api.text()).toContain('방금 끝남')
+    w.unmount()
   })
 })
 
@@ -122,20 +138,5 @@ describe('표시 테마', () => {
     expect(resolveTheme('system', true)).toBe('dark')
     expect(resolveTheme('system', false)).toBe('light')
     expect(resolveTheme('dark', false)).toBe('dark')
-  })
-})
-
-describe('방 이름표 자리', () => {
-  test('창은 벽면 왼쪽 이름표 자리를 피해 방 안에만 놓인다', async () => {
-    const { NAMEPLATE_TILES, windowSlots } = await import('../src/office/art')
-    for (const compact of [false, true]) {
-      const { map } = chooseMap(compact ? 390 : 1400, compact ? 760 : 800)
-      for (const room of map.rooms) {
-        for (const x of windowSlots(room)) {
-          expect(x).toBeGreaterThanOrEqual((room.x + NAMEPLATE_TILES) * TILE)
-          expect(x + 26).toBeLessThanOrEqual((room.x + room.w) * TILE)
-        }
-      }
-    }
   })
 })

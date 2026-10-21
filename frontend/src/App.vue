@@ -33,7 +33,7 @@ const WARP_OUT_MS = 520
 
 /**
  * 극적인 전환: 입력 위치에서 빛나는 고리를 두른 어둠이 화면을 삼키고(이전 화면은 뒤로 물러나며 흐려짐),
- * 그 아래에서 사무실이 열린 뒤 어둠이 걷히며 방마다 불이 켜진다(OfficeScene 인트로).
+ * 그 아래에서 사무실이 열린 뒤 어둠이 걷힌다.
  * 모션 감소이거나 Web Animations를 쓸 수 없으면 바로 바꾼다.
  */
 async function navigate(next: Record<string, string>, origin?: Origin): Promise<void> {

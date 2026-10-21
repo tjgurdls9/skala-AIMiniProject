@@ -1,5 +1,5 @@
 // 합성 예시 시나리오 — 화면 상태를 보여주기 위한 것이며 실제 실행·기록 재생이 아니다.
-import type { AcceptanceState, AcceptanceStatus, Environment, ReleaseTarget, ReleaseView, RunEvent, Snapshot } from '../api/types'
+import type { AcceptanceState, AcceptanceStatus, AcceptanceTarget, Approval, Environment, ReleaseTarget, ReleaseView, RunEvent, Snapshot } from '../api/types'
 import {
   CANDIDATE, CONTEXT_BODY, PLAN_APPROVAL_DONE, PLAN_APPROVAL_PENDING, PLAN_VIEW, RETRIEVAL_BODY, SPEC_V1,
   RUN_ID, buildEvents, buildSnapshot, buildTasks, fakeDigest, report, type SnapshotInput,
@@ -36,6 +36,9 @@ function acceptanceOf(states: AcMap, reportId?: string): AcceptanceStatus {
 
 // 검증 통과로 기능 AC는 충족. AC-5(검토·배포)는 배포 전이라 미충족 — 보안 결과와 별개로 표시한다
 const FUNCTIONAL_MET: AcMap = { 'AC-2': 'met', 'AC-3': 'met', 'AC-4': 'met' }
+// CR-C18: 계획이 사람 확인으로 정한 AC(AC-4 화면)는 자동 점검 대상이 아니라 미실행으로 남는다. 승인돼도 met가 되지 않는다
+const MANUAL_ACS = ['AC-4'] as const
+const WITH_MANUAL: AcMap = { ...FUNCTIONAL_MET, 'AC-4': 'not_run' }
 
 type Seeds = Parameters<typeof buildEvents>[0]
 
@@ -84,13 +87,26 @@ function scenario(
   const stateVersion = last?.state_version ?? 0
   const snapshot = buildSnapshot({ ...input, stateVersion, lastSeq: last?.seq ?? 0 })
   const tailEvents = buildEvents(tail, events.length + 1, stateVersion).map((e) => ({ ...e, state_version: stateVersion }))
-  return { ...meta, snapshot, events, tail: tailEvents, artifactBodies: { 'a-spec': PLAN_VIEW, 'a-preview': PREVIEW_BODY, 'a-context-plan': CONTEXT_BODY, 'a-retrieval-api': RETRIEVAL_BODY }, environments, acceptance }
+  return { ...meta, snapshot, events, tail: tailEvents, artifactBodies: { 'a-spec': PLAN_VIEW, 'a-preview': PREVIEW_BODY, 'a-context-plan': CONTEXT_BODY, 'a-retrieval-api': RETRIEVAL_BODY, 'a-validation': { manual_pending: [...MANUAL_ACS] } }, environments, acceptance }
 }
 
 /** 합성 프리뷰 본문(http.Preview). .invalid 도메인이라 실제로 열리지 않는다 */
 const PREVIEW_BODY = { url: 'http://preview.invalid/', origin: 'http://preview.invalid', commit_sha: CANDIDATE.commit }
 
 const STAGING: Environment = { id: 'env-staging', label: '스테이징 (합성)', exposure: 'private' }
+
+const ACCEPTANCE_TARGET: AcceptanceTarget = {
+  gate: 'acceptance',
+  spec_version_id: SPEC_V1,
+  plan_digest: fakeDigest('d0'),
+  commit_sha: CANDIDATE.commit,
+  image_digest: CANDIDATE.image,
+  ac_ids: [...MANUAL_ACS],
+  validator_report_id: 'rp-validator',
+  validator_report_digest: report('validator', 'pass').content_digest,
+}
+const ACCEPTANCE_PENDING: Approval = { id: 'ap-acceptance-1', state: 'pending', target_digest: fakeDigest('d4'), target: ACCEPTANCE_TARGET }
+const ACCEPTANCE_APPROVED: Approval = { ...ACCEPTANCE_PENDING, state: 'approved', decided_by: 'operator', decided_at: '2026-10-20T10:20:00+09:00' }
 
 const RELEASE_TARGET: ReleaseTarget = {
   gate: 'release',
@@ -102,6 +118,7 @@ const RELEASE_TARGET: ReleaseTarget = {
   environment_config_digest: fakeDigest('f1'),
   rollback_manifest_digest: fakeDigest('f2'),
   review_report_ids: ['rp-validator', 'rp-security'],
+  acceptance_approval_id: ACCEPTANCE_PENDING.id,
 }
 
 /** 합성 출시 근거. 저장소·이미지 주소는 .invalid라 실제로 존재하지 않는다 */
@@ -175,18 +192,19 @@ const BASE_SCENARIOS: ExampleScenario[] = [
       ['review_submitted', '검증 보고서 제출: 통과', { task_id: 't-validate', artifact_ids: ['a-validation'] }],
       ['review_submitted', '보안 보고서 제출: 통과', { task_id: 't-security', artifact_ids: ['a-security'] }],
       ['preview_ready', '격리 프리뷰 준비 (합성 예시에는 주소 없음)', { artifact_ids: ['a-preview'] }],
+      ['approval_requested', '사람 확인 승인 요청 · AC-4 (자동 점검 없는 화면 확인)', {}],
       ['run_state_changed', '프리뷰 확인 대기', {}],
     ],
     {
       state: 'preview_ready',
       tasks: buildTasks({ ...DONE_BUILD, 't-validate': 'succeeded', 't-security': 'succeeded' }),
-      approvals: [PLAN_APPROVAL_DONE],
+      approvals: [PLAN_APPROVAL_DONE, ACCEPTANCE_PENDING],
       reports: [report('validator', 'pass'), report('security', 'pass')],
       artifactIds: [...BUILD_ARTIFACTS, 'a-validation', 'a-security', 'a-preview'],
     },
     [],
     {},
-    acceptanceOf(FUNCTIONAL_MET, 'rp-validator'),
+    acceptanceOf(WITH_MANUAL, 'rp-validator'),
   ),
   scenario(
     { id: 'release-approval', label: '배포 승인 대기', description: '커밋·이미지·환경·두 보고서·복구 계획이 묶인 대상. 이전 대상은 무효화됨' },
@@ -203,6 +221,7 @@ const BASE_SCENARIOS: ExampleScenario[] = [
       tasks: buildTasks({ ...DONE_BUILD, 't-validate': 'succeeded', 't-security': 'succeeded' }),
       approvals: [
         PLAN_APPROVAL_DONE,
+        ACCEPTANCE_APPROVED,
         { id: 'ap-release-1', state: 'invalidated', target_digest: fakeDigest('d2'), target: { ...RELEASE_TARGET, environment_config_digest: fakeDigest('f0') } },
         { id: 'ap-release-2', state: 'pending', target_digest: fakeDigest('d3'), target: RELEASE_TARGET },
       ],
@@ -211,7 +230,7 @@ const BASE_SCENARIOS: ExampleScenario[] = [
     },
     [],
     { 'env-staging': STAGING },
-    acceptanceOf(FUNCTIONAL_MET, 'rp-validator'),
+    acceptanceOf(WITH_MANUAL, 'rp-validator'),
   ),
   scenario(
     { id: 'failed', label: '실패', description: '통합 단계 실패. 근거와 실패 이유를 보존한다' },
@@ -250,13 +269,13 @@ const BASE_SCENARIOS: ExampleScenario[] = [
     {
       state: 'succeeded',
       tasks: buildTasks({ ...DONE_BUILD, 't-validate': 'succeeded', 't-security': 'succeeded', 't-release': 'succeeded' }),
-      approvals: [PLAN_APPROVAL_DONE, { id: 'ap-release-2', state: 'approved', target_digest: fakeDigest('d3'), target: RELEASE_TARGET, decided_by: 'operator', decided_at: '2026-10-20T10:40:00+09:00' }],
+      approvals: [PLAN_APPROVAL_DONE, ACCEPTANCE_APPROVED, { id: 'ap-release-2', state: 'approved', target_digest: fakeDigest('d3'), target: RELEASE_TARGET, decided_by: 'operator', decided_at: '2026-10-20T10:40:00+09:00' }],
       reports: [report('validator', 'pass'), report('security', 'pass')],
       artifactIds: [...BUILD_ARTIFACTS, 'a-validation', 'a-security', 'a-preview', 'a-deploy'],
     },
     [],
     { 'env-staging': STAGING },
-    acceptanceOf({ ...FUNCTIONAL_MET, 'AC-5': 'met' }, 'rp-validator'),
+    acceptanceOf({ ...WITH_MANUAL, 'AC-5': 'met' }, 'rp-validator'),
   ),
 ]
 

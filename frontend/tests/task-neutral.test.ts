@@ -16,6 +16,17 @@ function files(dir: string): string[] {
   })
 }
 
+describe('합성 예시의 소재 중립성', () => {
+  test('합성 예시(src/examples)는 검증 과제나 문의 앱을 소재로 쓰지 않는다', () => {
+    const dir = resolve(SRC, 'examples')
+    const hits = readdirSync(dir).filter((n) => n.endsWith('.ts')).flatMap((name) => {
+      const text = readFileSync(join(dir, name), 'utf8')
+      return [...TASK_WORDS, '문의', 'cafemap', 'requests-v1'].filter((w) => text.includes(w)).map((w) => `examples/${name}: ${w}`)
+    })
+    expect(hits).toEqual([])
+  })
+})
+
 describe('공통 화면 코드의 과제 중립성', () => {
   test('src(예시·생성 타입 제외)에 검증 과제 전용 문구가 없다', () => {
     const hits = files(SRC).flatMap((path) => {

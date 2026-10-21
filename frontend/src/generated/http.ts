@@ -1,10 +1,877 @@
-/* 자동 생성 파일 — 수정 금지. 원본: docs/planning/http.v1.schema.json sha256:6b48afe375253346fe7defb686b599e2ecaf3dc3c23b32039f19208c2ae6b9ba. 재생성: npm run gen:types */
+/* 자동 생성 파일 — 수정 금지. 원본: docs/planning/http.v1.schema.json sha256:c30058eaf8ca863820dd431c240494fef8e204af3a853a3ef38151292af2fd47. 재생성: npm run gen:types */
 
 /**
  * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
  * via the `definition` "ReplayRecordings".
  */
 export type ReplayRecordings = ReplayRecording[]
+/**
+ * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
+ * via the `definition` "CheckSpec".
+ */
+export type CheckSpec =
+  | {
+      id: string
+      /**
+       * @minItems 1
+       * @maxItems 50
+       */
+      ac_ids: [string, ...string[]]
+      kind: 'http'
+      /**
+       * @minItems 1
+       * @maxItems 10
+       */
+      steps:
+        | [
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            }
+          ]
+        | [
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            }
+          ]
+        | [
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            }
+          ]
+        | [
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            }
+          ]
+        | [
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            }
+          ]
+        | [
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            }
+          ]
+        | [
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            }
+          ]
+        | [
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            }
+          ]
+        | [
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            }
+          ]
+        | [
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            },
+            {
+              method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+              path: string
+              json?: {}
+              expect: {
+                status: number
+                json_subset?: unknown
+              }
+            }
+          ]
+    }
+  | {
+      id: string
+      /**
+       * @minItems 1
+       * @maxItems 50
+       */
+      ac_ids: [string, ...string[]]
+      kind: 'command'
+      /**
+       * @minItems 1
+       * @maxItems 32
+       */
+      argv: [string, ...string[]]
+      cwd?: string
+      expect: {
+        exit: number
+        /**
+         * @maxItems 20
+         */
+        stdout_contains?:
+          | []
+          | [string]
+          | [string, string]
+          | [string, string, string]
+          | [string, string, string, string]
+          | [string, string, string, string, string]
+          | [string, string, string, string, string, string]
+          | [string, string, string, string, string, string, string]
+          | [string, string, string, string, string, string, string, string]
+          | [string, string, string, string, string, string, string, string, string]
+          | [string, string, string, string, string, string, string, string, string, string]
+          | [string, string, string, string, string, string, string, string, string, string, string]
+          | [string, string, string, string, string, string, string, string, string, string, string, string]
+          | [string, string, string, string, string, string, string, string, string, string, string, string, string]
+          | [
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string
+            ]
+          | [
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string
+            ]
+          | [
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string
+            ]
+          | [
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string
+            ]
+          | [
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string
+            ]
+          | [
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string
+            ]
+          | [
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string
+            ]
+      }
+    }
+  | {
+      id: string
+      /**
+       * @minItems 1
+       * @maxItems 50
+       */
+      ac_ids: [string, ...string[]]
+      kind: 'file'
+      path: string
+      expect: {
+        exists: boolean
+        /**
+         * @maxItems 20
+         */
+        contains?:
+          | []
+          | [string]
+          | [string, string]
+          | [string, string, string]
+          | [string, string, string, string]
+          | [string, string, string, string, string]
+          | [string, string, string, string, string, string]
+          | [string, string, string, string, string, string, string]
+          | [string, string, string, string, string, string, string, string]
+          | [string, string, string, string, string, string, string, string, string]
+          | [string, string, string, string, string, string, string, string, string, string]
+          | [string, string, string, string, string, string, string, string, string, string, string]
+          | [string, string, string, string, string, string, string, string, string, string, string, string]
+          | [string, string, string, string, string, string, string, string, string, string, string, string, string]
+          | [
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string
+            ]
+          | [
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string
+            ]
+          | [
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string
+            ]
+          | [
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string
+            ]
+          | [
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string
+            ]
+          | [
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string
+            ]
+          | [
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string,
+              string
+            ]
+      }
+    }
 
 export interface LifecycleHTTPPayloadsV1 {
   [k: string]: unknown
@@ -56,7 +923,7 @@ export interface Runtime {
   model_status: 'not_configured' | 'unavailable' | 'ready'
   runner_status: 'unavailable' | 'ready'
   inference_slots: 1
-  template_id?: 'requests-v1' | 'cafemap-v1'
+  template_id?: string
   data_source_status?: 'not_required' | 'unconfigured'
   external_api_enabled: false
   deployment_enabled: false
@@ -67,7 +934,7 @@ export interface Runtime {
  * via the `definition` "PlanSupport".
  */
 export interface PlanSupport {
-  template_id: 'requests-v1' | 'cafemap-v1'
+  template_id: string
   spec_version_id: string
   request_digest: string
   implementation_allowed: boolean
@@ -141,6 +1008,7 @@ export interface ReleaseTarget {
    * @maxItems 2
    */
   review_report_ids: [string, string]
+  acceptance_approval_id?: string
 }
 /**
  * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
@@ -259,7 +1127,7 @@ export interface Approval {
   id: string
   state: 'pending' | 'approved' | 'rejected' | 'invalidated'
   target_digest: string
-  target: PlanTarget | ReleaseTarget
+  target: PlanTarget | AcceptanceTarget | ReleaseTarget
   decided_by?: string
   decided_at?: string
   feedback?: string
@@ -268,6 +1136,20 @@ export interface PlanTarget {
   gate: 'plan'
   spec_version_id: string
   plan_digest: string
+}
+export interface AcceptanceTarget {
+  gate: 'acceptance'
+  spec_version_id: string
+  plan_digest: string
+  commit_sha: string
+  image_digest: string
+  /**
+   * @minItems 1
+   * @maxItems 50
+   */
+  ac_ids: [string, ...string[]]
+  validator_report_id: string
+  validator_report_digest: string
 }
 export interface ReviewReport {
   id: string
@@ -368,6 +1250,464 @@ export interface PlanDraft {
 }
 /**
  * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
+ * via the `definition` "PlanAlternative".
+ */
+export interface PlanAlternative {
+  id: string
+  summary: string
+  differences: string
+  risks: string
+}
+/**
+ * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
+ * via the `definition` "WorkItem".
+ */
+export interface WorkItem {
+  id: string
+  kind: 'contract' | 'infra' | 'backend' | 'frontend' | 'ai_data' | 'integration'
+  title: string
+  /**
+   * @maxItems 30
+   */
+  depends_on: string[]
+  /**
+   * @minItems 1
+   * @maxItems 50
+   */
+  acceptance_ids: [string, ...string[]]
+  /**
+   * @minItems 1
+   * @maxItems 20
+   */
+  write_scope:
+    | [string]
+    | [string, string]
+    | [string, string, string]
+    | [string, string, string, string]
+    | [string, string, string, string, string]
+    | [string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string, string, string]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+}
+/**
+ * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
+ * via the `definition` "OmittedArea".
+ */
+export interface OmittedArea {
+  kind: 'infra' | 'backend' | 'frontend' | 'ai_data'
+  reason: string
+}
+/**
+ * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
+ * via the `definition` "ManualAcceptance".
+ */
+export interface ManualAcceptance {
+  ac_id: string
+  reason: string
+}
+/**
+ * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
+ * via the `definition` "PlanDependencies".
+ */
+export interface PlanDependencies {
+  /**
+   * @maxItems 20
+   */
+  pip?:
+    | []
+    | [string]
+    | [string, string]
+    | [string, string, string]
+    | [string, string, string, string]
+    | [string, string, string, string, string]
+    | [string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string, string, string]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+  /**
+   * @maxItems 20
+   */
+  npm?:
+    | []
+    | [string]
+    | [string, string]
+    | [string, string, string]
+    | [string, string, string, string]
+    | [string, string, string, string, string]
+    | [string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string, string, string]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+}
+/**
+ * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
  * via the `definition` "PlanView".
  */
 export interface PlanView {
@@ -429,6 +1769,37 @@ export interface PlanView {
   contract_digests: {
     [k: string]: string
   }
+  /**
+   * @minItems 1
+   * @maxItems 3
+   */
+  alternatives?:
+    [PlanAlternative] | [PlanAlternative, PlanAlternative] | [PlanAlternative, PlanAlternative, PlanAlternative]
+  selected_alternative_id?: string
+  single_alternative_reason?: string
+  /**
+   * @maxItems 30
+   */
+  work_plan?: WorkItem[]
+  /**
+   * @maxItems 4
+   */
+  omitted_areas?:
+    | []
+    | [OmittedArea]
+    | [OmittedArea, OmittedArea]
+    | [OmittedArea, OmittedArea, OmittedArea]
+    | [OmittedArea, OmittedArea, OmittedArea, OmittedArea]
+  /**
+   * @maxItems 100
+   */
+  verification?: CheckSpec[]
+  /**
+   * @maxItems 50
+   */
+  manual_acceptance?: ManualAcceptance[]
+  dependencies?: PlanDependencies
+  tool_policy_digest?: string
 }
 /**
  * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema

@@ -7,6 +7,7 @@ import type { SendResult } from '../composables/useCommandForm'
 import type { CommandInput } from '../composables/useRun'
 import { reviewPair } from '../model/derive'
 import { shortDigest } from '../model/labels'
+import AcceptanceApprovalSection from './AcceptanceApprovalSection.vue'
 import BaseDialog from './BaseDialog.vue'
 import ChangeRequestForm from './ChangeRequestForm.vue'
 import PreviewFrame from './PreviewFrame.vue'
@@ -62,7 +63,7 @@ watch(
 </script>
 
 <template>
-  <BaseDialog :open="open" title="프리뷰 확인" subtitle="두 검토 결과와 프리뷰를 보고 수정 방향을 정합니다." @close="emit('close')">
+  <BaseDialog :open="open" title="프리뷰 확인" subtitle="두 검토 결과와 프리뷰를 보고 사람 확인과 수정 방향을 정합니다." @close="emit('close')">
     <section>
       <h3>후보</h3>
       <dl class="kv small">
@@ -77,6 +78,7 @@ watch(
       <h3>독립 검토</h3>
       <ReviewPair :pair="pair" @artifact="emit('artifact', $event)" />
     </section>
+    <AcceptanceApprovalSection :snapshot="snapshot" :source="source" :read-only="readOnly" :send="send" @artifact="emit('artifact', $event)" />
     <section>
       <h3>수정 요청</h3>
       <p v-if="readOnly" class="info-box">실제 기록 재생은 읽기 전용입니다. 수정하려면 새 LIVE 실행을 만드세요.</p>

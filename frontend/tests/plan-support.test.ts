@@ -67,7 +67,7 @@ describe('PlanView.support 계약', () => {
 
   test('support가 계약 밖이면 기획 본문 전체를 형식 오류로 본다', () => {
     const bad = [
-      { ...CAFEMAP, template_id: 'mapapp-v9' },
+      { ...CAFEMAP, template_id: 'Map_App' },
       { ...CAFEMAP, implementation_allowed: 'no' },
       { ...CAFEMAP, unsupported: [{ request_quote: '', reason: 'x', requires: [] }] },
       { ...CAFEMAP, external: [{ ...CAFEMAP.external[0], needs: ['password'] }] },

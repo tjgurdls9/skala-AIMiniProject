@@ -7,6 +7,7 @@ import type { SendResult } from '../composables/useCommandForm'
 import { useCommandForm } from '../composables/useCommandForm'
 import { useDraft } from '../composables/useDraft'
 import type { CommandInput } from '../composables/useRun'
+import { MANUAL_STATE, releaseAcceptanceGate } from '../model/acceptanceApproval'
 import { bothPassed, reviewPair } from '../model/derive'
 import { shortDigest } from '../model/labels'
 import BaseDialog from './BaseDialog.vue'
@@ -40,6 +41,9 @@ const matchesCandidate = computed(() => {
   const t = props.approval?.target
   return !!t && [pair.value.validator, pair.value.security].every((r) => r && r.commit_sha === t.commit_sha && r.image_digest === t.image_digest)
 })
+/** CR-C18 사람 확인 승인과의 결속. none이면(사람 확인 기록 없음·옛 기록) 구역을 그리지 않는다. 최종 검사는 서버가 한다 */
+const manualGate = computed(() => (props.approval ? releaseAcceptanceGate(props.snapshot, props.approval.target) : { kind: 'none' as const }))
+const manualBlocked = computed(() => manualGate.value.kind === 'blocked')
 const invalidated = computed(() => props.snapshot.approvals.filter((a) => a.target.gate === 'release' && a.state === 'invalidated').length)
 
 watch(
@@ -94,6 +98,20 @@ async function decide(decision: 'approve' | 'reject'): Promise<void> {
         <dt>복구 계획 해시</dt><dd><code>{{ shortDigest(approval.target.rollback_manifest_digest) }}</code></dd>
         <dt>승인 대상 해시</dt><dd><code>{{ shortDigest(approval.target_digest) }}</code> <span class="muted">(서버 제공 · 그대로 전송)</span></dd>
       </dl>
+      <section v-if="manualGate.kind !== 'none'" aria-label="사람 확인 승인">
+        <h3>사람 확인 승인</h3>
+        <template v-if="manualGate.approval">
+          <p :class="['tone', `tone-${MANUAL_STATE[manualGate.approval.state as 'pending' | 'approved' | 'rejected']?.tone ?? 'neutral'}`]">
+            {{ MANUAL_STATE[manualGate.approval.state as 'pending' | 'approved' | 'rejected']?.text ?? '무효' }} · <code>{{ manualGate.approval.id }}</code>
+          </p>
+          <dl class="kv small">
+            <dt>확인한 AC</dt><dd><code v-for="id in manualGate.approval.target.ac_ids" :key="id" class="id">{{ id }}</code></dd>
+            <dt>연결</dt><dd>{{ approval.target.acceptance_approval_id ? '배포 대상이 이 승인에 연결됨' : '배포 대상에 연결되지 않음' }}</dd>
+          </dl>
+        </template>
+        <p v-if="manualGate.kind === 'blocked'" class="error-box" role="alert">{{ manualGate.reason }} 사람 확인이 끝나기 전에는 배포를 승인할 수 없습니다.</p>
+        <p v-else class="small muted">사람이 확인한 기록입니다. 자동 판정(AC 충족)을 대신하지 않습니다.</p>
+      </section>
       <section>
         <h3>대상에 묶인 두 보고서</h3>
         <ReviewPair :pair="pair" @artifact="emit('artifact', $event)" />
@@ -112,7 +130,7 @@ async function decide(decision: 'approve' | 'reject'): Promise<void> {
       <button type="button" class="btn" @click="emit('close')">닫기</button>
       <template v-if="approval && !readOnly && releaseEnabled">
         <button type="button" class="btn danger" :disabled="form.submitting.value || !feedback.trim()" @click="decide('reject')">배포 거절</button>
-        <button type="button" class="btn primary" :disabled="form.submitting.value || !passed || !matchesCandidate" @click="decide('approve')">
+        <button type="button" class="btn primary" :disabled="form.submitting.value || !passed || !matchesCandidate || manualBlocked" @click="decide('approve')">
           {{ form.submitting.value ? '보내는 중…' : `이 결과를 ${env?.label ?? approval.target.environment_id}에 배포 승인` }}
         </button>
       </template>
