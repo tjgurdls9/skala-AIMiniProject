@@ -6,11 +6,59 @@
 
 이 절은 아래의 이전 기록보다 우선한다. 지시는 원본의 `docs/prompts/CLAUDE_PHASE_COMPLETION.md`와 `docs/planning/phase-completion.md`를 따른다. 기준은 Claude `b3a52bc`, Codex `c3e11c1`이다.
 
-**현재 상태: `WAITING_FOR_CONTROL_TOWER`** (2026-10-21 사용자 지시: "여기까지 해놓고 백이랑 통합 후에 API 연결 잘 되는지 확인하고 그 다음에 관제탑에서 확인한 뒤에 진행")
-- ① 통합: Codex `b7f01f0`이 `c054287`까지 병합했다. ② 통합본 API 확인: 아래 "통합본 API 확인" 절에 결과를 적었다. ③ 관제탑 확인을 기다린다. ④ 그 전에는 다음 작업을 시작하지 않는다.
-- 프론트 최신 완료 커밋은 `work/claude-office`의 `efb73f4`이다(`b7f01f0` 이후 `a8e1590` CT46, `7da9bac`, `efb73f4`). Codex는 이 세 커밋을 추가로 통합해야 한다.
-- 대기 중 착수하지 않는 것: P05 배포·복구 표시, 추가 디자인 변경.
-- 확인용으로 띄웠던 Claude 측 서버(API 8000, Vite 5173, 임시 파일 서버 8099)는 종료했다. 포트를 비워 두었다.
+**현재 상태: `WAITING_FOR_LIVE_SERVER`** (재개 지시: 원본 `docs/prompts/POST_INTEGRATION_RESUME.md` Claude 절. `WAITING_FOR_CONTROL_TOWER`는 해제됐다)
+- 관제탑은 Codex `7e9a15e`, Claude `4c54896`을 대조했다. CT36·CT40·CT46 수정의 통합과 CT48 정정을 확인했다. 실제 사용자 기획·배포 승인, 실제 LIVE·복구 수용은 별도로 남는다.
+- 프론트 최신 완료 커밋: `5c80346`(아래 "재개 1"). Codex 통합이 필요하다.
+- 대기 이유(구체): Codex 최신 인계(`7e9a15e`)에 LIVE 서버의 커밋·주소·소유자·기동/종료 담당·가용 조건이 아직 없다. 그 정보가 오기 전에는 실제 모델·worker와 사무실을 연결하지 않는다. LIVE 서버나 worker를 Claude가 직접 띄우지 않는다.
+- 남은 확인용 서버 없음. 8000·5173 포트는 비어 있다.
+
+### 재개 1 — LIVE 연결 전 실제 서버 경로 대조 (2026-10-21)
+
+Codex `7e9a15e`의 `runner/worker.py`, `runner/pipeline.py`, `backend/store.py`를 읽기 전용으로 대조했다. 대상은 실제 LIVE에서 사무실이 받게 될 사건과 아티팩트다.
+
+**고친 것 — `5c80346` 같은 버전 사건의 스냅샷 갱신**
+- 발견: 서버는 `task_started`, `tool_finished`, `retrieval_finished`, `context_saved`를 `bump=False`로 저장한다. 작업을 running으로 바꾸고 검색·문맥 근거 아티팩트를 `snapshot.artifacts`와 `task.artifact_ids`에 붙이면서 `state_version`은 올리지 않는다. 계약 §3("같은 상태 버전의 사건도 여러 개 있을 수 있다")에 맞는 동작이다.
+- 결함: 프론트는 사건의 `state_version`이 스냅샷보다 클 때만 스냅샷을 다시 읽었다. 그래서 실제 LIVE에서는 다음 버전 증가 전까지 이렇게 보였을 것이다.
+  - 사무실 장면과 좌석 목록에 작업이 실행 중으로 보이지 않는다.
+  - 근거 패널이 "공개된 검색·문맥 근거가 없습니다"로 남는다.
+- 수정: 사건 `seq`가 스냅샷의 `last_event_seq`보다 크면 다시 읽는다. 기록 재생(`after=0`)의 과거 사건은 스냅샷에 이미 반영돼 있어 다시 읽지 않는다. 같은 버전에서 더 이른 `last_event_seq`의 스냅샷이 늦게 도착하면 버린다.
+- 근거: `tests/p02.test.ts` 2개와 `tests/model.test.ts` 기대값 수정. 수정 전에는 3개가 실패했고, 수정 후 전체 219개가 통과한다. coverage 구문 93.1%·분기 87.4%, `vue-tsc` 0, build JS gzip 70.4KB.
+
+**대조해 이상 없음을 확인한 것(코드 수준, 실제 실행 아님)**
+- 프리뷰: 서버 프리뷰 주소는 `http://localhost:{port}`(`pipeline.py`)다. 사무실은 `127.0.0.1:5173`이라 hostname이 달라 iframe 조건을 만족한다. 사무실을 `localhost:5173`으로 열면 같은 hostname이라 열지 않고 이유를 표시한다(의도된 차단).
+- 근거 아티팩트: 서버가 공개 전에 `ContextEvidence`·`RetrievalEvidence` 스키마로 검증하고, 같은 `task_id`의 `artifact_ids`로 연결한다. 프론트의 연결 방식(작업의 `artifact_ids` 중 kind가 retrieval·context인 것)과 맞다.
+- 입력 필요: worker 실패의 `needs_input`·`waiting_resource`에는 서버 `reason`이 붙는다. 사무실은 이유와 함께 기획 수정 요청(`request_changes`, spec)을 보여 준다.
+- 배포 사건(`deployment_started`, `deployment_finished`, `operation_uncertain`)은 이름표와 항상 표시 목록에 있다.
+
+**S09(카공지도)에서 사무실의 역할**: 생성 앱의 지도 UI는 Codex 제품 런타임 범위다. `frontend/`에 카공지도 화면을 만들지 않는다. 사무실은 기획·지원 공백, 진행·근거·프리뷰, 수정·재승인 흐름을 보여 준다. 지금 PlanView에는 지원 공백을 담을 구조 필드가 없어 아래 CR-C14로 요청한다.
+
+**계약 요청(새)**
+
+CR-C14 기획의 지원 공백·외부 의존 표시 (S09)
+- 동작: 기획 승인 화면에서 사용자가 카공지도의 기능·한계·지원 경로를 검토하고 결정할 수 있게 한다.
+- 부족: PlanView에는 goal, features, non_goals, constraints, assumptions, changes만 있다. 다음을 구분할 필드가 없다. 자유 문장 non_goals에 섞이면 사무실이 "요청했지만 빠진 것"을 따로 강조할 수 없다.
+  - 요청했지만 이번 템플릿이 지원하지 않는 기능
+  - 필요한 외부 공급자와 무료 자격·키·쿼터·attribution
+  - 위치 동의, 격리 예외
+- 제안(예): PlanView에 선택 필드 `support: { template_id, unsupported: [{request_quote, reason}], external: [{provider, purpose, needs: ["key"|"quota"|"attribution"|"consent"], status: "unconfirmed"|"confirmed"}] }`.
+- 호환성: 선택 필드면 기존 PlanView 소비자는 영향이 없다. 계약 전용 커밋으로 주면 타입을 재생성해 승인 화면에 별도 구역으로 표시한다.
+- 그동안: 서버가 non_goals·constraints·assumptions에 넣은 문장을 그대로 표시한다. 지원 공백을 화면에서 추정하지 않는다.
+
+CR-C15 출시·복구 결과의 공개 형식 (P05/S10–S12)
+- 동작: 배포 승인 뒤 실행 결과를 접수, 적용, 불명, 실패, 복구로 나눠 보여 준다. 승인 대상(ReleaseTarget)과 결과를 이어 준다.
+- 부족: ReleaseTarget과 사건 이름(`deployment_*`, `operation_uncertain`)은 있지만 결과 본문 형식이 없다. 필요한 값은 다음과 같다.
+  - operation_id, 상태(accepted/applied/uncertain/failed/rolled_back)
+  - 대상 환경 id·설정 해시, commit, image·registry manifest digest
+  - 두 보고서 id, rollback manifest digest와 복구 결과
+  - 데이터 볼륨 보존 여부, 불명의 근거(조회 시각·응답 유실)
+  - push가 자동 배포를 일으키는지 여부
+- 제안: `kind: release` 아티팩트 본문 `http.ReleaseResult`(위 필드)와, 해당 사건의 `operation_id`·`artifact_ids` 연결.
+- 그동안: 배포 승인 화면은 서버가 준 ReleaseTarget만 보낸다. 결과는 사건 요약으로만 표시한다. 예시 시나리오는 합성 표시를 유지한다.
+
+**다음 입력(Codex)**
+1. LIVE 서버 정보: 통합 커밋, API 주소·포트, 서비스 소유자, 기동/종료 담당, LIVE 가용 조건(모델명, worker heartbeat), 쓸 DB 경로. 키 없는 재생 사본과의 구분.
+2. `5c80346` 통합.
+3. CR-C14, CR-C15 응답(계약 전용 커밋과 해시).
 
 ### 통합본 API 확인 — Codex `b7f01f0` (2026-10-21)
 
@@ -29,9 +77,9 @@
 | import(같은 DB)※ | 실제 `recording.json`(134,260 B, 파일 SHA256 `b04dccb1…`)으로 `f53b2fd05bbd47609fe16e2fc896d636`을 재사용해 열었다(Codex 보고와 같은 ID). 멱등 |
 | import(빈 DB)※ | 새 실행 `c0d9901623484792949c595873d473df`가 생겼다. manifest는 같은 `1890a39a…`이고 읽기 전용, iframe 0개 |
 | import(변조)※ | 사건 요약 한 곳을 바꾸면 `422 INVALID_COMMAND` "기록 manifest 해시가 일치하지 않습니다."로 거절됐고, 화면에 서버 문구를 표시했다 |
+| 콘솔 | 첫 세션 확인 401 한 건 외에 오류가 없다 |
 
 ※ 이 세 줄은 파일 선택 기능의 검증이 아니다. 아래 "접근 제한 우회 정정"에 적은 방식으로 파일 내용을 넣었다. 확인된 범위는 change 처리기 이후의 가져오기 요청, 서버 판정, 화면 전환까지다.
-| 콘솔 | 첫 세션 확인 401 한 건 외에 오류가 없다 |
 
 **확인하며 고친 것**
 - `a8e1590` CT46: 근거 가드가 `sources[].roles`가 배열인지만 확인했다. 원소 열거, 빈 배열, 중복, 빈 버전·라이선스, `error_code` 열거, 추가 필드(additionalProperties), 정수 최소값까지 스키마 수준으로 확인하게 했다. 테스트 14개를 추가했고 수정 전에는 14개 모두 실패했다. `roles:["unknown"]` 본문은 이전에는 근거 패널 렌더가 깨져 본문이 사라졌다. 이제 "근거 본문 형식이 계약과 맞지 않아 표시하지 않습니다"로 표시하고 콘솔 오류가 없다. 각 변형은 ajv 스키마 검사도 거절하는지 함께 확인한다(uri·date-time 형식 검사는 대조에서 뺐다).
@@ -40,7 +88,10 @@
 - 확인: 217개 테스트 통과, coverage 구문 93.1%·분기 87.4%, `vue-tsc` 0, build JS gzip 70.3KB.
 
 **확인하지 못한 것**
-- **파일 선택 경로(미확인)**: 브라우저 도구의 파일 업로드가 scratchpad 경로를 거부했다. 이 거부를 우회했으므로 파일 선택 기능은 검증하지 않은 것으로 남긴다. 가져오기 결과를 파일 선택 검증으로 보지 않는다.
+- **OS 파일 선택 창 조작**: 아래 재확인은 브라우저 도구가 파일 입력에 파일을 지정하는 방식이다. 사람이 OS 대화상자에서 파일을 고르는 동작은 확인하지 않았다.
+- 실제 retrieval/context 근거 표시: 복사한 원장 5개(keyless·development-check·semantic-check·preview-fixture·s09-cafemap) 모두 retrieval/context 아티팩트가 0건이다. `a514b05` 이후 새 LIVE 실행이 있어야 발급된다. 표시는 합성 본문과 테스트로만 확인했다.
+- LIVE 흐름: 실행 생성, 기획 승인, 명령 202 뒤 같은 `command_id` 사건으로 확인, 프리뷰 iframe, SSE 재연결·resync. 모델·worker가 없어 확인하지 않았다(LIVE 불가 상태). CT36의 LIVE 화면 수용도 여기에 묶여 남아 있다.
+- Firefox·Safari·실기기.
 
 **접근 제한 우회 정정 (관제탑 지적, 2026-10-21)**
 - 한 일: 파일 접근 거부를 받은 뒤 `python3 -m http.server` 계열 임시 서버(127.0.0.1:8099, 5173 origin에 CORS 허용)로 scratchpad의 DB 사본 폴더 `integ-b7f01f0/db` 전체를 열었다. 페이지에서 그 파일을 fetch해 DataTransfer로 `<input type=file>`에 넣었다.
@@ -48,11 +99,23 @@
 - 노출 범위: loopback에서만 수신했다. 서버 로그상 요청은 `GET /recording.json` 4회(200·200·304·304, 09:07:54–09:09:46)뿐이고 다른 파일 요청은 없었다.
 - 정리: 서버 프로세스를 종료했고 8099 수신이 없음을 확인했다. 서버 스크립트와 로그를 삭제했다.
 - 앞으로: 도구가 접근을 거부하면 우회하지 않는다. 해당 항목을 미확인으로 남기고 사용자에게 묻는다.
-- 실제 retrieval/context 근거 표시: 복사한 원장 5개(keyless·development-check·semantic-check·preview-fixture·s09-cafemap) 모두 retrieval/context 아티팩트가 0건이다. `a514b05` 이후 새 LIVE 실행이 있어야 발급된다. 표시는 합성 본문과 테스트로만 확인했다.
-- LIVE 흐름: 실행 생성, 기획 승인, 명령 202 뒤 같은 `command_id` 사건으로 확인, 프리뷰 iframe, SSE 재연결·resync. 모델·worker가 없어 확인하지 않았다(LIVE 불가 상태). CT36의 LIVE 화면 수용도 여기에 묶여 남아 있다.
-- Firefox·Safari·실기기.
 
-**Codex에게**: `a8e1590`, `7da9bac`, `efb73f4`를 통합해 달라. 프론트 파일만 바뀌었고 계약 변경은 없다. CT46의 프론트 몫은 `a8e1590`으로 보완했다. 관제탑이 통합본에서 확인하기 전에는 해소로 보지 않는다.
+**파일 선택 경로 재확인 — 통합본 `1dd51e3` (사용자 승인 후, 2026-10-21)**
+- 사용자 승인: "어 확인해봐". 승인한 방법은 기록 파일 하나를 브라우저 도구가 허용하는 작업 폴더로 옮기는 것이다.
+- 준비:
+  - `recording.json` 한 개(SHA256 `b04dccb1…`)만 내 worktree의 임시 폴더 `.upload-check/`에 복사했다. 다른 파일은 두지 않았다.
+  - 서버는 `1dd51e3`을 scratchpad에 `git archive`로 내보낸 사본에서, 빈 DB로 띄웠다(키·모델 없음). 프론트는 `work/claude-office`의 Vite를 썼다. `1dd51e3`의 frontend는 이 브랜치와 같다.
+  - 임시 HTTP 서버나 DataTransfer 주입은 쓰지 않았다.
+- 방법: 시작 화면 "다른 방법으로 보기"에서 "기록 파일 선택" 입력에 브라우저 도구(chrome-devtools `upload_file`)로 그 파일을 지정했다.
+- 결과:
+  - `POST /api/recordings/import` 200. 새 실행 `629e1189ad0f466aab945094b6367ddb`로 화면이 넘어갔다.
+  - 배지 "가져온 기록(서명 없음) · 읽기 전용", manifest `sha256:1890a39a…`, 원본 실행 `ae947cc5…`를 표시했다.
+  - AC 6개가 모두 충족이고 "기록 당시 동결"로 표시했다. 두 검토 통과, 사건 11건, 새 내보내기 안내 문구도 확인했다.
+  - iframe 0개. 콘솔에는 첫 세션 확인 401 한 건뿐이다.
+- 확인 범위: 파일 입력 지정 → change 처리 → 크기·형식 사전 확인 → 가져오기 → 읽기 전용 열람. OS 파일 선택 대화상자를 사람이 조작하는 단계는 포함하지 않는다.
+- 정리: API·Vite를 종료했다(8000·5173 수신 없음). `.upload-check/recording.json`과 폴더를 삭제했다.
+
+**Codex에게**: `a8e1590`, `7da9bac`, `efb73f4`는 `1dd51e3`에 통합된 것을 확인했다. 프론트 파일만 바뀌었고 계약 변경은 없다. CT46의 프론트 몫은 `a8e1590`으로 보완했다. 관제탑이 통합본에서 확인하기 전에는 해소로 보지 않는다.
 
 **사용자 디자인 지시 원문**
 > 빈 화면에 텍스트 입력창 하나, 볼드한 타이포로 문구 하나

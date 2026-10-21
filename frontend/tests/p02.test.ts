@@ -184,3 +184,53 @@ describe('검색 근거', () => {
     w.unmount()
   })
 })
+
+describe('같은 state_version의 사건도 스냅샷 내용을 바꾼다 (계약 §3: 한 버전에 사건 여러 개)', () => {
+  /** 스냅샷까지의 기록 사건(1..n, 같은 버전)을 먼저 받아 누락 경로를 타지 않게 한다 */
+  const replayHistory = (h: StreamHandlers, n: number, version: number) =>
+    buildEvents(Array.from({ length: n }, () => ['tool_finished', 'h', {}] as never), 1, 0).forEach((e) => h.onEvent({ ...e, state_version: version }))
+  test('버전이 그대로인 retrieval_finished·task_started 뒤에 스냅샷을 다시 읽어 작업 상태와 근거 아티팩트를 반영한다', async () => {
+    // 실제 서버(runner/worker.py publish_evidence·task_started)는 bump=False로 작업 상태·아티팩트를 바꾼다
+    const first: Snapshot = { ...base, state_version: 5, last_event_seq: 10 }
+    const artifact = { id: 'a-live-retrieval', title: '역할별 검색 근거', kind: 'retrieval' as const, content_digest: `sha256:${'c'.repeat(64)}`, public_summary: '역할별 검색 근거' }
+    const second: Snapshot = {
+      ...first,
+      last_event_seq: 11,
+      artifacts: [...first.artifacts, artifact],
+      tasks: first.tasks.map((t, i) => (i === 0 ? { ...t, state: 'running' as const, artifact_ids: [...t.artifact_ids, artifact.id] } : t)),
+    }
+    const snapshots = [first, second]
+    const { source, streams } = fake(first)
+    source.getSnapshot = vi.fn(async () => snapshots.shift() ?? second)
+    const run = useRun(source)
+    await run.start()
+    replayHistory(streams.at(-1)!.h, 10, 5)
+    await flushPromises()
+    expect(source.getSnapshot).toHaveBeenCalledTimes(1)
+    const event = buildEvents([['retrieval_finished', '역할별 검색 근거', { task_id: first.tasks[0].id }]], 11, 5)[0]
+    streams.at(-1)!.h.onEvent({ ...event, state_version: 5, artifact_ids: [artifact.id] })
+    await flushPromises()
+    expect(source.getSnapshot).toHaveBeenCalledTimes(2)
+    expect(run.snapshot.value?.artifacts.some((a) => a.id === 'a-live-retrieval')).toBe(true)
+    expect(run.snapshot.value?.tasks[0].state).toBe('running')
+    run.dispose()
+  })
+
+  test('같은 버전에서 사건 순서가 더 이른 스냅샷이 늦게 와도 덮어쓰지 않는다', async () => {
+    const newer: Snapshot = { ...base, state_version: 5, last_event_seq: 12 }
+    const older: Snapshot = { ...base, state_version: 5, last_event_seq: 11, tasks: [] }
+    const snapshots = [newer, older]
+    const { source, streams } = fake(newer)
+    source.getSnapshot = vi.fn(async () => snapshots.shift() ?? older)
+    const run = useRun(source)
+    await run.start()
+    replayHistory(streams.at(-1)!.h, 12, 5)
+    await flushPromises()
+    const event = buildEvents([['tool_finished', 'x', {}]], 13, 5)[0]
+    streams.at(-1)!.h.onEvent(event)
+    await flushPromises()
+    expect(source.getSnapshot).toHaveBeenCalledTimes(2)
+    expect(run.snapshot.value?.last_event_seq).toBe(12)
+    run.dispose()
+  })
+})
