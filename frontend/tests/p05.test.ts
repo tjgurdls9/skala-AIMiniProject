@@ -62,6 +62,33 @@ describe('합성 예시 근거 본문은 계약을 따른다', () => {
     expect(isContextEvidence(null)).toBe(false)
   })
 
+  // CT46: 스키마가 거절하는 본문은 가드도 거절해야 화면이 계약 밖 값을 조회하지 않는다(형식 검사 uri·date-time 제외)
+  const src0 = RETRIEVAL_BODY.sources[0]
+  const ctx0 = CONTEXT_BODY.sources[0]
+  test.each([
+    ['역할 원소가 계약 밖', { ...RETRIEVAL_BODY, sources: [{ ...src0, roles: ['unknown'] }] }],
+    ['역할 빈 배열', { ...RETRIEVAL_BODY, sources: [{ ...src0, roles: [] }] }],
+    ['역할 중복', { ...RETRIEVAL_BODY, sources: [{ ...src0, roles: ['builder', 'builder'] }] }],
+    ['빈 버전', { ...RETRIEVAL_BODY, sources: [{ ...src0, version: '' }] }],
+    ['빈 라이선스', { ...RETRIEVAL_BODY, sources: [{ ...src0, license: '' }] }],
+    ['오류 코드 계약 밖', { ...RETRIEVAL_BODY, error_code: 'BOOM' }],
+    ['출처의 추가 필드', { ...RETRIEVAL_BODY, sources: [{ ...src0, extra: 1 }] }],
+    ['본문의 추가 필드', { ...RETRIEVAL_BODY, extra: 1 }],
+  ])('검색 근거: %s → 스키마와 가드 모두 거절', (_, body) => {
+    expect(valid('http.v1.schema.json#/$defs/RetrievalEvidence', body)).toBe(false)
+    expect(isRetrievalEvidence(body)).toBe(false)
+  })
+  test.each([
+    ['음수 위치', { ...CONTEXT_BODY, sources: [{ ...ctx0, offset: -1 }] }],
+    ['길이 0', { ...CONTEXT_BODY, sources: [{ ...ctx0, length: 0 }] }],
+    ['음수 조각 수', { ...CONTEXT_BODY, completed_fragments: -1 }],
+    ['출처의 추가 필드', { ...CONTEXT_BODY, sources: [{ ...ctx0, extra: 1 }] }],
+    ['본문의 추가 필드', { ...CONTEXT_BODY, extra: 1 }],
+  ])('문맥 근거: %s → 스키마와 가드 모두 거절', (_, body) => {
+    expect(valid('http.v1.schema.json#/$defs/ContextEvidence', body)).toBe(false)
+    expect(isContextEvidence(body)).toBe(false)
+  })
+
   test('출처 URL은 http(s)만 링크로 쓴다', () => {
     expect(safeHttpUrl('https://a.example/x')).toBe('https://a.example/x')
     expect(safeHttpUrl('javascript:alert(1)')).toBeNull()
@@ -120,6 +147,24 @@ describe('CR-C12 근거 표시', () => {
     await w.find('aside.evidence').findAll('button').find((b) => b.text().includes('API 작업 검색 근거'))!.trigger('click')
     await flush()
     expect(w.find('aside.evidence').text()).toContain('근거 본문 형식이 계약과 맞지 않아 표시하지 않습니다')
+    w.unmount()
+  })
+
+  test('CT46: 역할 값이 계약 밖인 근거 본문은 렌더 오류 없이 형식 오류로 표시한다', async () => {
+    const scenario = findScenario('building')!
+    const bad = { ...RETRIEVAL_BODY, sources: [{ ...RETRIEVAL_BODY.sources[0], roles: ['unknown'] }] }
+    const source = { ...exampleSource(scenario), getArtifact: async (id: string) => (id === 'a-retrieval-api' ? bad : scenario.artifactBodies[id]) }
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const warns = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const w = mount(RunWorkspace, { attachTo: document.body, props: { source } })
+    await flush()
+    await w.findAll('button').find((b) => b.text().includes('문의 조회·상태 변경 API'))!.trigger('click')
+    await flush()
+    await w.find('aside.evidence').findAll('button').find((b) => b.text().includes('API 작업 검색 근거'))!.trigger('click')
+    await flush()
+    expect(w.find('aside.evidence').text()).toContain('근거 본문 형식이 계약과 맞지 않아 표시하지 않습니다')
+    expect(errors).not.toHaveBeenCalled()
+    expect(warns.mock.calls.flat().join(' ')).not.toMatch(/Unhandled error|render function/)
     w.unmount()
   })
 })
