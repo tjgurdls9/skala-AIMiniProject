@@ -9,6 +9,7 @@
 - f5a2bc0: Claude 완료 소비자 d625f74/4f396c8을 통합했다. 프론트 239개/5.99초, vue-tsc/Vite build 통과(JS gzip 74.95KB). frontend 파일을 직접 수정하지 않았다.
 - 실제 S09 요청과 **“외부 연결은 나중에 결정”**을 보존했다. cafemap-v1은 공급자 미설정 경계/설정 저장을 준비한 스캐폴드이며 실제 지도·장소 검색/추천이 구현된 앱이 아니다. 가짜 장소/문의 CRUD를 사용하지 않는다. 외부 공급자·키/좌표 전송과 실제 배포는 비활성이다.
 - 실제 로컬 qwen3.5:4b/단일 worker/로컬 qwen3-embedding:0.6b의 실행에서 검색 근거를 발급했다. 첫 시도는 최초 조각의 존재하지 않는 정정 증거로 차단했고 151cb86에서 최초 출력 revisions=[]를 스키마로 강제했다(62개/43.546초 통과). 다음 시도는 첫 조각을 보존한 뒤 두 번째 호출의 14,928bytes 예산 초과로 차단됐다. 실패 기록/원문은 보존했고 사람 승인·구현을 만들지 않았다. 후속 수정/실제 성공 여부는 최신 Codex 인계를 따른다.
+- 후속 754165a: 기존 요구 원문을 중복하지 않도록 위치별 digest만 전달했다. backend 전체 63개/44.048초 통과. 실제 run 846eed645f8245909d72cff799099d0b는 개발자 resume→pause→resume과 중복 명령 동일 receipt/중지 fence를 확인한 뒤 v8/seq14의 awaiting_plan_approval로 기획을 생성했다. spec 8e303310f79542f9967a6c64e9cfb642, 지원 공백은 provider=null/deferred/implementation_allowed=false다. 실제 로컬 semantic 검색·완료 문맥 근거를 planner 작업에 연결했다. 사람의 승인/거절·지도 앱 생성/외부 검색·후보 검토는 수행하지 않았다.
 - actual LIVE DB와 run 주소·실행 코드·프로세스 소유자/가동 상태의 단일 원본은 Codex 인계의 POST-INTEGRATION 절이다. 아래 옛 제출 후보는 이번 확장과 새 수용 근거를 포함하지 않는다.
 
 ## 기준과 검증
