@@ -6,11 +6,32 @@
 
 이 절은 아래의 이전 기록보다 우선한다. 지시는 원본의 `docs/prompts/CLAUDE_PHASE_COMPLETION.md`와 `docs/planning/phase-completion.md`를 따른다. 기준은 Claude `b3a52bc`, Codex `c3e11c1`이다.
 
-**현재 상태: `WAITING_FOR_USER_PLAN_DECISION`** (재개 지시: 원본 `docs/prompts/POST_INTEGRATION_RESUME.md` Claude 절. 실제 S09 기획이 `awaiting_plan_approval`이며 구현 승인 불가 판정. 다음은 사용자의 결정이다)
+**현재 상태: `WAITING_FOR_CODEX_INTEGRATION`** (카카오맵 전환 후속 계약 `fa07aec` 소비자 완료. 다음은 Codex의 통합과 새 기획 공개다. 사람의 기획 승인은 여전히 사용자 몫이다)
 - 관제탑은 Codex `7e9a15e`, Claude `4c54896`을 대조했다. CT36·CT40·CT46 수정의 통합과 CT48 정정을 확인했다. 실제 사용자 기획·배포 승인, 실제 LIVE·복구 수용은 별도로 남는다.
-- 프론트 최신 완료 커밋: **`c892a7f`**(아래 "재개 4", 기획 본문의 읽기 전용 지원 구역). `6fe75ee`(재개 3)는 Codex `2dcbd46`에, `d625f74`·`5c80346`은 `f5a2bc0`에 통합됐다. 계약 채택 `ec7be82`(=8ff4ca1)·`0a87679`(=a6eb8a4).
-- 대기 이유(구체): 실제 카공지도 기획이 지원 공백(외부 지도·장소 공급자 보류)으로 구현 승인 불가 판정이다. 다음 행동은 사용자 결정(공급자 결정 또는 범위 조정 후 수정 요청)이며 Claude가 대신 보내지 않는다. LIVE 서버나 worker를 Claude가 직접 띄우거나 종료하지 않는다.
-- Claude 측 서버 없음(5173 종료). 8000은 Codex 소유 LIVE API(PID 10470, `754165a`)이며 Claude가 종료하지 않는다.
+- 프론트 최신 완료 커밋: **`38aa2d8`**(아래 "재개 5", free_policy enum). 계약 채택 `075a0fa`(=fa07aec). `c892a7f`/`1f1953a`는 Codex `f9f60d8`에 통합됐다. 이전 계약 채택 `ec7be82`(=8ff4ca1)·`0a87679`(=a6eb8a4).
+- 대기 이유(구체): Codex가 `38aa2d8`을 통합한 뒤 새 기획(provider=kakao, status=unconfirmed)을 공개한다. 키·계정·무료 배지 확인·생성 앱 지도 UI는 Codex 범위다. 사람의 기획 승인과 외부 호출은 Claude가 대신하지 않는다.
+- Claude 측 서버 없음. 8000은 Codex 소유 LIVE API(PID 51993, `f9f60d8`)이며 Claude가 종료하지 않는다.
+
+### 재개 5 — 카카오맵 전환 계약 fa07aec: free_policy enum (2026-10-21)
+
+Codex 전달: 원본 `docs/handoffs/codex.md`의 "카카오맵 전환" 절. CR-C14/CR-C15 번호는 그대로다. 계약 전용 `fa07aec`만 채택한다. PlanView.free_policy가 상수에서 두 값의 enum이 됐다. 기존 문구와 "외부 모델 금지·무료 데이터 조건" 새 문구다.
+
+**한 것**
+- `075a0fa`: `fa07aec`를 cherry-pick했다(계약 파일 2개만).
+- `38aa2d8`:
+  - 타입을 다시 생성했다. HTTP SHA256 `6b48afe375253346fe7defb686b599e2ecaf3dc3c23b32039f19208c2ae6b9ba`, protocol `43e0f444…147147`(변경 없음). Codex 인계 값과 같다.
+  - `isPlanView`가 아무 문자열이나 받던 것을 계약의 두 값만 받도록 좁혔다. 다른 정책 문자열은 기획 본문 형식 오류로 처리하고 승인 화면에 쓰지 않는다.
+  - 표시 코드는 바꾸지 않았다. PlanViewBody "무료 정책"이 서버 문구를 그대로 보여 준다.
+  - ReleaseView.details.free_policy는 계약상 자유 문자열 그대로라 손대지 않았다.
+- 근거: `tests/plan-support.test.ts`에 2개 추가.
+  - 두 값은 스키마와 가드를 통과한다. 임의 문구, 뒤 공백, 빈 문자열은 둘 다 거절한다.
+  - 두 문구를 글자 그대로 표시한다.
+  - 수정 전 가드 검사 1개 실패, 수정 후 전체 247개 통과. `vue-tsc` 0, build JS gzip 75.45KB.
+- 기존 기록 호환(실서버, GET만): LIVE run `846eed64…`의 기존 기획(v8·seq14, 명세 `8e303310…`)은 기존 문구(enum 0번)이고 새 스키마 검증을 통과한다. 세션 연결과 GET만 했고 명령은 보내지 않았다.
+
+**확인하지 못한 것**
+- 새 문구가 실린 실제 기획의 화면 표시. Codex가 새 기획을 공개한 뒤에 확인한다.
+- 카카오 키·무료 배지·위치 동의·격리 연결, 사람의 기획 승인. Codex·사용자 범위다.
 
 ### 재개 4 — CR-C14 실서버 표시와 기획 본문의 읽기 전용 지원 구역 (2026-10-21)
 
