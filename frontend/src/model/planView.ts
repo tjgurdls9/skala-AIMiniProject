@@ -1,4 +1,5 @@
 import type { PlanView } from '../api/types'
+import { isPlanSupport } from './planSupport'
 
 const isStrings = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string')
 
@@ -11,5 +12,7 @@ export function isPlanView(value: unknown): value is PlanView {
   if (!Array.isArray(v.acceptance) || !v.acceptance.every((a) => a && typeof a.id === 'string' && typeof a.title === 'string' && typeof a.description === 'string')) return false
   if (v.repository !== null && (typeof v.repository !== 'object' || typeof v.repository?.url !== 'string' || typeof v.repository?.branch !== 'string')) return false
   if (v.deployment !== null && (typeof v.deployment !== 'object' || typeof v.deployment?.label !== 'string')) return false
+  // CR-C14 support는 선택 필드다. 있으면 계약 형식이어야 한다(없으면 지원 정보 미제공으로 따로 표시)
+  if (v.support !== undefined && !isPlanSupport(v.support)) return false
   return !!v.contract_digests && typeof v.contract_digests === 'object'
 }

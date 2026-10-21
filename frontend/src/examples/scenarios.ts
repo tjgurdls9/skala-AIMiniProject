@@ -1,8 +1,8 @@
 // 합성 예시 시나리오 — 화면 상태를 보여주기 위한 것이며 실제 실행·기록 재생이 아니다.
-import type { AcceptanceState, AcceptanceStatus, Environment, ReleaseTarget, RunEvent, Snapshot } from '../api/types'
+import type { AcceptanceState, AcceptanceStatus, Environment, ReleaseTarget, ReleaseView, RunEvent, Snapshot } from '../api/types'
 import {
   CANDIDATE, CONTEXT_BODY, PLAN_APPROVAL_DONE, PLAN_APPROVAL_PENDING, PLAN_VIEW, RETRIEVAL_BODY, SPEC_V1,
-  buildEvents, buildSnapshot, buildTasks, fakeDigest, report, type SnapshotInput,
+  RUN_ID, buildEvents, buildSnapshot, buildTasks, fakeDigest, report, type SnapshotInput,
 } from './base'
 
 export interface ExampleScenario {
@@ -17,6 +17,8 @@ export interface ExampleScenario {
   environments: Record<string, Environment>
   /** 합성 AC 판정(CR-C09 형식). 근거는 공개된 검증 보고서만 가리킨다 */
   acceptance: AcceptanceStatus
+  /** 합성 출시·복구 보기(ReleaseView 형식). 없으면 미설정으로 응답한다 */
+  release?: ReleaseView
 }
 
 const AC_IDS = ['AC-1', 'AC-2', 'AC-3', 'AC-4', 'AC-5']
@@ -102,10 +104,19 @@ const RELEASE_TARGET: ReleaseTarget = {
   review_report_ids: ['rp-validator', 'rp-security'],
 }
 
+/** 합성 출시 근거. 저장소·이미지 주소는 .invalid라 실제로 존재하지 않는다 */
+const RELEASE_DETAILS: NonNullable<ReleaseView['details']> = {
+  repository: { url: 'https://git.example.invalid/office/generated-app', branch: 'generated/example', auto_deploy: false },
+  environment: STAGING,
+  image_reference: 'registry.example.invalid/generated-app@' + CANDIDATE.image,
+  free_policy: '로컬 Docker · 무료 정책 확인(합성)',
+  rollback: { action: 'unpublish_first_release', data_policy: 'preserve_volume_no_schema_migration' },
+}
+
 const DONE_BUILD = { 't-plan': 'succeeded', 't-contract': 'succeeded', 't-data': 'succeeded', 't-api': 'succeeded', 't-infra': 'succeeded', 't-ui': 'succeeded', 't-int': 'succeeded' } as const
 const BUILD_ARTIFACTS = ['a-request', 'a-spec', 'a-contract', 'a-diff-data', 'a-diff-api', 'a-test-api', 'a-diff-ui', 'a-build']
 
-export const SCENARIOS: ExampleScenario[] = [
+const BASE_SCENARIOS: ExampleScenario[] = [
   scenario(
     { id: 'plan-approval', label: '기획 승인 대기', description: '기획안 v1을 읽고 승인하거나 수정을 요청하는 단계' },
     PLAN_EVENTS,
@@ -248,6 +259,21 @@ export const SCENARIOS: ExampleScenario[] = [
     acceptanceOf({ ...FUNCTIONAL_MET, 'AC-5': 'met' }, 'rp-validator'),
   ),
 ]
+
+/** 합성 출시·복구 보기(ReleaseView 형식). 없는 시나리오는 미설정으로 응답한다 */
+const RELEASES: Record<string, ReleaseView> = {
+  'release-approval': { run_id: RUN_ID, enabled: false, state: 'prepared', target: RELEASE_TARGET, details: RELEASE_DETAILS, operations: [], reason: '합성 예시: 출시 대상은 준비됐지만 실제 출시 실행은 비활성입니다.' },
+  succeeded: {
+    run_id: RUN_ID, enabled: false, state: 'applied', target: RELEASE_TARGET, details: RELEASE_DETAILS,
+    operations: [
+      { operation_id: fakeDigest('e1'), action: 'push', state: 'applied', accepted_at: '2026-10-20T10:40:05+09:00', observed_at: '2026-10-20T10:40:20+09:00', reason: '합성 예시: 고정 branch 조회 일치', volume_preserved: null },
+      { operation_id: fakeDigest('e2'), action: 'deploy', state: 'applied', accepted_at: '2026-10-20T10:40:30+09:00', observed_at: '2026-10-20T10:41:10+09:00', reason: '합성 예시: 상태 확인 정상', volume_preserved: null },
+    ],
+    reason: '합성 예시: 배포 결과를 기록으로만 보여 줍니다. 실제 배포가 아닙니다.',
+  },
+}
+
+export const SCENARIOS: ExampleScenario[] = BASE_SCENARIOS.map((s) => (RELEASES[s.id] ? { ...s, release: RELEASES[s.id] } : s))
 
 export function findScenario(id: string | null): ExampleScenario | null {
   return SCENARIOS.find((s) => s.id === id) ?? null

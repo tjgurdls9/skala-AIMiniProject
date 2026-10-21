@@ -118,6 +118,8 @@ export const PLAN_VIEW: PlanView = {
   free_policy: 'Local Ollama Qwen/DeepSeek only; no paid fallback or external API.',
   allowed_tools: ['문서 검색', '작업 파일 읽기·패치', '검증 도구 실행'],
   contract_digests: { 'protocol.v1': fakeDigest('c1'), 'http.v1': fakeDigest('c2') },
+  // CR-C14 합성 지원 정보: 작은 문의 앱 템플릿 안의 요청이라 알려진 공백이 없다
+  support: { template_id: 'requests-v1', spec_version_id: SPEC_V1, request_digest: fakeDigest('9b'), implementation_allowed: true, unsupported: [], external: [] },
 }
 
 export const PLAN_APPROVAL_PENDING: Approval = {

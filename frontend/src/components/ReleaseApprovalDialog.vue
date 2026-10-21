@@ -23,6 +23,8 @@ const props = defineProps<{
   snapshot: Snapshot
   source: RunSource
   readOnly: boolean
+  /** CR-C15 ReleaseView.enabled. 계약상 현재 false 고정이며, false면 승인·거절을 보내지 않는다 */
+  releaseEnabled: boolean
   send: (input: CommandInput, commandId: string) => Promise<SendResult>
 }>()
 const emit = defineEmits<{ close: []; artifact: [id: string] }>()
@@ -104,10 +106,11 @@ async function decide(decision: 'approve' | 'reject'): Promise<void> {
       </label>
       <CommandFeedback :error="form.error.value" />
       <p v-if="readOnly" class="info-box">실제 기록 재생은 읽기 전용입니다. 내용만 확인할 수 있습니다.</p>
+      <p v-else-if="!releaseEnabled" class="info-box">서버가 실제 출시 실행을 비활성으로 알립니다. 대상과 두 보고서만 확인할 수 있고 승인·거절을 보내지 않습니다.</p>
     </template>
     <template #foot>
       <button type="button" class="btn" @click="emit('close')">닫기</button>
-      <template v-if="approval && !readOnly">
+      <template v-if="approval && !readOnly && releaseEnabled">
         <button type="button" class="btn danger" :disabled="form.submitting.value || !feedback.trim()" @click="decide('reject')">배포 거절</button>
         <button type="button" class="btn primary" :disabled="form.submitting.value || !passed || !matchesCandidate" @click="decide('approve')">
           {{ form.submitting.value ? '보내는 중…' : `이 결과를 ${env?.label ?? approval.target.environment_id}에 배포 승인` }}

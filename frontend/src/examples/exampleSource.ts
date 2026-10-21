@@ -17,6 +17,11 @@ export function exampleSource(scenario: ExampleScenario): RunSource {
     getRecording: async () => {
       throw new ApiError(0, 'EXAMPLE_NOOP', '합성 예시는 실제 기록이 아니어서 내보내지 않습니다.')
     },
+    getRelease: async () =>
+      scenario.release ?? {
+        run_id: scenario.snapshot.run_id, enabled: false, state: 'unconfigured', target: null, details: null, operations: [],
+        reason: '합성 예시: 등록된 출시 대상이 없습니다.',
+      },
     openEvents(afterSeq, handlers) {
       const timers: ReturnType<typeof setTimeout>[] = []
       timers.push(setTimeout(() => {

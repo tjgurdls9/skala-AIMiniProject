@@ -43,6 +43,7 @@ function fake(initial: Snapshot) {
     runId: initial.run_id,
     getSnapshot: vi.fn(async () => current),
     getRecording: vi.fn(),
+    getRelease: vi.fn(),
     getAcceptance: vi.fn(() => {
       if (failNext) {
         failNext = false

@@ -46,6 +46,7 @@ function controllable(initial: Snapshot) {
       return current
     }),
     getRecording: vi.fn(),
+    getRelease: vi.fn(),
     getAcceptance: vi.fn(async () => ({ spec_version_id: current.spec_version_id, items: [] })),
     openEvents: vi.fn((after: number, handlers: StreamHandlers) => {
       streams.push({ after, handlers })

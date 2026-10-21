@@ -22,6 +22,7 @@ export type {
   ContextEvidence,
   RecordingBundle,
   RecordingImportResult,
+  ReleaseView,
   RetrievalEvidence,
   Environment,
   Error as ApiErrorBody,
