@@ -227,6 +227,19 @@ describe('Runtime 템플릿·외부 데이터 안내', () => {
     w.unmount()
   })
 
+  test('LIVE 불가 이유로 이미 보인 서버 사유는 외부 데이터 안내에 다시 붙이지 않는다', async () => {
+    const first = '서버 사유 1: 실행기가 연결되지 않았습니다.'
+    const second = '서버 사유 2: 외부 데이터 연결은 보류했습니다.'
+    const w = await start(runtime({ live_available: false, runner_status: 'unavailable', data_source_status: 'unconfigured', reasons: [first, second] }))
+    expect(w.find('#prompt-hint').text()).toContain(first)
+    const notice = w.find('[data-testid="data-notice"]').text()
+    expect(notice).not.toContain(first)
+    expect(notice).toContain(second)
+    // 입력 영역 안에서는 한 번만(대화상자의 전체 사유 목록은 별도 표시)
+    expect(w.find('main.center').text().split(first).length - 1).toBe(1)
+    w.unmount()
+  })
+
   test('외부 데이터가 필요 없는 템플릿은 경고하지 않고, 필드가 없는 옛 서버도 그대로 동작한다', async () => {
     const w = await start(runtime({ template_id: 'requests-v1', data_source_status: 'not_required' }))
     expect(w.find('[data-testid="data-notice"]').exists()).toBe(false)

@@ -43,7 +43,9 @@ const DATA_SOURCE: Record<NonNullable<Runtime['data_source_status']>, string> = 
 const dataNotice = computed<string | null>(() => {
   const rt = runtime.value
   if (!rt || rt.data_source_status !== 'unconfigured') return null
-  const reasons = rt.reasons.length ? ` ${rt.reasons.join(' ')}` : ''
+  // LIVE 불가면 첫 사유는 입력 아래(blocked)에 이미 보이므로 나머지만 붙인다
+  const rest = rt.live_available ? rt.reasons : rt.reasons.slice(1)
+  const reasons = rest.length ? ` ${rest.join(' ')}` : ''
   return `외부 데이터 미설정 — 외부 데이터가 필요한 기능은 동작하지 않습니다. LIVE 가능은 로컬 모델·실행기 준비만 뜻합니다. 요청별 지원 공백은 기획 승인 화면에서 확인하세요.${reasons}`
 })
 
