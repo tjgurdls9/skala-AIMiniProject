@@ -36,6 +36,14 @@ backend/.venv/bin/python -m unittest discover -s backend/tests -v
 backend/.venv/bin/python -m pip check
 ```
 
+커버리지는 개발 전용 도구 `coverage`로 측정한다. 런타임 `requirements.lock`, 실행 이미지, 생성 앱에는 넣지 않으며 PyPI에서 무료로 받는다(이번 측정 7.16.2).
+
+```sh
+backend/.venv/bin/python -m pip install coverage
+backend/.venv/bin/python -m coverage run --branch --source=runner,backend --omit='backend/tests/*' -m unittest discover -s backend/tests
+backend/.venv/bin/python -m coverage report --skip-empty
+```
+
 직접 의존성은 `requirements.txt`, 이번 설치의 전이 의존성 핀은 `requirements.lock`이다. 다른 OS/Python의 재설치는 미확인이다. 외부 공개용 로그인/TLS·다중 사용자 지원은 없으며 loopback/Host/Origin 제한을 해제해 공개 서버로 사용하지 않는다.
 
 ## 키·모델 없는 기록 열람
