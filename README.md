@@ -14,6 +14,7 @@
 - [격리 이미지·스캐너 준비](infra/README.md)
 - [사무실 프론트 실행](frontend/README.md)
 - [키·모델 없는 기록 열람](backend/README.md#키모델-없는-기록-열람)
+- [P01–P05 검증 범위·남은 수용](docs/reports/p01-p05-verification.md)
 
 실행 순서는 API(`127.0.0.1:8000`) → worker → `cd frontend && npm ci && npm run dev`(`127.0.0.1:5173`)다. LIVE는 준비한 로컬 Ollama·Docker·스캐너 DB가 필요하고 합성 예시는 모델 없이 화면을 열 수 있다. 실제 배포·원격 push는 아직 비활성이다.
 

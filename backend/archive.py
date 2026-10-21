@@ -45,10 +45,16 @@ def check(bundle):
         if metadata['kind'] == 'spec':
             validate('PlanView', entry['content'])
             repository = entry['content']['repository']
-            require(repository is None or urlsplit(repository['url']).scheme == 'https', 'FORBIDDEN', '기록의 저장소 URL 형식을 확인하세요.', 403)
+            if repository:
+                parsed = urlsplit(repository['url'])
+                require(parsed.scheme == 'https' and parsed.hostname is not None and parsed.username is None and parsed.password is None,
+                        'FORBIDDEN', '기록의 저장소 URL 형식을 확인하세요.', 403)
         elif metadata['kind'] in ('preview', 'retrieval', 'context'):
             name = {'preview': 'Preview', 'retrieval': 'RetrievalEvidence', 'context': 'ContextEvidence'}[metadata['kind']]
             validate(name, entry['content'])
+            if name == 'ContextEvidence':
+                require(entry['content']['completed_fragments'] <= entry['content']['total_fragments'],
+                        'INVALID_COMMAND', '완료 문맥 조각 수가 전체를 넘습니다.', 422)
             urls = ([entry['content']['url'], entry['content']['origin']] if name == 'Preview' else
                     [s['url'] for s in entry['content']['sources']] if name == 'RetrievalEvidence' else [])
             for url in urls:

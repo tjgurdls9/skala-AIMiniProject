@@ -113,6 +113,17 @@ class ArchiveChecks(unittest.TestCase):
         next(a for a in invalid['snapshot']['artifacts'] if a['id'] == entry['metadata']['id'])['content_digest'] = entry['metadata']['content_digest']
         with self.assertRaises(ValidationError):
             check(seal(invalid))
+        for kind in ('context', 'spec'):
+            invalid = copy.deepcopy(bundle)
+            entry = next(a for a in invalid['artifacts'] if a['metadata']['kind'] == kind)
+            if kind == 'context':
+                entry['content']['completed_fragments'] = entry['content']['total_fragments'] + 1
+            else:
+                entry['content']['repository'] = dict(url='https://user:password@example.org/app', branch='main')
+            entry['metadata']['content_digest'] = digest(entry['content'])
+            next(a for a in invalid['snapshot']['artifacts'] if a['id'] == entry['metadata']['id'])['content_digest'] = entry['metadata']['content_digest']
+            with self.assertRaises(DomainError):
+                check(seal(invalid))
         self.assertTrue(retrieval_ids.issubset({a for t in source['tasks'] for a in t['artifact_ids']}))
         self.assertTrue(retrieval_ids.issubset({a for e in bundle['events'] if e['event_type'] == 'retrieval_finished' for a in e['artifact_ids']}))
         destination = Store(Path(self.temp.name) / 'api-keyless.sqlite3')
