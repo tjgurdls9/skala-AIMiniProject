@@ -63,7 +63,7 @@ export class LiveApi {
     return this.request('GET', `/api/runs/${encodeURIComponent(runId)}/acceptance`)
   }
 
-  /** 실행의 공개 기록 묶음(동결 snapshot·events·공개 artifact). 키·원문 요청·작업 내부는 포함되지 않는다 */
+  /** 실행의 공개 기록 묶음(동결 snapshot·events·공개 artifact). 키·작업 내부는 빠지지만 변경 요청·명세 등 사용자 입력은 포함될 수 있다 */
   getRecording(runId: string): Promise<RecordingBundle> {
     return this.request('GET', `/api/runs/${encodeURIComponent(runId)}/recording`)
   }
