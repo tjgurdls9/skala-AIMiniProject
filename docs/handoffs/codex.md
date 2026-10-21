@@ -7,7 +7,7 @@
 | DEV-P/S | 현재 구현·근거·다음 입력 |
 |---|---|
 | P01/S01 | 원본의 검토한 계획/진입점/프롬프트 10개를 명시 반영. Git/worktree·무료 모델/실행기·소유 경계의 기존 근거 유지. 원본 제품 초안은 가져오지 않음 |
-| P01/S02 | CR-C09/10/11·CR-C12/S12 제공자/소비자 hash 일치. Claude 7da9bac까지 통합(CT36/CT46 포함), 최종 프론트 217개·타입/빌드 통과. 최신 LIVE 수정/재검토 수용은 별도 |
+| P01/S02 | CR-C09/10/11·CR-C12/S12 제공자/소비자 hash 일치. Claude 900425a까지 통합(CT36/CT46 포함), 최종 프론트 217개·타입/빌드 통과. 최신 LIVE 수정/재검토 수용은 별도 |
 | P02/S03 | lease/시도/버전 fence·실제 자식 프로세스 인계 검사·손상 artifact 503·attempt별 프리뷰·취소 자원 조정 구현. 실제 모델/Docker 프로세스 강제 종료·응답 유실의 종합 수용은 미확인 |
 | P02/S04 | 원문 조각/정정 증거·최신 AC·영속 checkpoint/패치 의도·유실 조정 구현/검사. CT40은 c8bbdd7에서 철회/대체를 활성 조건 합집합으로 남기지 않도록 보완. 실제 모델 정정 품질과 필수 집합/한 파일 초과 needs_input 경계는 별도 |
 | P02/S05 | 로컬 Qwen3-Embedding/ACL·버전 cache·단일 추론 lock/순차 unload 및 공개 근거 연결 구현. 실제 의미 검색 6.6초(키워드 0→semantic found), 역할/오류 경계 검사. 일반 검색 품질·장비 전체 경합은 보증하지 않음 |
@@ -27,17 +27,21 @@ S01–02 경계: `docs/planning/phase-completion.md` 전체 및 최신 원본 �
 
 상태: **`INTEGRATED_WITH_ACCEPTANCE_PENDING`**. P01–P05 배정의 독립 가능한 구현·통합·검증/문서 준비를 진행했지만 S09 지도 지원/실제 사용자 승인과 S10/S11 실제 출시 수용은 미완료다. 위 목록과 이 절이 아래 당시 기록보다 우선한다. 별도 재개를 기다리기 위해 P01에서 멈추지 않았다.
 
-- 제공자 `a514b05`, 사본 버전/긴 이력 `6069b04`; Claude CR-C12/S12 `d85ea5a`/인계 `c054287` 병합 `b7f01f0`; CT46 `a8e1590` 병합 `24e7e6c`; 사용자 입력이 없다는 잘못된 export 안내 수정 `7da9bac` 병합 `512b397`. 프론트는 완료 커밋만 병합했으며 직접 수정하지 않았다.
+- 제공자 `a514b05`, 사본 버전/긴 이력 `6069b04`; Claude CR-C12/S12 `d85ea5a`/인계 `c054287` 병합 `b7f01f0`; CT46 `a8e1590` 병합 `24e7e6c`; 사용자 입력이 없다는 잘못된 export 안내 수정 `7da9bac` 병합 `512b397`; 제공자 경계/보고서 `ca0946b`; Claude 오류 안내 `efb73f4`/최종 인계 `900425a` 병합 **`914a269`**. 프론트는 완료 커밋만 병합했으며 직접 수정하지 않았다.
 - 기준/두 경로/브랜치: 공통 `6cc9a0bd8c0e382f4a53a5e4a5fa32c7f5e04b18`; 원본/.worktrees/codex-runtime = work/codex-runtime, 원본/.worktrees/claude-office = work/claude-office. 원본 main의 초안/다른 사용자 변경은 보존했다.
 - 현재 protocol SHA256 **43e0f444b2f6fc408dd177d8db599a7a13f0f3e7e8f0e2993595701c89147147**, HTTP **2b8516cebbb75cb28f1c20ac371706532063f65f3ffa4c425e75f0f37ab2cddc**. Claude 생성 hash와 동일하다. API/공개 artifact 활성화는 소비자 완료 커밋 확인 뒤 수행했다.
 - 변경 파일: `backend/{archive,api,store,contracts,__main__}.py`, `runner/{release,pipeline,worker,context}.py`, 관련 backend/tests·README·계약 전송 문서·[검증 보고서](../reports/p01-p05-verification.md). 검색/문맥 근거는 엄격한 본문·task/event 참조로 공개하며 raw prompt/상대 미확정 검토는 공개하지 않는다. 보호 프록시 파일 hash도 기획 결속에 추가했으므로 옛 승인은 새 보호 입력의 승인으로 재사용할 수 없다.
-- 최종 backend 전체 **57개/43.294초**, 후속 URL 사용자정보/문맥 조각 계수 경계의 archive **6개/5.544초**, 최종 통합 frontend **217개/5.89초**, vue-tsc/Vite build 통과(JS gzip 70.33 KB). fake 모델/mock 외부 도구·합성 승인/PASS와 실제 MCP를 사용한 개발 검사다. 실제 배포나 사용자 승인 근거로 승격하지 않는다.
+- 최종 backend 전체 **57개/43.294초**, 후속 URL 사용자정보/문맥 조각 계수 경계의 archive **6개/5.544초**, 최종 통합 frontend **217개/5.78초**, vue-tsc/Vite build 통과(JS gzip 70.37 KB). fake 모델/mock 외부 도구·합성 승인/PASS와 실제 MCP를 사용한 개발 검사다. 실제 배포나 사용자 승인 근거로 승격하지 않는다.
 - CT36은 현재 spec/state/report 결속과 조회 실패 시 무효화 코드/회귀 통합. CT40은 c8bbdd7의 원문 인용/hash 정정 증거와 철회/대체 조건 처리/새 승인 무효화 검사. CT46은 backend에서 알려진 preview/retrieval/context 본문을 import마다 개별 검증하고 잘못된 역할을 재계산한 해시로도 거절; Claude a8e1590도 역할 원소/형식 오류 표시 회귀를 통합했다. 최신 LIVE 사용자 수용·실제 모델 정정 품질까지 해소했다고 보고하지 않는다.
 - 실제 키 없는 측정: 새 Python 3.14 venv + 고정 backend lock(pip check 통과), Git archive의 신뢰 사무실 build·별도 새 DB, 모델/worker/배포 미설정. 24e7e6c 사본의 HTTP import/export 200·resume 409 REPLAY_READ_ONLY, exporter revision=null(상위 repo 오인 안 함), 원장 11사건/9공개 artifact/2보고서. Chrome에서 서명 없음/읽기 전용·6개 동결 AC/두 보고서·11사건 수신, iframe 0을 확인했다. 개발 합성 기록이며 실제 사용자 승인 아님.
 - 측정 원장 capsule: `runtime-data/submission-check/recording-24e7e6c.json`, digest `sha256:fc46fa492b9f1b7029ff0da47ba6e71a38c00d5f5a6d62f794c559ef424c21e3`, 새 imported run ca233b381f4e4450b7c84a06e7e5429a. 공개 확인 `keyless-http-verification.json`/`keyless-replay-final.jpg`. 사본 API 자체 RSS 단일 관찰 28,944 KiB/CPU 0.1%(51초 시점), 모델/Docker 전체 메모리 측정이 아니다.
 - 한계: 브라우저 file chooser는 확장 파일 접근 권한이 없어 진행하지 못했다. 권한 확대/우회 없음. UI export의 "내보냄"과 manifest는 확인했지만 download event timeout으로 다운로드 파일 자체 확인은 미실행이다. 실제 HTTP/CLI 이동과 분리해서 기록한다. 기록에는 사용자 입력/산출물이 포함될 수 있으므로 공유 전 검토해야 한다. 비밀 패턴 검사는 모든 개인 정보를 자동 익명화하는 기능이 아니다.
 - S10은 실제 target/무료 자격·push 자동 배포 영향·정확한 사용자 기획/출시 승인 없이는 쓰기를 거절한다. 제품 API/worker의 release 결정은 비활성. 내부 어댑터의 registry 조회/후보 결속·원장 pending→조회 조정은 mock 검사이며 실제 push/deploy/rollback·registry upload·cloud·명세 간 데이터 이전은 미실행이다.
-- 다음 대기/요청: Claude는 최신 제공자 코드와 이 인계를 기준으로 실제 API 연결 수용을 확인하고 완료 근거를 인계한다(새 자동 메시지는 없음). 카공지도는 무료 지도/장소 공급자 자격·키/쿼터·attribution/위치 동의와 격리 허용 범위가 필요한 지원 확장 후 실제 기획을 제시해야 한다. 기존 문의 CRUD를 카공지도 수용으로 대체하지 않는다. 실제 출시 대상·승인은 그 이후 필요한 시점에 확인한다.
+- 최종 제공자 실제 확인: **ca0946b**의 새 Git archive/새 빈 DB에서 HTTP import/export 200·같은 manifest 재가져오기 동일 run·resume 409·exporter revision=null을 다시 확인했다. jobs/commands/grants/operations는 모두 0건이다. manifest `sha256:85aa57a613370d3d30c6fd4c9e9bd89c49ed651eef63a9c2b51a4ce1a6b971ea`, imported run a68f83d97531499faeb37bf3a3037a0d. Chrome에 11사건·읽기 전용 배지/보고서/AC, iframe 0개를 확인했다. 914a269의 backend/runner는 ca0946b와 바이트가 같다. 마지막 프론트 오류 안내 수정은 217개 검사와 빌드로 검증했다.
+- 최종 제출 후보: `runtime-data/submission-check/skala-lifecycle-review.tar.gz`와 `.sha256`. 신뢰 사무실 build·전체 추적 코드/lock·검증 보고서/README·공개 기록·KEYLESS_CHECK와 SHA256 목록을 포함하며 원본 DB/키/가중치/venv/node_modules/cache는 제외한다. 코드 revision/기록 digest/파일 목록은 패키지 `CHECKSUMS.json`이 기준이다. 전체 수용·배포 완료 제출본은 아니다.
+- 자체 검증 API/탭은 종료했다. 마지막 API PID 71176의 정상 종료를 확인했고 다른 세션 프로세스/DB/볼륨은 제거하지 않았다. 원본 backend/runner 초기 8개는 049ed58과 바이트 일치를 다시 확인했다.
+- Claude 최종 인계 900425a의 임시 파일 서버 우회 정정을 읽었다. 해당 파일 선택 검사를 수용 근거로 사용하지 않으며 본 세션은 제한을 우회하지 않았다. 파일 선택/다운로드 파일 확인은 미확인으로 남긴다.
+- 다음 대기/요청: Claude의 b7f01f0 기반 키 없는 API 확인은 인계받았으며 최신 LIVE 기획/수정·CT36 실제 흐름/CR-C12 실제 새 원장 표시는 미확인이다. 관제탑은 최신 통합/기록 열람·남은 조건을 검토한다(새 자동 메시지는 없음). 카공지도는 무료 지도/장소 공급자 자격·키/쿼터·attribution/위치 동의와 격리 허용 범위가 필요한 지원 확장 후 실제 기획을 제시해야 한다. 기존 문의 CRUD를 카공지도 수용으로 대체하지 않는다. 실제 출시 대상·승인은 그 이후 필요한 시점에 확인한다.
 
 ## 보완 진행 — 2026-10-21, S03·CR-C13
 
