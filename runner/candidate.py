@@ -55,6 +55,17 @@ def commit_task(workspace, task_id, title):
     return _git(workspace, "rev-parse", "HEAD")
 
 
+def workspace_state(workspace):
+    """(HEAD commit or None, paths that differ from it). Every task ends with a commit, so a difference was made outside a task."""
+    workspace = Path(workspace)
+    if not git_dir_of(workspace).exists() or not _has_head(workspace):
+        return None, []
+    quiet = ["-c", "core.quotePath=false"]
+    changed = _git(workspace, *quiet, "diff", "--name-only", "HEAD").splitlines() + \
+        _git(workspace, *quiet, "ls-files", "--others", "--exclude-standard").splitlines()
+    return _git(workspace, "rev-parse", "HEAD"), sorted(set(changed))
+
+
 def installed_modules(deps):
     """Import names each installed Python distribution provides ({normalised distribution: [top-level modules]}), read from its metadata."""
     result = {}

@@ -15,8 +15,9 @@ from backend.contracts import ROOT, SECRET, canonical, digest, require
 from backend.store import Store, now, uid
 from runner.access import RoleScope, issue_grant
 from runner.builder_loop import BuilderLoop
-from runner.candidate import commit_task, freeze_model
+from runner.candidate import commit_task, freeze_model, workspace_state
 from runner.commands import DockerExecutor
+from runner.intervention import unledgered
 from runner.tools import ToolBox
 from runner.model import ModelUnavailable
 from runner.sandbox import Sandbox
@@ -91,14 +92,25 @@ class Pipeline:
                                      {"HTTPS_PROXY": os.environ["LIFECYCLE_REGISTRY_PROXY"]} if os.environ.get("LIFECYCLE_REGISTRY_PROXY") else None)
         await BuilderLoop(self.store).run(job, worker, toolbox)
 
+    def edits_between_tasks(self, job, workspace):
+        """Intervention marks for changes made after the previous task's commit and before this task started."""
+        last = self.store.code_diffs(job["run_id"], job["packet"]["spec_version_id"])
+        if not last:
+            return []
+        head, dirty = workspace_state(workspace)
+        return ([dict(kind="history_changed", paths=[])] if head != last[-1]["commit"] else []) + \
+               ([dict(kind="edited_between_tasks", paths=dirty)] if dirty else [])
+
     async def build(self, job, worker):
         options = job["packet"]["options"]
         runtime_image = digest(self.tool_executor().images)
         template_id = job["packet"]["template_contract"]["template"]
         workspace = await asyncio.to_thread(self.engine.workspace, job["run_id"], job["packet"]["spec_version_id"], template_id)
+        inherited = await asyncio.to_thread(self.edits_between_tasks, job, workspace)
         before = self.read_tree(workspace)
         await self.model_edit(job, worker, workspace)
         after = self.read_tree(workspace)
+        ledger = self.store.tool_calls(job["run_id"], options["task_id"])
         # one commit per finished task keeps the history reviewers and rollbacks need
         commit = await asyncio.to_thread(commit_task, workspace, options["task_id"], options.get("task_title", "작업"))
         with self.store.transaction() as db:
@@ -109,9 +121,12 @@ class Pipeline:
             changes = [{"path": path, "before_digest": digest(before.get(path, "")), "after_digest": digest(after.get(path, "")),
                         "diff": "".join(difflib.unified_diff(before.get(path, "").splitlines(True), after.get(path, "").splitlines(True), fromfile=path, tofile=path))}
                        for path in sorted(set(before) | set(after)) if before.get(path) != after.get(path)]
+            found = inherited + ([dict(kind="outside_ledger", paths=paths)] if (paths := unledgered([c["path"] for c in changes], ledger)) else [])
             body = dict(spec_version_id=snapshot["spec_version_id"], task_id=task["id"], mode="edit", write_scope=list(options.get("write_scope", [])),
-                        changes=changes, runtime_image=runtime_image, commit=commit)
+                        changes=changes, runtime_image=runtime_image, commit=commit, interventions=found)
             artifact = self.store.artifact(db, snapshot, "code_diff", task["title"] + " 결과", body)
+            if found:
+                self.store.save(db, snapshot, "warning", "도구 원장에 없는 작업 공간 변경이 있어 개입으로 표시했습니다. 자율 수행 근거로 쓰지 않습니다.", bump=False, task_id=task["id"])
             task["artifact_ids"].append(artifact["id"])
             worker.publish_evidence(db, snapshot, job)
             remaining = [t for t in snapshot["tasks"] if t["id"] != task["id"] and t["role"] == "builder" and

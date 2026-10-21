@@ -443,6 +443,18 @@ class Store:
                               (run_id, task_id) if task_id else (run_id,)).fetchall()
         return [{**dict(r), "args": json.loads(r["args"]), "ok": bool(r["ok"])} for r in rows]
 
+    def code_diffs(self, run_id, spec_version_id=None):
+        """Public code_diff artifact bodies of a run, oldest first (they carry the commit and any intervention marks)."""
+        with self.transaction() as db:
+            rows = db.execute("SELECT content FROM artifacts WHERE run_id=? AND public=1 AND json_extract(metadata,'$.kind')='code_diff' ORDER BY rowid",
+                              (run_id,)).fetchall()
+        bodies = [json.loads(r[0]) for r in rows]
+        return [b for b in bodies if spec_version_id in (None, b.get("spec_version_id"))]
+
+    def interventions(self, run_id):
+        """Workspace changes outside the tool ledger, by task; a run with any is development help, not autonomous model work."""
+        return [dict(task_id=b["task_id"], **i) for b in self.code_diffs(run_id) for i in b.get("interventions", [])]
+
     def read_artifact(self, artifact_id):
         with self.transaction() as db:
             row = db.execute("SELECT content, metadata FROM artifacts WHERE id=? AND public=1", (artifact_id,)).fetchone()
