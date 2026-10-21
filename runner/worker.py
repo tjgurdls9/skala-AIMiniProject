@@ -14,7 +14,7 @@ from backend.templates import plan_support, template_contract
 from knowledge import Corpus
 from runner.model import ModelUnavailable, Ollama
 from runner.pipeline import Pipeline
-from runner.commands import tool_policy_digest
+from runner.commands import package_name, tool_policy_digest
 from runner.context import PlanningContext
 from runner.plan_checks import unverified_acceptance
 from runner.plan_extras import PlanExtras
@@ -91,6 +91,7 @@ class Worker:
                         a["target"]["spec_version_id"] == snapshot["spec_version_id"] and
                         a["target_digest"] == digest(a["target"]) and
                         a["target"]["plan_digest"] == digest(package) and
+                        package.get("tool_policy_digest", tool_policy_digest()) == tool_policy_digest() and
                         package.get("support", {}).get("implementation_allowed", True) and
                         package["contract_digests"] == plan_inputs(template_id) for a in snapshot["approvals"])
                 if snapshot["state"] != "planning" and not approved:
@@ -114,6 +115,8 @@ class Worker:
                     scope = db.execute("SELECT mode,files FROM task_scopes WHERE task_id=?", (task["id"],)).fetchone()
                     options["task_id"] = task["id"]
                     options.update(task_kind=task["work_kind"], task_title=task["title"], acceptance_ids=task["acceptance_ids"])
+                    if package is not None and "dependencies" in package:   # the approved range; anything else escalates to the user
+                        options["allowed_dependencies"] = {m: sorted({package_name(m, n) for n in package["dependencies"].get(m, [])}) for m in ("pip", "npm")}
                     if scope:
                         options.update(task_mode=scope["mode"], writable_files=json.loads(scope["files"]), write_scope=json.loads(scope["files"]))
                     task["state"] = "running"

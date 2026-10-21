@@ -345,6 +345,9 @@ class Store:
                         "INVALID_STATE", "기획의 지원 공백을 먼저 해소하세요. 공급자 선택이나 키 준비는 구현 승인이 아닙니다.")
                 require(package["contract_digests"] == plan_inputs(self.template_id(db, run_id)),
                         "STALE_APPROVAL", "계약·템플릿·검사 입력이 바뀌었습니다. 재기획 후 승인하세요.")
+                from runner.commands import tool_policy_digest   # local import: runner.commands imports this module
+                require(package.get("tool_policy_digest", tool_policy_digest()) == tool_policy_digest(),
+                        "STALE_APPROVAL", "도구·명령 정책이 바뀌었습니다. 재기획 후 승인하세요.")
                 approval.update(state="approved" if payload["decision"] == "approve" else "rejected",
                                 decided_by="local-operator", decided_at=now())
                 if "feedback" in payload:

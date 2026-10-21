@@ -123,5 +123,53 @@ class ModelBuildChecks(unittest.TestCase):
         self.assertFalse((Path(self.temp.name) / 'workspaces').exists() and any(Path(self.temp.name).rglob('server/main.py')))
 
 
+    def test_a_changed_tool_policy_makes_an_unapproved_plan_stale_and_blocks_an_approved_one(self):
+        import runner.commands as commands
+        self.worker.model = BuildScripted()
+        self.worker.heartbeat()
+        project = self.store.project(dict(title='generic', request='generic request'))
+        run_id = self.store.create_run(project['project_id'], dict(mode='live'), template_id='blank-v1')['run_id']
+        asyncio.run(self.worker.tick())
+        snapshot = self.store.snapshot(run_id)
+        approval = snapshot['approvals'][-1]
+        original = commands.TOOL_POLICY['timeout_max']
+        commands.TOOL_POLICY['timeout_max'] = original - 1
+        self.addCleanup(commands.TOOL_POLICY.__setitem__, 'timeout_max', original)
+        response = self.post_command(self.command(snapshot, 'decide', dict(approval_id=approval['id'], target_digest=approval['target_digest'], decision='approve')))
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('STALE_APPROVAL', response.text)
+
+    def test_policy_changed_after_approval_stops_the_builder_for_a_new_approval(self):
+        import runner.commands as commands
+        run_id = self.approved_run(BuildScripted())
+        original = commands.TOOL_POLICY['timeout_max']
+        commands.TOOL_POLICY['timeout_max'] = original - 1
+        self.addCleanup(commands.TOOL_POLICY.__setitem__, 'timeout_max', original)
+        snapshot = self.drain(run_id)
+        self.assertEqual(snapshot['state'], 'needs_input')
+        self.assertEqual(self.store.tool_calls(run_id), [])           # nothing ran under the changed policy
+
+    def test_the_approved_dependency_range_reaches_the_builder_and_nothing_else_may_be_installed(self):
+        class Installer(BuildScripted):
+            async def generate(self, packet, schema):
+                if packet.get('step') == 'act' and packet['task']['kind'] == 'contract':
+                    self.calls.append(packet)
+                    return dict(tool='install_dependencies', args=dict(manager='pip', packages=['requests']))
+                return await super().generate(packet, schema)
+        run_id = self.approved_run(Installer())
+        snapshot = self.drain(run_id)
+        self.assertEqual(snapshot['state'], 'needs_input')
+        self.assertIn('의존성', snapshot['reason'])
+        entry = self.store.tool_calls(run_id)[0]
+        self.assertEqual((entry['tool'], entry['ok'], entry['error_code']), ('install_dependencies', False, 'FORBIDDEN'))
+        self.assertEqual(self.executor.calls, [])
+
+
+    def test_claimed_builder_jobs_carry_exactly_the_approved_dependency_names(self):
+        self.approved_run(BuildScripted())
+        job = self.worker.claim()
+        self.assertEqual(job['packet']['options']['allowed_dependencies'], {'pip': ['fastapi'], 'npm': []})
+
+
 if __name__ == '__main__':
     unittest.main()
