@@ -215,3 +215,15 @@ PlanView.free_policy가 기존에는 모든 외부 API를 금지하는 단일 �
 의미 규칙(서버가 강제): 점검도 `manual_acceptance`도 없는 AC가 있으면 `PlanSupport.implementation_allowed=false`이며 승인 버튼은 막힌다. 다른 대안을 고르려면 `ChangePayload.alternative_id`를 담은 `request_changes`(scope=spec)를 보내고, 서버는 직전 초안을 `prior_draft`로 유지한 채 그 대안으로 다시 기획한다. 새 승인은 새 `plan_digest`를 만든다. 점검 명세·작업 분해·의존성은 승인된 `plan_digest`에 포함되므로 승인 후 변경은 재기획이다.
 
 `ChangePayload.alternative_id`(protocol)는 선택적 추가다.
+
+### CR-C18 사람 확인 AC의 승인 (`gate: "acceptance"`)
+
+모두 선택적 추가이며 기존 기록은 영향이 없다. 승인된 기획의 `manual_acceptance`(자동 점검 없이 사람이 확인하기로 한 AC, 화면·사용성 등)를 가진 후보는 자동 판정만으로 출시할 수 없다.
+
+- **새 승인 대상** `AcceptanceTarget`(`Approval.target`의 세 번째 종류): `{gate:"acceptance", spec_version_id, plan_digest, commit_sha, image_digest, ac_ids[1..50], validator_report_id, validator_report_digest}`. 사용자의 확인은 **정확한 후보(커밋·이미지)와 AC id, 그 후보의 validator 보고서**에 결속된다. 같은 `decide` 명령(`approve`/`reject`, `feedback`)을 쓴다.
+- **validator 판정은 바뀌지 않는다.** 사람 확인 AC의 `AcceptanceStatus`는 계속 `not_run`이며 승인으로 `met`가 되지 않는다. 승인 기록은 별도 근거로 표시한다. validator 보고서의 `verdict:"pass"`는 사람 확인을 제외한 모든 AC가 승인된 점검으로 충족됐다는 뜻이고, 보고서 본문에 `manual_pending`(사람 확인 AC id 목록)이 있다.
+- **흐름**: validator·security가 통과하면 `preview_ready`로 가서 사용자가 프리뷰를 보며 확인할 수 있고, 후보와 같은 대상을 가진 `pending` 승인이 하나 생긴다. `approve`가 없으면 배포 승인 대상을 만들지 않는다. `reject`는 해당 승인을 `rejected`로 두고 실행을 `needs_input`으로 보내며 의견은 원문으로 보존한다.
+- **무효화**: 새 후보(커밋·이미지 변경), 명세 변경, 구현 수정 요청은 이전 acceptance 승인을 `invalidated`로 만든다. 옛 승인은 새 후보에 쓸 수 없다.
+- **출시와의 결속**: `ReleaseTarget.acceptance_approval_id`(선택)가 이 승인을 가리킨다. `manual_acceptance`가 있는 후보의 배포 대상에는 `approved` 상태의 같은 후보 승인이 필요하다.
+- 승인은 사용자 조작으로만 생긴다. 서버·모델·테스트 픽스처가 사용자 승인을 만들어 내지 않는다(테스트 픽스처 사용자 조작은 합성 표시).
+
