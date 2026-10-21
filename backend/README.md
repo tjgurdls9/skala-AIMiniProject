@@ -66,21 +66,8 @@ backend/.venv/bin/python -m backend.archive import --database runtime-data/keyle
 출시 어댑터 `runner/release.py`는 고정 Git/registry 조회·보호 프록시가 있는 로컬 Docker 환경·첫 출시 unpublish/볼륨 보존에 한정한 내부 구현이다. 실제 대상/무료 자격·권한과 정확한 사용자 승인 연결 전이므로 제품의 배포 API/worker는 비활성이다. cloud 배포·이미지 registry upload·이전 버전 복원/명세 간 데이터 이전은 제공하지 않는다.
 
 
-## POST-INTEGRATION / 카공지도 프로필
+## 외부 데이터 접근
 
-**최신 선택: Geoapify Free.** [키 준비 안내](../docs/setup/geoapify-local.md)를 따른다. 카카오 준비는 보존하지만 이번 실습에서 사용하지 않는다. `backend/geoapify.py`는 호스트 전용 키·명시 동의·고정 HTTPS 목적지·지역 후보 선택·카페 검색·출처 반환·영속 일 200회 검색/지오코딩 시도 제한을 준비했다. 실제 생성 앱·지도 화면·프리뷰와의 연결 및 사용자 위치 수용은 남아 있다. 아래의 외부 연결 보류/카카오 설명은 이전 시점의 기록이다.
+공급자별 어댑터는 두지 않는다. `backend/external_access.py`는 비공개 설정 파일(현재 사용자 소유·권한 600), 호출자가 넘기는 고정 https 출처·경로, 영속 일일 한도, 429 후 당일 중단, 응답 크기 상한만 제공하는 범용 경계다. 어떤 출처·경로를 허용할지는 승인된 기획의 외부 접근 요청에서 받아야 하며 아직 API/worker와 연결하지 않았다. 키 값은 모델·생성 앱·로그/기록으로 전달하지 않는다.
 
-`LIFECYCLE_TEMPLATE=cafemap-v1`을 API에 설정하면 새 LIVE run의 기본 프로필을 카공지도로 기록한다. 프로필은 run별 불변이며 기존 문의 run/재생을 바꾸지 않는다. worker는 저장된 프로필을 사용하고 실행 이미지/고정 의존성·MCP 쓰기 경계는 재사용한다. 설정하지 않으면 requests-v1이다.
-
-이 확장은 요청 검증·외부 연결 대기·좌표 없는 검색 설정 저장과 해당 모델/작업·독립 검토 경로를 준비한 것이다. 사용자가 외부 연결을 나중에 결정했으므로 공급자·키·지도/실제 카페 데이터는 없다. PlanView.support는 실제 요청/정정·명세에 결속된 공백을 표시하고 implementation_allowed=false인 기획의 approve는 서버도 거절한다. 모델은 요청한 지도/주변 추천을 CRUD·가짜 장소로 바꾸지 않아야 한다.
-
-실제 지도/장소 검색·위치 동의·추천은 보호된 validator에서 not_run으로 남고 프리뷰/출시를 통과하지 못한다. 신뢰 프록시도 /api/map/*의 실제 검색을 차단하며 geolocation 권한을 열지 않는다. 공급자 선택 후 무료 자격/키/쿼터·출처 표시, 위치 사용과 외부 전송 동의, 격리된 경로를 확인하고 새 기획 승인을 받아야 한다. 소스 템플릿의 준비 코드는 제품 런타임이 생성한 완성 앱 증거가 아니다.
-
-CR-C14는 각 PlanView.support의 지원 공백, CR-C15는 GET /api/runs/{id}/release의 읽기 전용 출시/복구 원장이다. Runtime.template_id/data_source_status는 보조 안내다. release 조회는 공급자 재조회/실행을 하지 않으며 과거 조회 시각/볼륨 보존의 근거가 없으면 null을 반환한다. 실제 출시 API/승인은 계속 비활성이다.
-
-
-### 카카오맵 키 준비(외부 연결 보류 해제 이후)
-
-사용자는 카카오맵을 선택했으며 무료 쿼터 배지는 아직 확인하지 못했다. [정확한 키·등록 주소·저장 경로](../docs/setup/kakao-local.md)를 따른다. JavaScript/REST 두 키를 Git 제외 `runtime-data/secrets/kakao.json`(권한 600)에 저장하되 무료 배지를 확인하기 전에는 `free_quota_confirmed=false`를 유지한다. 실제 값은 모델·생성 앱·로그/기록으로 전달하지 않는다.
-
-`backend.kakao`의 신뢰 검색 어댑터는 키/무료 자격/유료 API 비활성/명시 동의가 없으면 네트워크를 호출하지 않는다. 고정 Kakao CE7 카페 검색만 사용하고 로컬 일 200회 시도 제한·429 후 당일 중단·응답 크기/형식 제한을 적용한다. 현재는 MockTransport 검사만 했으며 API/worker·지도 화면·생성 앱 프리뷰에 연결하지 않았다. 예약 도메인 `http://localhost:8017`은 아직 기동된 서비스가 아니다. 실제 기획·배포 승인은 별도다.
+CR-C14는 각 PlanView.support의 지원 공백, CR-C15는 GET /api/runs/{id}/release의 읽기 전용 출시/복구 원장이다. Runtime.template_id/data_source_status는 보조 안내다. PlanView.support에 implementation_allowed=false가 있으면 approve는 서버도 거절한다.

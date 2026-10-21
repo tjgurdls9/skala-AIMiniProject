@@ -43,9 +43,6 @@ def plan_inputs(template_id="requests-v1"):
     files = ["docs/planning/" + name for name in SCHEMAS] + [
         "templates/" + template_id + "/contract.json", "templates/requests-v1/requirements.lock",
         "infra/Dockerfile.runtime", "infra/Dockerfile.candidate", "infra/checks/validate.py", "infra/checks/security.py", "infra/checks/preview.py", "runner/worker.py"]
-    if template_id == "cafemap-v1":
-        files.append("infra/checks/validate_cafemap.py")
-        files.extend(["backend/geoapify.py", "backend/map_access.py"])
     return {name: "sha256:" + hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in files}
 
 

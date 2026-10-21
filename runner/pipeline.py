@@ -381,8 +381,7 @@ class Pipeline:
             self.engine.docker("run", "-d", *self.engine.limits(operation["proxy"], operation["network"]),
                 "--network", ingress,
                 "--mount", f"type=bind,src={ROOT / 'infra/checks'},dst=/checks,readonly",
-                "-p", f"127.0.0.1:{operation['port']}:8081", self.engine.runtime(), "python", "/checks/preview.py", operation["app"] + ":8080",
-                *(["cafemap-v1"] if candidate.get("template_id") == "cafemap-v1" else []))
+                "-p", f"127.0.0.1:{operation['port']}:8081", self.engine.runtime(), "python", "/checks/preview.py", operation["app"] + ":8080")
 
     def cleanup_preview(self, operation):
         stopped = self.engine.cleanup(operation["proxy"])

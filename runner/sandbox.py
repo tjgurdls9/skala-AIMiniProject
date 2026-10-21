@@ -85,8 +85,6 @@ class Sandbox:
             legacy = [d for d in ("app_backend", "app_frontend") if (source / d).is_dir()]   # fixed starters ship app code; a blank one ships none
             for directory in legacy:
                 shutil.copytree(source / directory, path / directory)
-            if template_id == "cafemap-v1":
-                shutil.copytree(ROOT / "templates/requests-v1/app_frontend/vendor", path / "app_frontend/vendor")
             if legacy:
                 (path / ".dockerignore").write_text("*\n!app_backend/\n!app_backend/**\n!app_frontend/\n!app_frontend/**\n")
         require(not any(p.is_symlink() for p in path.rglob("*")), "FORBIDDEN", "작업 공간에 심볼릭 링크가 있습니다.", 403)

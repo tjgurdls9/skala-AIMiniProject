@@ -69,7 +69,7 @@ class DockerEnvironment:
                 volumes[0]['Type'] == 'volume' and volumes[0]['Name'] == manifest['resources']['volume'] and volumes[0]['Destination'] == '/data' and
                 proxy['Image'] == manifest['proxy_image_digest'] and proxy['Config']['User'] == '65534:65534' and
                 proxy['HostConfig']['ReadonlyRootfs'] and not proxy['HostConfig']['Privileged'] and 'ALL' in proxy['HostConfig']['CapDrop'] and
-                proxy['Config']['Cmd'] == ['python', '/checks/preview.py', name + ':8080'] + (['cafemap-v1'] if manifest.get('template_id') == 'cafemap-v1' else []) and
+                proxy['Config']['Cmd'] == ['python', '/checks/preview.py', name + ':8080'] and
                 len(proxy_mounts) == 1 and proxy_mounts[0]['Type'] == 'bind' and proxy_mounts[0]['Source'] == str(ROOT / 'infra/checks') and
                 proxy_mounts[0]['Destination'] == '/checks' and proxy_mounts[0]['RW'] is False and
                 all(m['Type'] == 'tmpfs' for m in proxy['Mounts'] if m['Destination'] == '/tmp') and

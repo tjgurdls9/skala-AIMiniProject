@@ -106,7 +106,7 @@ class Reviewer:
     def validation(self, candidate):
         network, app, checker = ("lifecycle-" + uid() for _ in range(3))
         checks = ROOT / "infra/checks"
-        script = "validate_cafemap.py" if candidate.get("template_id") == "cafemap-v1" else "validate.py"
+        script = "validate.py"
         try:
             self.check_current()
             self.engine.docker("network", "create", "--internal", network)
