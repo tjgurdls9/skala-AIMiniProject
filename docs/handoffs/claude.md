@@ -6,11 +6,11 @@
 
 이 절은 아래의 이전 기록보다 우선한다. 지시는 원본의 `docs/prompts/CLAUDE_PHASE_COMPLETION.md`와 `docs/planning/phase-completion.md`를 따른다. 기준은 Claude `b3a52bc`, Codex `c3e11c1`이다.
 
-**현재 상태: `WAITING_FOR_LIVE_SERVER`** (재개 지시: 원본 `docs/prompts/POST_INTEGRATION_RESUME.md` Claude 절. `WAITING_FOR_CONTROL_TOWER`는 해제됐다. CR-C14·CR-C15 소비 완료 `d625f74`)
+**현재 상태: `WAITING_FOR_LIVE_PLAN`** (재개 지시: 원본 `docs/prompts/POST_INTEGRATION_RESUME.md` Claude 절. CR-C14·CR-C15 소비 `d625f74`, 실제 LIVE 확인과 실행 근거 수정 `6fe75ee`)
 - 관제탑은 Codex `7e9a15e`, Claude `4c54896`을 대조했다. CT36·CT40·CT46 수정의 통합과 CT48 정정을 확인했다. 실제 사용자 기획·배포 승인, 실제 LIVE·복구 수용은 별도로 남는다.
 - 프론트 최신 완료 커밋: **`6fe75ee`**(아래 "재개 3", 실제 LIVE 확인 중 발견한 실행 근거 표시). `d625f74`(재개 2)·`5c80346`(재개 1)은 Codex `f5a2bc0`에 통합됐다. 계약 채택 `ec7be82`(=8ff4ca1)·`0a87679`(=a6eb8a4).
 - 대기 이유(구체): 실제 LIVE run이 기획 단계 `needs_input`(문맥 예산 초과)에 멈춰 PlanView가 없다. CR-C14 실제 확인은 Codex 수정(`754165a`) 뒤 기획이 진행돼야 가능하다. LIVE 서버나 worker를 Claude가 직접 띄우거나 종료하지 않는다.
-- 남은 확인용 서버 없음. 8000·5173 포트는 비어 있다.
+- Claude 측 서버 없음(5173 종료). 8000은 Codex 소유 LIVE API(PID 10470, `754165a`)이며 Claude가 종료하지 않는다.
 
 ### 재개 3 — 실제 S09 LIVE run 확인 (2026-10-21)
 
