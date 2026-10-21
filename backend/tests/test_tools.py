@@ -475,6 +475,72 @@ class ToolBoxGateChecks(unittest.TestCase):
             self.box.move_file('server/main.py', 'server/other.py', digest('old'))
 
 
+class ToolBoxSemantics(unittest.TestCase):
+    """Behaviour found by running the real model: infrastructure errors are not test results; reads remember digests."""
+
+    def setUp(self):
+        self.temp = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.store = Store(self.temp / 'state.sqlite3')
+        project = self.store.project(dict(title='synthetic', request='generic request'))
+        self.run_id = self.store.create_run(project['project_id'], dict(mode='live'))['run_id']
+        (self.temp / 'ws').mkdir()
+        self.executor = RecordingExecutor()
+        self.who = dict(role='builder', run_id=self.run_id, job_id='j', attempt_id='a', task_id='t1', task_kind='backend')
+        self.box = ToolBox(lambda: self.who, self.store, Workspace(self.temp / 'ws'), self.executor, deps_dir=self.temp / 'deps')
+
+    def test_docker_level_exit_codes_are_infrastructure_errors_never_failing_tests(self):
+        for code in (125, 126, 127):
+            self.executor.result = CommandResult(code, '', 'docker: Error response from daemon: invalid mount config', False, False)
+            with self.assertRaises(DomainError) as caught:
+                self.box.run_tests(['python', '-m', 'unittest'])
+            self.assertEqual(caught.exception.code, 'RUNTIME_UNAVAILABLE')
+        entries = self.store.tool_calls(self.run_id)
+        self.assertEqual([(e['tool'], e['ok'], e['error_code']) for e in entries], [('run_tests', False, 'RUNTIME_UNAVAILABLE')] * 3)
+        from runner.tdd_gate import progress
+        self.box.write_file('tests/test_a.py', 't')
+        self.executor.result = CommandResult(125, '', 'x', False, False)
+        with self.assertRaises(DomainError):
+            self.box.run_tests(['python', '-m', 'unittest'])
+        self.assertEqual(progress(self.store.tool_calls(self.run_id, 't1'), 'backend').phase, 'red')   # no RED from a broken container
+
+    def test_a_real_test_failure_with_an_ordinary_exit_code_is_still_a_result(self):
+        self.executor.result = CommandResult(1, 'FAIL', '', False, False)
+        self.assertEqual(self.box.run_tests(['python', '-m', 'unittest'])['exit_code'], 1)
+
+    def test_overwriting_a_file_the_model_has_just_seen_needs_no_digest_plumbing(self):
+        self.box.write_file('tests/test_a.py', 'one')
+        self.box.write_file('tests/test_a.py', 'two')                      # the box knows the digest it just wrote
+        self.assertEqual(self.box.read_file('tests/test_a.py')['content'], 'two')
+        (self.temp / 'ws' / 'tests' / 'test_a.py').write_text('changed outside')
+        with self.assertRaises(DomainError) as caught:                      # but never blindly over an unseen change
+            self.box.write_file('tests/test_a.py', 'three')
+        self.assertEqual(caught.exception.code, 'VERSION_CONFLICT')
+        self.box.read_file('tests/test_a.py')
+        self.box.write_file('tests/test_a.py', 'three')
+        self.assertEqual((self.temp / 'ws' / 'tests' / 'test_a.py').read_text(), 'three')
+
+    def test_a_file_never_seen_still_needs_the_digest_and_list_files_counts_as_seeing(self):
+        self.who = dict(self.who, task_kind=None)           # the RED gate is not what this test is about
+        (self.temp / 'ws' / 'old.txt').write_text('old')
+        with self.assertRaises(DomainError):
+            self.box.write_file('old.txt', 'new')
+        self.box.list_files()
+        self.box.write_file('old.txt', 'new')
+        self.assertEqual((self.temp / 'ws' / 'old.txt').read_text(), 'new')
+
+    def test_an_explicit_wrong_digest_is_still_a_conflict(self):
+        self.who = dict(self.who, task_kind=None)           # the RED gate is not what this test is about
+        self.box.write_file('a.txt', 'one')
+        with self.assertRaises(DomainError):
+            self.box.write_file('a.txt', 'two', 'sha256:wrong')
+
+    def test_rejected_test_forms_name_the_allowed_ones(self):
+        with self.assertRaises(DomainError) as caught:
+            self.box.run_tests(['python', 'test_a.py'])
+        for form in ('python -m unittest', 'python -m pytest', 'node --test', 'npm test'):
+            self.assertIn(form, caught.exception.message)
+
+
 class McpWiringChecks(unittest.TestCase):
     def setUp(self):
         self.temp = Path(self.enterContext(tempfile.TemporaryDirectory()))

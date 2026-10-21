@@ -55,7 +55,7 @@ INSTRUCTIONS = (
     '{"tool":"list_files","args":{}} ; {"tool":"read_file","args":{"path":"<path>"}} ; '
     '{"tool":"write_file","args":{"path":"<path>","content":"<text>"}} ; {"tool":"run_tests","args":{"argv":["<runner>","<arg>"]}} ; '
     '{"tool":"finish","summary":"<text>"} (finish is offered only when the server allows it). '
-    "Other tools: delete_file(path, expected_digest), move_file(source, target, expected_digest), run_command(argv, cwd, timeout), "
+    "run_tests accepts only python -m unittest|pytest ..., node --test ..., npm test. Other tools: delete_file(path, expected_digest), move_file(source, target, expected_digest), run_command(argv, cwd, timeout), "
     "install_dependencies(manager, packages). argv is a list, never a shell string. Pass expected_digest (from read_file/list_files) when "
     "changing an existing file. Write only inside write_scope; test files must be inside it too, with conventional names "
     "(test_*.py, *_test.py, *.test.js, tests/). Environment: commands have no network; the python image has only the standard library "
@@ -141,8 +141,8 @@ class BuilderLoop:
         except TypeError as error:
             return dict(ok=False, error="인자 형식 오류: " + str(error)[:200]), "bad-args"
         except DomainError as error:
-            if getattr(error, "needs_input", False):
-                raise
+            if getattr(error, "needs_input", False) or error.code in ("RUNTIME_UNAVAILABLE", "TEMPORARILY_UNAVAILABLE"):
+                raise   # the user, or a resource wait, decides; the model is not asked to retry around a broken container
             return dict(ok=False, error=f"{error.code}: {error.message}"), f"{error.code}:{error.message}"
         observation = dict(ok=True)
         if tool == "read_file":

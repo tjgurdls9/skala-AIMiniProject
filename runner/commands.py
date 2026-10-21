@@ -61,7 +61,8 @@ def validate_test_command(argv):
     is_python = len(argv) > 2 and argv[0] in ("python", "python3") and argv[1] == "-m" and argv[2] in ("pytest", "unittest")
     is_node = len(argv) > 1 and argv[0] == "node" and argv[1] == "--test"
     is_npm = len(argv) > 1 and argv[0] == "npm" and (argv[1] == "test" or argv[1:3] == ["run", "test"])
-    require(is_python or is_node or is_npm, "FORBIDDEN", "시험 실행기 형식이 아닙니다.", 403)
+    require(is_python or is_node or is_npm, "FORBIDDEN",
+            "시험 실행기 형식이 아닙니다. 허용: python -m unittest ..., python -m pytest ..., node --test ..., npm test", 403)
 
 
 def package_name(manager, spec):

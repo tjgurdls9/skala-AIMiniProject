@@ -32,6 +32,7 @@ class ToolBox:
         self.authority, self.store, self.workspace, self.executor = authority, store, workspace, executor
         self.allowed_dependencies, self.registry_network = allowed_dependencies, registry_network
         self.registry_env, self.deps_dir = registry_env, deps_dir
+        self.seen = {}   # path -> content digest the model has read, listed or written itself (implicit compare-and-swap)
 
     @classmethod
     def from_scope(cls, store, scope, executor, registry_network=None, registry_env=None):
@@ -71,15 +72,29 @@ class ToolBox:
 
     # -- files ----------------------------------------------------------
     def list_files(self):
-        return self._call("list_files", {}, READ_ROLES, lambda who: self._ok(dict(files=self.workspace.list_files())))
+        def action(who):
+            files = self.workspace.list_files()
+            self.seen.update({f["path"]: f["content_digest"] for f in files if f["content_digest"]})
+            return self._ok(dict(files=files))
+        return self._call("list_files", {}, READ_ROLES, action)
 
     def read_file(self, path):
-        return self._call("read_file", dict(path=path), READ_ROLES, lambda who: self._ok(self.workspace.read(path)))
+        def action(who):
+            result = self.workspace.read(path)
+            self.seen[path] = result["content_digest"]
+            return self._ok(result)
+        return self._call("read_file", dict(path=path), READ_ROLES, action)
 
     def write_file(self, path, content, expected_digest=None):
         args = dict(path=path, expected_digest=expected_digest, content_digest=digest(content) if isinstance(content, str) else None,
                     content_bytes=len(content.encode()) if isinstance(content, str) else None)
-        return self._call("write_file", args, BUILD_ROLES, lambda who: self._mutate(who, [path], lambda: self.workspace.write(path, content, expected_digest)))
+
+        def write():
+            # No digest given: allowed only over the exact content this box has already shown or written (never a blind overwrite).
+            result = self.workspace.write(path, content, expected_digest if expected_digest is not None else self.seen.get(path))
+            self.seen[path] = result["content_digest"]
+            return result
+        return self._call("write_file", args, BUILD_ROLES, lambda who: self._mutate(who, [path], write))
 
     def delete_file(self, path, expected_digest):
         return self._call("delete_file", dict(path=path, expected_digest=expected_digest), BUILD_ROLES,
@@ -112,9 +127,13 @@ class ToolBox:
             return self._execute(command)
         return self._call("run_tests", dict(argv=argv, cwd=cwd, timeout=timeout), BUILD_ROLES, action)
 
+    INFRASTRUCTURE_EXIT_CODES = frozenset({125, 126, 127})   # docker could not start / invoke / find the program: not a program result
+
     def _execute(self, command, network="none", env=None, deps_writable=False):
         result = self.executor.run(self.workspace.root, command["argv"], command["cwd"], command["timeout"], network=network, env=env,
                                    deps=self.deps_dir, deps_writable=deps_writable)
+        if result.exit_code in self.INFRASTRUCTURE_EXIT_CODES:
+            raise DomainError("RUNTIME_UNAVAILABLE", "격리 컨테이너가 명령을 실행하지 못했습니다: " + excerpt(result.stderr)[:200], 503)
         public = dict(exit_code=result.exit_code, stdout=redact(result.stdout), stderr=redact(result.stderr),
                       timed_out=result.timed_out, truncated=result.truncated, removed_links=self.workspace.sanitize())
         return public, dict(exit_code=result.exit_code, stdout_digest=digest(result.stdout), stderr_digest=digest(result.stderr),

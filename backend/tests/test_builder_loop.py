@@ -121,6 +121,12 @@ class LoopChecks(unittest.TestCase):
         self.assertIn('반복', caught.exception.message)
         self.assertLessEqual(len(script.packets), 6)
 
+    def test_a_broken_container_stops_the_run_as_a_resource_wait_not_as_a_model_mistake(self):
+        self.executor.run = lambda workspace, argv, cwd, timeout, **kw: CommandResult(125, '', 'docker: daemon error', False, False)
+        with self.assertRaises(DomainError) as caught:
+            self.run_loop([act('write_file', path='tests/test_a.py', content='t'), act('run_tests', argv=['python', '-m', 'unittest'])])
+        self.assertEqual(caught.exception.code, 'RUNTIME_UNAVAILABLE')
+
     def test_progress_resets_the_repetition_streak(self):
         self.codes = [1, 0]
         result, _ = self.run_loop([act('read_file', path='missing.txt')] * 2 + [
@@ -254,6 +260,8 @@ class LoopChecks(unittest.TestCase):
         self.assertIn('아직 끝낼 수 없습니다', script.packets[1]['last_observation']['error'])
 
     def test_instructions_use_placeholders_and_no_task_material(self):
+        for form in ('python -m unittest', 'node --test', 'npm test'):
+            self.assertIn(form, INSTRUCTIONS)
         for placeholder in ('<path>', '<text>', '<runner>'):
             self.assertIn(placeholder, INSTRUCTIONS)
         for material in ('add(', 'reverse', 'Hello', '덧셈', '뒤집'):
