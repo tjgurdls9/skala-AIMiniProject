@@ -1,0 +1,177 @@
+"""F3: the model-driven builder loop. A scripted fake model chooses actions; the server executes, records and judges."""
+import asyncio
+import copy
+import tempfile
+import unittest
+from pathlib import Path
+
+from backend.contracts import DomainError, canonical, digest
+from backend.store import Store
+from runner.commands import CommandResult
+from runner.context import BUDGET
+from runner.builder_loop import ACTION_SCHEMA, BuilderLoop
+from runner.tools import ToolBox
+from runner.workspace import Workspace
+from test_tools import RecordingExecutor
+
+SPEC = dict(spec_version_id='s' * 32, goal='목표', features=['기능'], non_goals=[], constraints=['무료만'],
+            acceptance=[dict(id='AC1', title='첫째', description='첫째 조건'), dict(id='AC2', title='둘째', description='둘째 조건')],
+            verification=[dict(id='AC1-1', ac_ids=['AC1'], kind='http', steps=[dict(method='GET', path='/health', expect=dict(status=200))]),
+                          dict(id='AC2-1', ac_ids=['AC2'], kind='command', argv=['python', '-m', 'pytest'], expect=dict(exit=0))],
+            dependencies=dict(pip=['fastapi'], npm=[]))
+
+
+class Script:
+    """Replays a fixed list of actions (dicts); records every packet it was shown."""
+    def __init__(self, actions):
+        self.actions, self.packets = list(actions), []
+
+    async def infer(self, job, call, schema):
+        self.packets.append(copy.deepcopy(call))
+        return self.actions.pop(0)
+
+
+def act(tool, **args):
+    return dict(tool=tool, args=args)
+
+
+FINISH = dict(tool='finish', summary='끝')
+
+
+class LoopChecks(unittest.TestCase):
+    def setUp(self):
+        self.temp = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.store = Store(self.temp / 'state.sqlite3')
+        project = self.store.project(dict(title='synthetic', request='generic request'))
+        self.run_id = self.store.create_run(project['project_id'], dict(mode='live'))['run_id']
+        (self.temp / 'ws').mkdir()
+        self.executor = RecordingExecutor()
+        self.codes = []
+
+        def run(workspace, argv, cwd, timeout, **kwargs):
+            code = self.codes.pop(0) if self.codes else 0
+            return CommandResult(code, 'out', 'err', False, False)
+        self.executor.run = run
+
+    def toolbox(self, kind='backend'):
+        who = dict(role='builder', run_id=self.run_id, job_id='j', attempt_id='a', task_id='t1', task_kind=kind)
+        return ToolBox(lambda: who, self.store, Workspace(self.temp / 'ws'), self.executor, deps_dir=self.temp / 'deps')
+
+    def job(self, kind='backend'):
+        return dict(run_id=self.run_id, id='j', packet=dict(
+            latest_spec=SPEC, prior_draft=None, mandatory_policy='policy', unresolved_failures=[],
+            options=dict(task_id='t1', task_kind=kind, task_title='서버', acceptance_ids=['AC1'], write_scope=['server/**', 'tests/**'])))
+
+    def run_loop(self, actions, kind='backend', toolbox=None):
+        script = Script(actions)
+        result = asyncio.run(BuilderLoop(self.store).run(self.job(kind), script, toolbox or self.toolbox(kind)))
+        return result, script
+
+    def test_a_full_tdd_cycle_is_executed_recorded_and_accepted_by_the_server(self):
+        self.codes = [1, 0]
+        result, script = self.run_loop([
+            act('write_file', path='tests/test_a.py', content='t'), act('run_tests', argv=['python', '-m', 'pytest']),
+            act('write_file', path='server/main.py', content='c'), act('run_tests', argv=['python', '-m', 'pytest']), FINISH])
+        self.assertEqual(result['summary'], '끝')
+        entries = self.store.tool_calls(self.run_id, 't1')
+        self.assertEqual([(e['tool'], e['exit_code']) for e in entries],
+                         [('write_file', None), ('run_tests', 1), ('write_file', None), ('run_tests', 0)])
+        self.assertEqual([p['gate']['phase'] for p in script.packets], ['red', 'red', 'impl', 'impl', 'done'])
+
+    def test_finishing_early_is_refused_and_the_reason_goes_back_to_the_model(self):
+        self.codes = [1, 0]
+        result, script = self.run_loop([
+            FINISH, act('write_file', path='tests/test_a.py', content='t'), act('run_tests', argv=['python', '-m', 'pytest']),
+            act('write_file', path='server/main.py', content='c'), act('run_tests', argv=['python', '-m', 'pytest']), FINISH])
+        self.assertEqual(len(script.packets), 6)
+        self.assertFalse(script.packets[1]['last_observation']['ok'])
+        self.assertIn('변경', script.packets[1]['last_observation']['error'])
+
+    def test_a_denied_or_malformed_action_is_an_observation_not_a_crash(self):
+        self.codes = [1, 0]
+        result, script = self.run_loop([
+            act('write_file', path='server/main.py', content='too early'),             # RED gate refuses
+            dict(tool='format_disk', args={}),                                          # not a tool
+            act('read_file', path='../escape'),                                         # path policy
+            act('write_file', path='tests/test_a.py', content='t'), act('run_tests', argv=['python', '-m', 'pytest']),
+            act('write_file', path='server/main.py', content='c'), act('run_tests', argv=['python', '-m', 'pytest']), FINISH])
+        self.assertEqual(result['summary'], '끝')
+        errors = [p['last_observation'] for p in script.packets[1:4]]
+        self.assertTrue(all(not o['ok'] for o in errors))
+        self.assertIn('FORBIDDEN', errors[0]['error'])
+        self.assertIn('형식', errors[1]['error'])
+
+    def test_the_same_action_with_the_same_outcome_three_times_stops_for_the_user(self):
+        with self.assertRaises(DomainError) as caught:
+            self.run_loop([act('read_file', path='missing.txt')] * 5)
+        self.assertEqual(caught.exception.code, 'INVALID_COMMAND')
+        self.assertIn('반복', caught.exception.message)
+
+    def test_progress_resets_the_repetition_streak(self):
+        self.codes = [1, 0]
+        result, _ = self.run_loop([act('read_file', path='missing.txt')] * 2 + [
+            act('write_file', path='tests/test_a.py', content='t'), act('read_file', path='missing.txt'),
+            act('run_tests', argv=['python', '-m', 'pytest']), act('write_file', path='server/main.py', content='c'),
+            act('run_tests', argv=['python', '-m', 'pytest']), FINISH])
+        self.assertEqual(result['summary'], '끝')
+
+    def test_every_packet_stays_within_the_budget_and_never_carries_other_roles_data(self):
+        for index in range(80):
+            (self.temp / 'ws' / f'file{index}.txt').write_text('x' * 50)
+        self.codes = [1, 0]
+        big = 'y' * 20000
+        (self.temp / 'ws' / 'big.txt').write_text(big[:60000])
+        result, script = self.run_loop([
+            act('read_file', path='big.txt'), act('write_file', path='tests/test_a.py', content='t'),
+            act('run_tests', argv=['python', '-m', 'pytest']), act('write_file', path='server/main.py', content='c'),
+            act('run_tests', argv=['python', '-m', 'pytest']), FINISH])
+        self.assertTrue(all(len(canonical(p).encode()) <= BUDGET for p in script.packets))
+        allowed = {'role', 'step', 'mandatory_policy', 'approved_spec', 'prior_draft', 'unresolved_failures', 'task', 'acceptance', 'checks',
+                   'dependencies', 'files', 'history', 'last_observation', 'gate', 'instructions'}
+        self.assertTrue(all(set(p) <= allowed for p in script.packets))
+
+    def test_only_this_tasks_acceptance_and_checks_are_shown(self):
+        script = Script([act('write_file', path='tests/test_a.py', content='t')])
+        with self.assertRaises(IndexError):          # the script ends after one action; only the first packet matters here
+            asyncio.run(BuilderLoop(self.store).run(self.job(), script, self.toolbox()))
+        first = script.packets[0]
+        self.assertEqual([a['id'] for a in first['acceptance']], ['AC1'])
+        self.assertEqual([c['id'] for c in first['checks']], ['AC1-1'])
+        self.assertEqual(first['task']['kind'], 'backend')
+
+    def test_history_is_rebuilt_from_the_ledger_after_a_restart(self):
+        self.codes = [1]
+        script = Script([act('write_file', path='tests/test_a.py', content='t'), act('run_tests', argv=['python', '-m', 'pytest'])])
+        with self.assertRaises(IndexError):
+            asyncio.run(BuilderLoop(self.store).run(self.job(), script, self.toolbox()))
+        again = Script([act('read_file', path='other')])
+        with self.assertRaises(IndexError):          # a fresh loop instance (a restarted worker) starts from the ledger
+            asyncio.run(BuilderLoop(self.store).run(self.job(), again, self.toolbox()))
+        history = again.packets[0]['history']
+        self.assertTrue(any(h['tool'] == 'run_tests' and h['exit_code'] == 1 for h in history))
+        self.assertEqual(again.packets[0]['gate']['phase'], 'impl')
+        self.assertNotIn('content', canonical(history))
+
+    def test_an_install_outside_the_approved_range_escalates_to_the_user(self):
+        from runner.tools import EscalateToUser
+        box = self.toolbox()
+        box.allowed_dependencies = {'pip': {'fastapi'}}
+        with self.assertRaises(EscalateToUser):
+            self.run_loop([act('install_dependencies', manager='pip', packages=['requests'])], toolbox=box)
+
+    def test_non_tdd_tasks_need_a_change_but_no_test_phase(self):
+        result, script = self.run_loop([act('write_file', path='contract/api.json', content='{}'), FINISH], kind='contract')
+        self.assertEqual(result['summary'], '끝')
+        self.assertEqual(script.packets[0]['gate']['phase'], 'free')
+
+    def test_action_schema_accepts_only_known_tools(self):
+        from jsonschema import Draft202012Validator
+        validator = Draft202012Validator(ACTION_SCHEMA)
+        validator.validate(dict(tool='finish', summary='x'))
+        validator.validate(dict(tool='write_file', args={}))
+        with self.assertRaises(Exception):
+            validator.validate(dict(tool='rm_rf', args={}))
+
+
+if __name__ == '__main__':
+    unittest.main()
