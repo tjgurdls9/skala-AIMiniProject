@@ -153,10 +153,11 @@ class Reviewer:
         finally:
             for name in [app, *env.checkers]:
                 self.engine.cleanup(name)
-            try:
-                self.engine.docker("network", "rm", network)
-            except ModelUnavailable:
-                pass
+            for resource in (("network", "rm", network), ("volume", "rm", app + "-data")):   # the validation app's data is throwaway
+                try:
+                    self.engine.docker(*resource)
+                except ModelUnavailable:
+                    pass
 
     def wait_healthy(self, env, path):
         for _ in range(HEALTH_TRIES):

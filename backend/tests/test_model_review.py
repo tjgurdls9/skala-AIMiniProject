@@ -84,6 +84,12 @@ class ValidationRun(unittest.TestCase):
         started = next(c for c in calls if c[0] == 'start')
         self.assertIn(started[2], self.engine.cleaned)                       # the app container is always removed
 
+    def test_the_throwaway_data_volume_of_the_validation_app_is_removed_too(self):
+        reviewer = self.reviewer(lambda method, path, body: dict(status=200, body={'ok': True}))
+        self.validate(reviewer, [http_check()])
+        started = next(c for c in self.engine.calls if c[0] == 'start')
+        self.assertIn(['volume', 'rm', started[2] + '-data'], self.engine.calls)
+
     def test_an_app_that_never_answers_its_health_path_fails_its_http_checks_as_an_app_defect(self):
         reviewer = self.reviewer(lambda method, path, body: dict(error='connection refused'))
         outcomes, info = self.validate(reviewer, [http_check(), dict(id='f1', ac_ids=['AC2'], kind='file', path='README.md', expect=dict(exists=True))])

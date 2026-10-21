@@ -33,6 +33,13 @@ TASKS = dict(   # generic micro tasks; the description is the whole input, no co
                  description="reverse('abc')가 'cba'를 반환한다", label="문자열 뒤집기 함수"))
 
 
+def brief(observation, cap=300):
+    """The observation the model saw before choosing this step's action (long text shortened), so a log shows what led to what."""
+    if not isinstance(observation, dict):
+        return observation
+    return {k: (v[:cap] if isinstance(v, str) else v) for k, v in observation.items()}
+
+
 class Stop(Exception):
     pass
 
@@ -93,7 +100,7 @@ async def main(python_image, node_image, model_name, task_name, think=False):
                    reached_red="impl" in phases or "done" in phases, reached_green="done" in phases,
                    files=sorted(p.relative_to(work / "ws").as_posix() for p in (work / "ws").rglob("*") if p.is_file()),
                    error_samples=[o.get("error") for o in observations if not o.get("ok")][:8],
-                   steps=[{k: v for k, v in s.items() if k != "observation_of_previous"} for s in metered.steps],
+                   steps=[{k: (brief(v) if k == "observation_of_previous" else v) for k, v in s.items()} for s in metered.steps],
                    ledger=[dict(seq=e["seq"], tool=e["tool"], args={k: v for k, v in e["args"].items() if k != "content_digest"}, ok=e["ok"],
                                 error=e["error_code"], exit_code=e["exit_code"], stderr=(e["stderr_excerpt"] or "")[:200], stdout=(e["stdout_excerpt"] or "")[:200])
                            for e in entries])
