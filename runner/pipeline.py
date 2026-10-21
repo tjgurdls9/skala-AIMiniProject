@@ -12,7 +12,7 @@ import httpx
 
 
 from backend.contracts import ROOT, SECRET, canonical, digest, require
-from backend.store import now, uid
+from backend.store import Store, now, uid
 from runner.access import RoleScope, issue_grant
 from runner.builder_loop import BuilderLoop
 from runner.candidate import commit_task, freeze_model
@@ -139,6 +139,8 @@ class Pipeline:
             builders = [t for t in snapshot["tasks"] if t["spec_version_id"] == snapshot["spec_version_id"] and t["role"] == "builder" and t["state"] != "superseded"]
             require(bool(builders), "INVALID_STATE", "활성 구현 작업이 필요합니다.")
             candidate["sprint_id"] = builders[-1]["sprint_id"]
+            if Store.invalidate_acceptance(snapshot):
+                self.store.save(db, snapshot, "approval_invalidated", "새 후보가 고정돼 이전 사람 확인 승인이 무효가 됐습니다.")
             db.execute("INSERT OR IGNORE INTO candidates VALUES (?, ?, ?, ?)",
                        (key, snapshot["run_id"], snapshot["spec_version_id"], canonical(candidate)))
             public = {k: candidate[k] for k in ("commit_sha", "image_digest", "manifest")}
@@ -262,10 +264,10 @@ class Pipeline:
                     if not await asyncio.to_thread(worker.current, job):
                         return
                     try:
-                        response = await client.get(operation["url"] + "/health")
-                        if response.status_code == 200 and response.json() == {"status": "ok"}:
+                        response = await client.get(operation["url"] + candidate["app"]["health"])
+                        if 200 <= response.status_code < 400:   # the same rule the validator applies to the path the app declared
                             break
-                    except (httpx.HTTPError, ValueError):
+                    except httpx.HTTPError:
                         pass
                     await asyncio.sleep(0.5)
                 else:
@@ -279,6 +281,8 @@ class Pipeline:
                 db.execute("INSERT OR REPLACE INTO previews VALUES (?, ?, ?)", (job["run_id"], candidate_key, canonical(operation)))
                 db.execute("UPDATE operations SET state='applied' WHERE id=?", (operation_id,))
                 snapshot["reason"] = "로컬 프리뷰가 준비됐습니다. 실제 Git 푸시·배포는 대상과 승인을 확인한 뒤 진행합니다."
+                if self.request_acceptance(db, snapshot, candidate):
+                    snapshot["reason"] = "로컬 프리뷰가 준비됐습니다. 사람 확인이 필요한 기준을 프리뷰에서 확인하고 승인하세요."
                 self.store.save(db, snapshot, "preview_ready", snapshot["reason"])
                 self.completed(db, job)
                 published = True
@@ -292,6 +296,16 @@ class Pipeline:
                 stopped = await asyncio.to_thread(self.cleanup_preview, operation)
                 with self.store.transaction() as db:
                     db.execute("UPDATE operations SET state=? WHERE id=?", ("not_applied" if stopped else "uncertain", operation_id))
+
+    @staticmethod
+    def request_acceptance(db, snapshot, candidate):
+        """Ask the user to confirm the criteria only a person can judge, once per candidate; True if a request was added."""
+        package = json.loads(db.execute("SELECT package FROM specs WHERE id=?", (snapshot["spec_version_id"],)).fetchone()[0])
+        target = Store.acceptance_target(snapshot, package, candidate["commit_sha"], candidate["image_digest"])
+        if target is None or any(a["target"] == target and a["state"] in ("pending", "approved") for a in snapshot["approvals"]):
+            return False
+        snapshot["approvals"].append(dict(id=uid(), state="pending", target_digest=digest(target), target=target))
+        return True
 
     def preview_services(self, candidate, operation, current):
         def active():

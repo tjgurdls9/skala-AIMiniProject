@@ -161,9 +161,16 @@ class ReportBody(unittest.TestCase):
     def test_unchecked_or_human_confirmed_criteria_cannot_pass_automatically(self):
         only_one = self.body([self.outcome('h1', 'passed')], verification=[http_check('h1', ['AC1'])])
         self.assertEqual(only_one['verdict'], 'not_run')
-        manual = self.body([self.outcome('h1', 'passed')], manual=[dict(ac_id='AC2', reason='시각')], verification=[http_check('h1', ['AC1'])])
-        self.assertEqual(manual['verdict'], 'not_run')
-        self.assertEqual({a['id']: a['status'] for a in manual['judgement']['acceptance']}['AC2'], 'not_run')
+
+    def test_human_confirmed_criteria_stay_not_run_while_the_automatic_ones_decide_the_verdict(self):
+        verification = [http_check('h1', ['AC1'])]
+        manual = self.body([self.outcome('h1', 'passed')], manual=[dict(ac_id='AC2', reason='시각')], verification=verification)
+        self.assertEqual(manual['verdict'], 'pass')
+        self.assertEqual({a['id']: a['status'] for a in manual['judgement']['acceptance']}, {'AC1': 'met', 'AC2': 'not_run'})
+        self.assertEqual(manual['manual_pending'], ['AC2'])
+        failed = self.body([self.outcome('h1', 'failed')], manual=[dict(ac_id='AC2', reason='시각')], verification=verification)
+        self.assertEqual((failed['verdict'], failed['manual_pending']), ('fail', ['AC2']))
+        self.assertEqual(self.body([self.outcome('h1', 'passed'), self.outcome('h2', 'passed')])['manual_pending'], [])
 
     def test_an_app_that_did_not_start_is_reported_in_the_summary(self):
         spec = dict(acceptance=self.AC[:1], manual_acceptance=[], verification=[http_check('h1', ['AC1'])])

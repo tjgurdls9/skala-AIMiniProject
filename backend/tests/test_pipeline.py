@@ -37,11 +37,11 @@ class PipelineChecks(unittest.TestCase):
         self.assertEqual(result.status_code, 202)
         return self.store.snapshot(snapshot["run_id"])
 
-    def built(self, snapshot=None):
+    def built(self, snapshot=None, health="/health"):
         snapshot = snapshot or self.approved()
         job = self.worker.claim()
         workspace = self.worker.pipeline.engine.workspace(job["run_id"], snapshot["spec_version_id"], "blank-v1")
-        candidate = dict(commit_sha="a" * 40, image_digest="sha256:" + "b" * 64, manifest={}, path=str(workspace), app=dict(runtime="python"))
+        candidate = dict(commit_sha="a" * 40, image_digest="sha256:" + "b" * 64, manifest={}, path=str(workspace), app=dict(runtime="python", health=health))
         with patch.object(Pipeline, "model_edit", new=AsyncMock()), patch("runner.pipeline.commit_task", return_value="a" * 40), \
              patch("runner.pipeline.freeze_model", return_value=candidate):
             while job is not None:

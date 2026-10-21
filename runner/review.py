@@ -35,7 +35,8 @@ UNHEALTHY = "앱이 시작되지 않았거나 상태 확인에 응답하지 않�
 def model_validation_body(spec, outcomes, info):
     """The validator report for a model-authored candidate, derived only from executed approved checks."""
     verdicts = acceptance_verdicts(spec["acceptance"], spec.get("verification", []), spec.get("manual_acceptance", []), outcomes)
-    states = {v["status"] for v in verdicts}
+    pending = [v["id"] for v in verdicts if v["status"] == "not_run" and v["reason"] == "manual"]   # a person confirms these; they stay not_run
+    states = {v["status"] for v in verdicts if v["id"] not in pending}
     verdict = ("error" if any(o.status == "error" for o in outcomes) else "fail" if "unmet" in states else
                "not_run" if "not_run" in states else "pass")
     problems = [] if info.get("healthy", True) else [UNHEALTHY]
@@ -43,7 +44,8 @@ def model_validation_body(spec, outcomes, info):
     return dict(verdict=verdict, tools=dict(mechanical=True, healthy=info.get("healthy", True),
                                             checks={o.id: o.status == "passed" for o in outcomes},
                                             outcomes=[dict(id=o.id, status=o.status, detail=o.detail, evidence=o.evidence) for o in outcomes]),
-                judgement=dict(summary=summary, acceptance=[dict(id=v["id"], status=v["status"], evidence=v["check_ids"]) for v in verdicts]))
+                judgement=dict(summary=summary, acceptance=[dict(id=v["id"], status=v["status"], evidence=v["check_ids"]) for v in verdicts]),
+                manual_pending=pending)
 
 
 class CandidateEnv:

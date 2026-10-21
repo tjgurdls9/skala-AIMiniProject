@@ -170,6 +170,38 @@ class Store:
             return result
 
     @staticmethod
+    def acceptance_target(snapshot, package, commit_sha, image_digest):
+        """What the user confirms for human-checked criteria: this candidate, those criteria and the validator report of the same candidate."""
+        manual = [m["ac_id"] for m in package.get("manual_acceptance", [])]
+        if not manual:
+            return None
+        report = next((r for r in snapshot["reports"] if r["role"] == "validator" and r["commit_sha"] == commit_sha and
+                       r["image_digest"] == image_digest and r["spec_version_id"] == package["spec_version_id"]), None)
+        require(report is not None, "INVALID_STATE", "같은 후보의 validator 보고서가 필요합니다.")
+        target = dict(gate="acceptance", spec_version_id=package["spec_version_id"], plan_digest=digest(package), commit_sha=commit_sha,
+                      image_digest=image_digest, ac_ids=manual, validator_report_id=report["id"], validator_report_digest=report["content_digest"])
+        validate("AcceptanceTarget", target)
+        return target
+
+    @classmethod
+    def acceptance_approval(cls, snapshot, package, commit_sha, image_digest):
+        """The approved user confirmation of exactly this candidate, if the plan has human-checked criteria and one exists."""
+        try:
+            target = cls.acceptance_target(snapshot, package, commit_sha, image_digest)
+        except DomainError:
+            return None
+        return next((a for a in snapshot["approvals"] if target and a["state"] == "approved" and a["target"] == target and
+                     a["target_digest"] == digest(target)), None)
+
+    @staticmethod
+    def invalidate_acceptance(snapshot):
+        """A new candidate, spec or implementation change voids open and given confirmations; a rejection stays a rejection."""
+        open_ones = [a for a in snapshot["approvals"] if a["target"]["gate"] == "acceptance" and a["state"] in ("pending", "approved")]
+        for approval in open_ones:
+            approval["state"] = "invalidated"
+        return bool(open_ones)
+
+    @staticmethod
     def save(db, snapshot, event_type, summary, bump=True, **fields):
         if bump:
             snapshot["state_version"] += 1
@@ -280,6 +312,7 @@ class Store:
                 builders = [t for t in snapshot["tasks"] if t["role"] == "builder" and t["spec_version_id"] == snapshot["spec_version_id"] and t["state"] != "superseded"]
                 if snapshot["state"] == "building" and builders and all(t["state"] == "succeeded" for t in builders):
                     # A completed review round is immutable; rebuild/review in a fresh sprint.
+                    Store.invalidate_acceptance(snapshot)
                     previous_sprint = builders[-1]["sprint_id"]
                     originals = [t for t in builders if t["sprint_id"] == previous_sprint]
                     mapping = {t["id"]: uid() for t in originals}
@@ -310,36 +343,7 @@ class Store:
                 snapshot.update(state="planning", spec_version_id=None, reports=[], reason="변경 원문을 보존했습니다. 기획 재승인이 필요합니다.")
                 schedule, event_type, summary = True, "changes_requested", "변경 요청이 저장됐습니다."
             elif action == "decide":
-                approval = next((a for a in snapshot["approvals"] if a["id"] == payload["approval_id"]), None)
-                require(approval is not None and approval["state"] == "pending" and
-                        approval["target_digest"] == payload["target_digest"] and
-                        approval["target_digest"] == digest(approval["target"]) and
-                        approval["target"]["spec_version_id"] == snapshot["spec_version_id"],
-                        "STALE_APPROVAL", "최신 승인 대상을 다시 확인하세요.")
-                gate = approval["target"]["gate"]
-                require(gate == "plan" and snapshot["state"] == "awaiting_plan_approval",
-                        "INVALID_STATE", "현재 승인 게이트가 아닙니다.")
-                spec = db.execute("SELECT package FROM specs WHERE id=? AND run_id=?",
-                                  (snapshot["spec_version_id"], run_id)).fetchone()
-                require(spec is not None and approval["target"]["plan_digest"] == digest(json.loads(spec[0])),
-                        "STALE_APPROVAL", "저장된 기획과 승인 대상이 일치하지 않습니다.")
-                package = json.loads(spec[0])
-                require(package.get("support", {}).get("implementation_allowed", True) or payload["decision"] == "reject",
-                        "INVALID_STATE", "기획의 지원 공백을 먼저 해소하세요. 공급자 선택이나 키 준비는 구현 승인이 아닙니다.")
-                require(package["contract_digests"] == plan_inputs(self.template_id(db, run_id)),
-                        "STALE_APPROVAL", "계약·템플릿·검사 입력이 바뀌었습니다. 재기획 후 승인하세요.")
-                from runner.commands import tool_policy_digest   # local import: runner.commands imports this module
-                require(package.get("tool_policy_digest", tool_policy_digest()) == tool_policy_digest(),
-                        "STALE_APPROVAL", "도구·명령 정책이 바뀌었습니다. 재기획 후 승인하세요.")
-                approval.update(state="approved" if payload["decision"] == "approve" else "rejected",
-                                decided_by="local-operator", decided_at=now())
-                if "feedback" in payload:
-                    approval["feedback"] = payload["feedback"]
-                    db.execute("INSERT INTO requests VALUES (?, ?, ?, ?, ?)",
-                               (uid(), snapshot["project_id"], run_id, payload["feedback"], now()))
-                snapshot["state"] = "building" if payload["decision"] == "approve" else "needs_input"
-                schedule = payload["decision"] == "approve"
-                event_type, summary = "approval_decided", "승인 결정이 저장됐습니다."
+                schedule, event_type, summary = self.decide(db, snapshot, run_id, payload)
             db.execute("UPDATE jobs SET state='superseded' WHERE run_id=? AND state IN ('pending','running')", (run_id,))
             self.save(db, snapshot, event_type, summary, command_id=command["command_id"])
             if schedule:
@@ -348,6 +352,64 @@ class Store:
             receipt = dict(command_id=command["command_id"], run_id=run_id, status="accepted", accepted_at=now())
             db.execute("INSERT INTO commands VALUES (?, ?, ?, ?)", (run_id, command["command_id"], canonical(command), canonical(receipt)))
             return receipt
+
+    def decide(self, db, snapshot, run_id, payload):
+        """Apply an approve/reject decision to its pending approval; returns (schedule, event_type, summary)."""
+        approval = next((a for a in snapshot["approvals"] if a["id"] == payload["approval_id"]), None)
+        require(approval is not None and approval["state"] == "pending" and
+                approval["target_digest"] == payload["target_digest"] and
+                approval["target_digest"] == digest(approval["target"]) and
+                approval["target"]["spec_version_id"] == snapshot["spec_version_id"],
+                "STALE_APPROVAL", "최신 승인 대상을 다시 확인하세요.")
+        gate = approval["target"]["gate"]
+        require(gate in ("plan", "acceptance") and snapshot["state"] == ("awaiting_plan_approval" if gate == "plan" else "preview_ready"),
+                "INVALID_STATE", "현재 승인 게이트가 아닙니다.")
+        spec = db.execute("SELECT package FROM specs WHERE id=? AND run_id=?", (snapshot["spec_version_id"], run_id)).fetchone()
+        require(spec is not None and approval["target"]["plan_digest"] == digest(json.loads(spec[0])),
+                "STALE_APPROVAL", "저장된 기획과 승인 대상이 일치하지 않습니다.")
+        package = json.loads(spec[0])
+        approve = payload["decision"] == "approve"
+        if gate == "plan":
+            self.check_plan_decision(db, run_id, package, approve)
+        else:
+            self.check_acceptance_decision(db, run_id, snapshot, package, approval)
+        approval.update(state="approved" if approve else "rejected", decided_by="local-operator", decided_at=now())
+        if "feedback" in payload:
+            approval["feedback"] = payload["feedback"]
+            db.execute("INSERT INTO requests VALUES (?, ?, ?, ?, ?)",
+                       (uid(), snapshot["project_id"], run_id, payload["feedback"], now()))
+        if gate == "plan":
+            snapshot["state"] = "building" if approve else "needs_input"
+            return approve, "approval_decided", "승인 결정이 저장됐습니다."
+        if approve:
+            snapshot["reason"] = "사람 확인이 필요한 기준을 사용자가 승인했습니다. 자동 판정은 바뀌지 않았습니다."
+        else:
+            db.execute("UPDATE runs SET resume_state='building' WHERE id=?", (run_id,))
+            snapshot.update(state="needs_input", reason="사람 확인이 거절됐습니다. 의견을 확인하고 수정하거나 재기획하세요.")
+        return False, "approval_decided", "사람 확인 결정이 저장됐습니다."
+
+    def check_plan_decision(self, db, run_id, package, approve):
+        require(package.get("support", {}).get("implementation_allowed", True) or not approve,
+                "INVALID_STATE", "기획의 지원 공백을 먼저 해소하세요. 공급자 선택이나 키 준비는 구현 승인이 아닙니다.")
+        require(package["contract_digests"] == plan_inputs(self.template_id(db, run_id)),
+                "STALE_APPROVAL", "계약·템플릿·검사 입력이 바뀌었습니다. 재기획 후 승인하세요.")
+        from runner.commands import tool_policy_digest   # local import: runner.commands imports this module
+        require(package.get("tool_policy_digest", tool_policy_digest()) == tool_policy_digest(),
+                "STALE_APPROVAL", "도구·명령 정책이 바뀌었습니다. 재기획 후 승인하세요.")
+
+    def check_acceptance_decision(self, db, run_id, snapshot, package, approval):
+        """The confirmation must still be about the candidate the run holds, with the validator report that judged it."""
+        row = db.execute("SELECT body FROM candidates WHERE run_id=? AND spec_version_id=? ORDER BY rowid DESC LIMIT 1",
+                         (run_id, snapshot["spec_version_id"])).fetchone()
+        candidate = json.loads(row[0]) if row else {}
+        same = [r for r in snapshot["reports"] if r["verdict"] == "pass" and r["commit_sha"] == candidate.get("commit_sha") and
+                r["image_digest"] == candidate.get("image_digest")]
+        try:
+            current = self.acceptance_target(snapshot, package, candidate.get("commit_sha"), candidate.get("image_digest"))
+        except DomainError:
+            current = None
+        require(len(same) == 2 and len(snapshot["reports"]) == 2 and current is not None and approval["target"] == current,
+                "STALE_APPROVAL", "현재 후보와 승인 대상이 일치하지 않습니다.")
 
     @staticmethod
     def artifact(db, snapshot, kind, title, content, public=True):

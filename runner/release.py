@@ -7,7 +7,7 @@ import os
 import httpx
 
 from backend.contracts import ROOT, SECRET, canonical, digest, plan_inputs, require, validate
-from backend.store import artifact_content, now
+from backend.store import Store, artifact_content, now
 from runner.model import ModelUnavailable
 from runner.pipeline import Pipeline
 
@@ -152,12 +152,16 @@ class ReleaseOperations:
         registry_digest = image_reference.rsplit('@', 1)[1]
         require(remote['digest'] == registry_digest and self.engine.docker('image', 'inspect', image_reference, '--format', '{{.Id}}').strip() == candidate['image_digest'],
                 'VERSION_CONFLICT', 'registry manifest와 검토한 로컬 이미지 결속을 확인하세요.')
+        confirmation = Store.acceptance_approval(snapshot, package, candidate['commit_sha'], candidate['image_digest']) if package.get('manual_acceptance') else None
+        require(confirmation is not None or not package.get('manual_acceptance'), 'STALE_APPROVAL',
+                '사람 확인이 필요한 기준에 대해 현재 후보를 승인한 기록이 필요합니다.')
         rollback = dict(action='unpublish_first_release', data_policy='preserve_volume_no_schema_migration', previous=None)
         configuration = dict(repository=repository, environment=environment, image_reference=image_reference,
                              local_image_digest=candidate['image_digest'], proxy_image_digest=self.engine.runtime())
         target = dict(gate='release', spec_version_id=snapshot['spec_version_id'], plan_digest=digest(package), commit_sha=candidate['commit_sha'],
                       image_digest=registry_digest, environment_id=environment['id'], environment_config_digest=digest(configuration),
-                      rollback_manifest_digest=digest(rollback), review_report_ids=sorted(r['id'] for r in reports))
+                      rollback_manifest_digest=digest(rollback), review_report_ids=sorted(r['id'] for r in reports),
+                      **({'acceptance_approval_id': confirmation['id']} if confirmation else {}))
         validate('ReleaseTarget', target)
         suffix = digest(target).split(':')[1][:32]
         manifest = dict(kind='deployment', target=target, **configuration, rollback=rollback, candidate_path=candidate['path'], resources=dict(
@@ -183,6 +187,10 @@ class ReleaseOperations:
                 all(r['verdict'] == 'pass' and r['spec_version_id'] == target['spec_version_id'] and r['commit_sha'] == target['commit_sha'] and r['image_digest'] == manifest['local_image_digest'] for r in snapshot['reports']) and
                 any(a['state'] == 'approved' and a['target_digest'] == digest(target) and a['target'] == target for a in snapshot['approvals']),
                 'STALE_APPROVAL', '현재 명세·후보·환경·원본 보고서·복구 계획에 대한 실제 사용자 승인이 필요합니다.')
+        plan = json.loads(package[0])
+        confirmation = Store.acceptance_approval(snapshot, plan, target['commit_sha'], manifest['local_image_digest']) if plan.get('manual_acceptance') else None
+        require(target.get('acceptance_approval_id') == (confirmation or {}).get('id') and (confirmation is not None or not plan.get('manual_acceptance')),
+                'STALE_APPROVAL', '사람 확인이 필요한 기준에 대해 현재 후보를 승인한 기록이 필요합니다.')
         for report in snapshot['reports']:
             content = artifact_content(db.execute('SELECT content,metadata FROM artifacts WHERE id=? AND public=1', (report['artifact_id'],)).fetchone())
             require(digest(content) == report['content_digest'], 'TEMPORARILY_UNAVAILABLE', '출시 검토 원본이 손상됐습니다.', 503)

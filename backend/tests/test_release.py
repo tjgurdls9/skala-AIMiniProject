@@ -16,6 +16,9 @@ import test_runtime
 
 
 class ReleaseChecks(unittest.TestCase):
+    MANUAL = ()        # human-confirmed criteria written into the fixture plan
+    PREPARE = True     # prepare the release target in setUp
+
     def setUp(self):
         self.temp = self.enterContext(tempfile.TemporaryDirectory())
         self.store = Store(Path(self.temp) / 'state.sqlite3')
@@ -28,8 +31,10 @@ class ReleaseChecks(unittest.TestCase):
         spec_id = uid()
         package = dict(copy.deepcopy(test_runtime.PLAN), spec_version_id=spec_id, stack=['FastAPI', 'Vue 3', 'SQLite'],
                        repository={k: self.repository[k] for k in ('url', 'branch')}, deployment={k: self.environment[k] for k in ('id', 'label', 'exposure')},
-                       free_policy=POLICY, allowed_tools=['read_file'], contract_digests=plan_inputs('blank-v1'))
+                       free_policy=POLICY, allowed_tools=['read_file'], contract_digests=plan_inputs('blank-v1'),
+                       **({'manual_acceptance': [dict(m) for m in self.MANUAL]} if self.MANUAL else {}))
         candidate = dict(commit_sha='a' * 40, image_digest=self.local, path=str(Path(self.temp) / 'candidate'), manifest={})
+        self.package, self.candidate = package, candidate
         Path(candidate['path']).mkdir()
         with self.store.transaction() as db:
             self.snapshot.update(spec_version_id=spec_id, state='preview_ready')
@@ -44,8 +49,12 @@ class ReleaseChecks(unittest.TestCase):
             db.execute('INSERT INTO candidates VALUES (?, ?, ?, ?)', (uid(), self.snapshot['run_id'], spec_id, canonical(candidate)))
             self.store.save(db, self.snapshot, 'warning', 'synthetic fixture, not a real review or approval')
         self.operations = ReleaseOperations(self.store, current=lambda db: True)
+        if self.PREPARE:
+            self.manifest = self.prepare()
+
+    def prepare(self):
         with patch.object(self.operations.engine, 'runtime', return_value=self.local), patch.object(self.operations.engine, 'docker', side_effect=[json.dumps(dict(digest=self.remote)), self.local]):
-            self.manifest = self.operations.prepare(self.snapshot['run_id'], self.repository, self.environment, 'registry.example/test/app@' + self.remote)
+            return self.operations.prepare(self.snapshot['run_id'], self.repository, self.environment, 'registry.example/test/app@' + self.remote)
 
     def approve_fixture(self):
         with self.store.transaction() as db:
