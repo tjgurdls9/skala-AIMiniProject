@@ -1,6 +1,6 @@
-# 런타임 세션 인계 (F5까지 완료, F4d 서버와 F6은 새 세션)
+# 런타임 세션 인계 (F0–F6 완료. 실서버 전체 흐름 확인 전)
 
-작성 시점의 런타임 worktree `.worktrees/codex-runtime`, 브랜치 `work/codex-runtime`. 이 문서 하나로 이어받을 수 있게 썼다. 관제탑 세션 이름은 `skala-aiminiproject-a7`(보고는 SendMessage로 이 이름에 보낸다).
+첫 작성은 F5 직후(a836b3b)이고, 교대한 두 번째 세션이 F4d·F6을 끝내고 §10을 더했다. 런타임 worktree `.worktrees/codex-runtime`, 브랜치 `work/codex-runtime`. 이 문서 하나로 이어받을 수 있게 썼다. 관제탑 세션 이름은 `skala-aiminiproject-a7`(보고는 SendMessage로 이 이름에 보낸다).
 
 ## 1. 현재 상태
 
@@ -129,3 +129,27 @@
 - 모든 변경 요청(`request_changes`)은 이제 재기획으로 간다(스타일 변경 지름길 삭제). 소규모 수정에 승인을 재사용하는 방식은 설계에 없다
 - `.worktrees/codex-runtime/runtime-data/runtime-image.json`은 구 Dockerfile 해시를 담고 있어 준비 전까지 `Sandbox.runtime()`이 실패한다
 - 실서버 응답은 이 세션에서 띄워 보지 않았다
+
+## 10. 교대 후 두 번째 세션이 한 일 (F4d 서버, F6, 커버리지)
+
+| 커밋 | 내용 |
+|---|---|
+| `5519f3b` | F4d 서버(CR-C18). validator 판정은 자동 점검 AC만으로 정하고 `manual_acceptance` AC는 `not_run`으로 두며 보고서 본문에 `manual_pending`을 적는다. 프리뷰 공개(`Pipeline.release`) 때 후보 커밋·이미지·AC id·validator 보고서에 결속된 `AcceptanceTarget` 승인 1개를 `pending`으로 만든다(재실행해도 중복 없음). `decide`가 gate `acceptance`를 처리한다(approve는 판정 불변, reject는 의견 원문 보존 후 `needs_input`, 현재 후보·두 PASS 보고서와 다르면 `STALE_APPROVAL`). 새 후보·재빌드 재개·변경 요청이 pending/approved 승인을 `invalidated`로 만든다(거절은 유지). `manual_acceptance`가 있으면 `ReleaseTarget.acceptance_approval_id`가 `prepare`와 `authorize` 양쪽에서 필수. `Pipeline.release` 헬스 확인은 앱이 선언한 `health` 경로(200~399)를 쓴다 |
+| `c1aaec2` | F6. `runner/intervention.py`와 `Pipeline.build`: 도구 원장(write/delete/move 성공 기록)이 설명하지 못하는 작업 공간 변경, 작업 사이의 손 편집, 작업 사이에 바뀐 git 이력을 해당 작업의 `code_diff` 본문 `interventions`와 `warning` 사건에 남긴다(실행은 막지 않음). `Store.interventions(run_id)`로 조회. 명령(`run_tests` 등)을 쓴 작업은 만든 파일을 원장으로 귀속할 수 없어 작업 사이 편집만 잡는다(코드에 `ponytail:` 한계 표기). `backend/tests/test_full_flow.py`: 가짜 모델로 범용 소형 요청 하나가 계획(대안·작업 분해·AC별 점검·사람 확인 AC) → 기획 승인 → 모델 빌드(원장) → validator·security → 프리뷰 → 사람 확인 승인까지 간다. 승인은 테스트 픽스처 조작이며 실제 사용자 승인이 아니다 |
+| `1367e90` | `runner/review.py` 커버리지 78% → 95%(보안 검토기·스캐너 준비·명령 점검 시간 초과 특성 테스트, 새 동작 없음) |
+
+- 테스트 317건 OK, 총 커버리지 89%.
+- 미사용 import 6개 정리(builder_loop, plan_extras 2개, tools, worker, infra/checks/security). `worker.py`와 `security.py`는 `plan_inputs` 해시 대상이라 이전에 만든 기획의 승인은 낡은 것으로 보인다(살아 있는 기획 없음, S09는 읽기 전용).
+- `python -m runner.sandbox prepare`를 실행했다. 새 프리뷰 프록시 이미지 `sha256:d08b7756…c269c0`가 `runtime-data/runtime-image.json`에 기록됐다(`status`로 확인). 옛 기록은 `runtime-data/runtime-image.before-f5.json`에 복사해 뒀다. 옛 `lifecycle-runtime:*` 이미지는 지우지 않았다.
+- C8: 이 세션이 시작할 때 읽기 전용으로 기록한 해시(끝에 다시 비교할 것)
+  - `s09-cafemap.sqlite3` `6a738d7ee1d4b9e83d7fc10a61f527d343f11f77727feb811b23584288855bc4`
+  - `s09-keyless-2dcbd46.sqlite3` `8ec703d4888d9f9cc8eb63d7b6ea9145c27d5dd37f88a68779c138cf4286310e`
+  - `development-check.sqlite3` `514e65ab256039747bb7aee696e7eb2c5f71203fb726b0a3677f219fb138fbce`
+
+### 남은 일과 알려진 한계
+
+- **배포 대상은 만들어지지 않는다.** 워커가 만드는 기획의 `repository`/`deployment`는 항상 null이라 실서버 run에서는 `ReleaseOperations.prepare`가 STALE_APPROVAL로 거절된다. 저장소·환경 선택은 사용자·운영자 결정(S10)이므로 설정 경로를 만들지 않았다. 흐름은 모든 승인(기획, 사람 확인)과 두 PASS 보고서를 갖춘 `preview_ready`에서 멈춘다. `test_full_flow`가 이를 명시적으로 검증한다.
+- `DockerEnvironment.observe`(배포 환경 관찰)는 아직 `/health`와 `{"status":"ok"}`로 고정돼 있다. 배포가 연결될 때 매니페스트에 앱이 선언한 health 경로를 담아야 한다.
+- C6 독립 코드·보안 리뷰는 서브 에이전트가 필요해 하지 않았다(관제 지시: 추가 agent 금지, 사용자 확인 필요).
+- C7 AC 추적표 증거 연결, C10 관제·사용자 확인은 남았다. 프론트 대기 커밋(§7)의 통합도 사용자 허용이 필요하다.
+- 실서버 전체 흐름(실 Ollama·실 Docker)은 아직 한 번도 돌리지 않았다. 돌릴 때 필요한 것: `LIFECYCLE_PYTHON_IMAGE`, `LIFECYCLE_NODE_IMAGE`(digest 고정, 로컬에 `python:3.13-slim`, `node:24-slim` 이미지가 있다), `LIFECYCLE_MODEL=qwen3.5:4b`, `LIFECYCLE_DB`(별도 새 파일), 메모리 시작 조건과 감시자. 관제·사용자와 함께 시작한다.
