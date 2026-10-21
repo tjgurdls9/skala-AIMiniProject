@@ -182,3 +182,12 @@ Claude가 먼저 부여한 원래 번호를 유지한다: **CR-C14는 기획 지
 - implementation_allowed=false면 현재 공백 때문에 구현 승인이 불가하다. 프론트는 공백과 필요한 입력을 별도 구역에 표시하고 기획 approve를 막는다. 서버도 같은 저장된 support를 검사해 INVALID_STATE로 거절하며 승인/작업 예약을 만들지 않는다. reject/수정 요청은 유지한다. true는 알려진 지원 공백이 없다는 뜻이며 AC 충족·검토/출시 수용 성공이 아니다. 실제 승인은 여전히 사용자가 한다.
 
 CR-C15 operations는 accepted/applied/uncertain/failed/rolled_back/not_applied/superseded를 구분한다. accepted_at은 실행 의도를 저장한 시각, observed_at은 실제 공급자 조회가 완료된 시각이며 과거 원장에 없으면 null이다. GET 시각으로 만들지 않는다. reason은 응답 유실/미확인 등의 안전한 근거이며 내부 예외/키를 노출하지 않는다. volume_preserved는 실제 볼륨 조회를 확인한 경우만 boolean이고 미확인이면 null이다. true도 데이터 내용/DB 이전 검증을 뜻하지 않는다. target에 환경 설정 해시·commit·registry digest·두 보고서·rollback hash가 결속된다. 관련 공개 사건은 operation_id와 공개 artifact_ids로 같은 결과를 연결하며 상대 미확정 검토는 포함하지 않는다.
+
+
+### CR-C14 후속 — 카카오 선택·무료 정책 호환
+
+사용자가 카카오맵으로 테스트하고 외부 연결 보류를 해제했다. 기존 번호는 유지한다. **CR-C14=기획별 지원 공백**, **CR-C15=출시/복구**이며 새 번호를 재배정하지 않는다. 새 기획의 support.external은 provider=kakao/status=unconfirmed다. 계정의 무료 쿼터 배지 확인이 어렵다는 실제 답변을 반영하며 무료 자격/키·위치 동의·격리 연결 검증과 구현 승인은 미완료다. 옛 기획의 deferred 기록은 그대로 보존한다.
+
+PlanView.free_policy가 기존에는 모든 외부 API를 금지하는 단일 상수였다. 외부 모델 API 금지와 검증된 무료 지도 데이터 사용을 구분하도록 **기존 문구와 새 문구 두 값만 허용하는 enum**으로 확장한다. 새 문구는 `Inference: local Ollama Qwen/DeepSeek only; no paid fallback or external model API. External data: verified free terms, explicit consent, fixed isolated access, no paid overage.`다. 과거 기록의 문구는 수정하지 않는다. 임의의 정책 문자열·유료 모델·유료 초과 사용을 허용하지 않는다.
+
+소비자는 기존처럼 서버의 free_policy를 그대로 표시하고 타입/hash를 재생성한다. 다른 필드/경로 변경은 없다. 새 기획 공개는 소비자 채택 뒤 진행한다. 공급자 선택이나 키 준비를 사람의 기획/배포 승인으로 사용하지 않는다. 키와 계정 확인은 로컬 비공개 설정이며 모델 입력/공개 계약/기록으로 전달하지 않는다.
