@@ -389,9 +389,10 @@ class Store:
                        " VALUES (" + ",".join("?" * 19) + ")", row)
         return dict(seq=seq)
 
-    def tool_calls(self, run_id):
+    def tool_calls(self, run_id, task_id=None):
         with self.transaction() as db:
-            rows = db.execute("SELECT * FROM tool_calls WHERE run_id=? ORDER BY seq", (run_id,)).fetchall()
+            rows = db.execute("SELECT * FROM tool_calls WHERE run_id=?" + (" AND task_id=?" if task_id else "") + " ORDER BY seq",
+                              (run_id, task_id) if task_id else (run_id,)).fetchall()
         return [{**dict(r), "args": json.loads(r["args"]), "ok": bool(r["ok"])} for r in rows]
 
     def read_artifact(self, artifact_id):

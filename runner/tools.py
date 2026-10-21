@@ -5,6 +5,7 @@ from pathlib import Path
 from backend.contracts import DomainError, digest, require
 from backend.store import now
 from runner.commands import (TOOL_POLICY, package_name, redact, validate_command, validate_install, validate_test_command)
+from runner.tdd_gate import TDD_KINDS, is_test_path, mutated_paths, progress
 from runner.workspace import Workspace
 
 READ_ROLES = frozenset({"builder", "validator", "security"})
@@ -39,7 +40,7 @@ class ToolBox:
             row, _ = scope.authority()
             options = json.loads(row["context"] or "{}").get("options", {})
             return dict(role=row["role"], run_id=row["run_id"], job_id=row["job_id"], attempt_id=row.get("attempt_id"),
-                        task_id=options.get("task_id"))
+                        task_id=options.get("task_id"), task_kind=options.get("task_kind"))
         row, _ = scope.authority()
         require(row["workspace"] is not None, "FORBIDDEN", "작업 공간이 없습니다.", 403)
         options = json.loads(row["context"] or "{}").get("options", {})
@@ -56,7 +57,7 @@ class ToolBox:
         started = now()
         try:
             require(who["role"] in roles, "FORBIDDEN", "이 역할에 허용되지 않은 도구입니다.", 403)
-            result, extra = action()
+            result, extra = action(who)
         except DomainError as error:
             self._record(who, tool, args, started, ok=False, error_code=error.code)
             raise
@@ -70,23 +71,30 @@ class ToolBox:
 
     # -- files ----------------------------------------------------------
     def list_files(self):
-        return self._call("list_files", {}, READ_ROLES, lambda: self._ok(dict(files=self.workspace.list_files())))
+        return self._call("list_files", {}, READ_ROLES, lambda who: self._ok(dict(files=self.workspace.list_files())))
 
     def read_file(self, path):
-        return self._call("read_file", dict(path=path), READ_ROLES, lambda: self._ok(self.workspace.read(path)))
+        return self._call("read_file", dict(path=path), READ_ROLES, lambda who: self._ok(self.workspace.read(path)))
 
     def write_file(self, path, content, expected_digest=None):
         args = dict(path=path, expected_digest=expected_digest, content_digest=digest(content) if isinstance(content, str) else None,
                     content_bytes=len(content.encode()) if isinstance(content, str) else None)
-        return self._call("write_file", args, BUILD_ROLES, lambda: self._ok(self.workspace.write(path, content, expected_digest)))
+        return self._call("write_file", args, BUILD_ROLES, lambda who: self._mutate(who, [path], lambda: self.workspace.write(path, content, expected_digest)))
 
     def delete_file(self, path, expected_digest):
         return self._call("delete_file", dict(path=path, expected_digest=expected_digest), BUILD_ROLES,
-                          lambda: self._ok(self.workspace.delete(path, expected_digest)))
+                          lambda who: self._mutate(who, [path], lambda: self.workspace.delete(path, expected_digest)))
 
     def move_file(self, source, target, expected_digest):
         return self._call("move_file", dict(source=source, target=target, expected_digest=expected_digest), BUILD_ROLES,
-                          lambda: self._ok(self.workspace.move(source, target, expected_digest)))
+                          lambda who: self._mutate(who, [source, target], lambda: self.workspace.move(source, target, expected_digest)))
+
+    def _mutate(self, who, paths, action):
+        """Run a file mutation after the server-side RED gate: implementation files stay locked until failing tests are on record."""
+        if who.get("task_kind") in TDD_KINDS and any(not is_test_path(p) for p in paths):
+            state = progress(self.store.tool_calls(who["run_id"], who.get("task_id")), who["task_kind"])
+            require(state.phase != "red", "FORBIDDEN", state.message, 403)
+        return self._ok(action())
 
     @staticmethod
     def _ok(result):
@@ -95,10 +103,10 @@ class ToolBox:
     # -- commands -------------------------------------------------------
     def run_command(self, argv, cwd=".", timeout=TOOL_POLICY["timeout_default"]):
         return self._call("run_command", dict(argv=argv, cwd=cwd, timeout=timeout), BUILD_ROLES,
-                          lambda: self._execute(validate_command(argv, cwd, timeout)))
+                          lambda who: self._execute(validate_command(argv, cwd, timeout)))
 
     def run_tests(self, argv, cwd=".", timeout=TOOL_POLICY["timeout_default"]):
-        def action():
+        def action(who):
             command = validate_command(argv, cwd, timeout)
             validate_test_command(command["argv"])
             return self._execute(command)
@@ -115,7 +123,7 @@ class ToolBox:
     # -- dependencies ---------------------------------------------------
     def install_dependencies(self, manager, packages):
         return self._call("install_dependencies", dict(manager=manager, packages=packages), BUILD_ROLES,
-                          lambda: self._install(manager, packages))
+                          lambda who: self._install(manager, packages))
 
     def _install(self, manager, packages):
         packages = validate_install(manager, packages)

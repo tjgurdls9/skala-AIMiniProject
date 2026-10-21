@@ -419,6 +419,62 @@ class StubScope:
         return self.row, None
 
 
+class ToolBoxGateChecks(unittest.TestCase):
+    """The server, not the model, decides when implementation files may be written."""
+
+    def setUp(self):
+        self.temp = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.store = Store(self.temp / 'state.sqlite3')
+        project = self.store.project(dict(title='synthetic', request='generic request'))
+        self.run_id = self.store.create_run(project['project_id'], dict(mode='live'))['run_id']
+        (self.temp / 'ws').mkdir()
+        self.executor = RecordingExecutor()
+        self.who = dict(role='builder', run_id=self.run_id, job_id='j', attempt_id='a', task_id='t1', task_kind='backend')
+        self.box = ToolBox(lambda: self.who, self.store, Workspace(self.temp / 'ws'), self.executor, deps_dir=self.temp / 'deps')
+
+    def result(self, code):
+        self.executor.result = CommandResult(exit_code=code, stdout='', stderr='', timed_out=code is None, truncated=False)
+
+    def test_implementation_is_refused_until_a_real_failing_test_run_is_recorded(self):
+        with self.assertRaises(DomainError) as caught:
+            self.box.write_file('server/main.py', 'code')
+        self.assertEqual(caught.exception.code, 'FORBIDDEN')
+        self.assertIn('실패하는 테스트', caught.exception.message)
+        self.assertFalse((self.temp / 'ws' / 'server').exists())
+        self.box.write_file('tests/test_a.py', 'test')
+        self.result(0)
+        self.box.run_tests(['python', '-m', 'pytest'])                         # passes immediately: not RED
+        with self.assertRaises(DomainError):
+            self.box.write_file('server/main.py', 'code')
+        self.result(1)
+        self.box.run_tests(['python', '-m', 'pytest'])                         # genuine failure: RED
+        self.box.write_file('server/main.py', 'code')
+        self.assertTrue((self.temp / 'ws' / 'server' / 'main.py').exists())
+        self.assertEqual([e['ok'] for e in self.store.tool_calls(self.run_id) if e['tool'] == 'write_file'], [False, True, False, True])
+
+    def test_only_this_tasks_ledger_opens_the_gate(self):
+        self.box.write_file('tests/test_a.py', 'test')
+        self.result(1)
+        self.box.run_tests(['python', '-m', 'pytest'])
+        self.who = dict(self.who, task_id='t2')                                # another task has its own RED to earn
+        with self.assertRaises(DomainError):
+            self.box.write_file('server/other.py', 'code')
+
+    def test_tasks_without_a_test_phase_are_not_gated(self):
+        self.who = dict(self.who, task_kind='contract')
+        self.box.write_file('contract/api.json', '{}')
+        self.who = dict(self.who, task_kind=None)
+        self.box.write_file('anything.txt', 'x')
+
+    def test_deleting_or_moving_implementation_is_gated_like_writing_it(self):
+        (self.temp / 'ws' / 'server').mkdir()
+        (self.temp / 'ws' / 'server' / 'main.py').write_text('old')
+        with self.assertRaises(DomainError):
+            self.box.delete_file('server/main.py', digest('old'))
+        with self.assertRaises(DomainError):
+            self.box.move_file('server/main.py', 'server/other.py', digest('old'))
+
+
 class McpWiringChecks(unittest.TestCase):
     def setUp(self):
         self.temp = Path(self.enterContext(tempfile.TemporaryDirectory()))
