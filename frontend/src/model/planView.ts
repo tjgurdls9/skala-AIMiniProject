@@ -1,4 +1,5 @@
 import type { PlanView } from '../api/types'
+import { isPlanExtras } from './planExtras'
 import { isPlanSupport } from './planSupport'
 
 /** 계약 enum(fa07aec): 기존 문구(과거 기록)와 외부 모델 금지·무료 데이터 조건 문구. 그 밖의 정책은 받지 않는다. */
@@ -21,5 +22,7 @@ export function isPlanView(value: unknown): value is PlanView {
   if (v.deployment !== null && (typeof v.deployment !== 'object' || typeof v.deployment?.label !== 'string')) return false
   // CR-C14 support는 선택 필드다. 있으면 계약 형식이어야 한다(없으면 지원 정보 미제공으로 따로 표시)
   if (v.support !== undefined && !isPlanSupport(v.support)) return false
+  // CR-C17 확장 필드도 선택이다. 있으면 계약 형식이어야 한다
+  if (!isPlanExtras(v)) return false
   return !!v.contract_digests && typeof v.contract_digests === 'object'
 }

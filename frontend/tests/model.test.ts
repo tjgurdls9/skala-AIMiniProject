@@ -63,7 +63,7 @@ describe('파생 계산', () => {
     const snap = scenario('building').snapshot
     const byId = indexById(snap.tasks)
     expect(waitingReason(byId.get('t-infra')!, byId)).toBe('컨테이너 실행기 미연결 — 자원 준비 필요')
-    expect(waitingReason(byId.get('t-ui')!, byId)).toBe('선행 작업 대기: 문의 조회·상태 변경 API')
+    expect(waitingReason(byId.get('t-ui')!, byId)).toBe('선행 작업 대기: 할 일 조회·상태 변경 API')
     expect(waitingReason(byId.get('t-api')!, byId)).toBeNull()
     expect(waitingReason(byId.get('t-plan')!, byId)).toBeNull()
   })

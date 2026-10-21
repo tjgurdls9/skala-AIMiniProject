@@ -18,8 +18,8 @@ export const PHASES: Snapshot['phases'] = [
 
 export const SPRINTS: Snapshot['sprints'] = [
   { id: 'sp-1', phase_id: 'ph-plan', title: 'Sprint 1 · 기획 확정', goal: '요청을 목표·범위·AC로 정리하고 승인받는다', acceptance_ids: ['AC-1'] },
-  { id: 'sp-2', phase_id: 'ph-build', title: 'Sprint 2 · 데이터·API', goal: '합성 문의 CSV 적재와 분류 API를 만든다', acceptance_ids: ['AC-2', 'AC-3'] },
-  { id: 'sp-3', phase_id: 'ph-build', title: 'Sprint 3 · 화면·통합', goal: '문의 목록·상태 변경 화면을 API와 연결한다', acceptance_ids: ['AC-4'] },
+  { id: 'sp-2', phase_id: 'ph-build', title: 'Sprint 2 · 데이터·API', goal: '합성 할 일 CSV 적재와 분류 API를 만든다', acceptance_ids: ['AC-2', 'AC-3'] },
+  { id: 'sp-3', phase_id: 'ph-build', title: 'Sprint 3 · 화면·통합', goal: '할 일 목록·상태 변경 화면을 API와 연결한다', acceptance_ids: ['AC-4'] },
   { id: 'sp-4', phase_id: 'ph-review', title: 'Sprint 4 · 검증·보안', goal: '같은 후보를 검증과 보안이 각자 검토한다', acceptance_ids: ['AC-2', 'AC-3', 'AC-4', 'AC-5'] },
   { id: 'sp-5', phase_id: 'ph-release', title: 'Sprint 5 · 프리뷰·출시', goal: '프리뷰 확인 후 승인된 환경에 배포한다', acceptance_ids: ['AC-5'] },
 ]
@@ -28,11 +28,11 @@ type TaskSeed = Omit<Task, 'state' | 'reason' | 'spec_version_id'>
 
 const TASK_SEEDS: TaskSeed[] = [
   { id: 't-plan', phase_id: 'ph-plan', sprint_id: 'sp-1', role: 'planner', work_kind: 'planning', title: '요청 분석·기획안 작성', depends_on: [], acceptance_ids: ['AC-1'], artifact_ids: ['a-request', 'a-spec', 'a-context-plan'] },
-  { id: 't-contract', phase_id: 'ph-build', sprint_id: 'sp-2', role: 'builder', work_kind: 'contract', title: '문의 API 계약 정의', depends_on: ['t-plan'], acceptance_ids: ['AC-2'], artifact_ids: ['a-contract'] },
-  { id: 't-data', phase_id: 'ph-build', sprint_id: 'sp-2', role: 'builder', work_kind: 'ai_data', title: '합성 문의 CSV 적재·분류 규칙', depends_on: ['t-contract'], acceptance_ids: ['AC-2'], artifact_ids: ['a-diff-data'] },
-  { id: 't-api', phase_id: 'ph-build', sprint_id: 'sp-2', role: 'builder', work_kind: 'backend', title: '문의 조회·상태 변경 API', depends_on: ['t-contract'], acceptance_ids: ['AC-3'], artifact_ids: ['a-retrieval-api', 'a-diff-api', 'a-test-api'] },
+  { id: 't-contract', phase_id: 'ph-build', sprint_id: 'sp-2', role: 'builder', work_kind: 'contract', title: '할 일 API 계약 정의', depends_on: ['t-plan'], acceptance_ids: ['AC-2'], artifact_ids: ['a-contract'] },
+  { id: 't-data', phase_id: 'ph-build', sprint_id: 'sp-2', role: 'builder', work_kind: 'ai_data', title: '합성 할 일 CSV 적재·분류 규칙', depends_on: ['t-contract'], acceptance_ids: ['AC-2'], artifact_ids: ['a-diff-data'] },
+  { id: 't-api', phase_id: 'ph-build', sprint_id: 'sp-2', role: 'builder', work_kind: 'backend', title: '할 일 조회·상태 변경 API', depends_on: ['t-contract'], acceptance_ids: ['AC-3'], artifact_ids: ['a-retrieval-api', 'a-diff-api', 'a-test-api'] },
   { id: 't-infra', phase_id: 'ph-build', sprint_id: 'sp-2', role: 'builder', work_kind: 'infra', title: '컨테이너 이미지 빌드 구성', depends_on: ['t-api'], acceptance_ids: ['AC-5'], artifact_ids: [] },
-  { id: 't-ui', phase_id: 'ph-build', sprint_id: 'sp-3', role: 'builder', work_kind: 'frontend', title: '문의 목록·상세 화면', depends_on: ['t-api'], acceptance_ids: ['AC-4'], artifact_ids: ['a-diff-ui'] },
+  { id: 't-ui', phase_id: 'ph-build', sprint_id: 'sp-3', role: 'builder', work_kind: 'frontend', title: '할 일 목록·상세 화면', depends_on: ['t-api'], acceptance_ids: ['AC-4'], artifact_ids: ['a-diff-ui'] },
   { id: 't-int', phase_id: 'ph-build', sprint_id: 'sp-3', role: 'builder', work_kind: 'integration', title: '화면·API 통합 확인', depends_on: ['t-ui', 't-data'], acceptance_ids: ['AC-4'], artifact_ids: ['a-build'] },
   { id: 't-validate', phase_id: 'ph-review', sprint_id: 'sp-4', role: 'validator', work_kind: 'validation', title: '후보 커밋 기능 검증', depends_on: ['t-int'], acceptance_ids: ['AC-2', 'AC-3', 'AC-4'], artifact_ids: ['a-validation'] },
   { id: 't-security', phase_id: 'ph-review', sprint_id: 'sp-4', role: 'security', work_kind: 'security', title: '후보 커밋 보안 점검', depends_on: ['t-int'], acceptance_ids: ['AC-5'], artifact_ids: ['a-security'] },
@@ -52,9 +52,9 @@ export function buildTasks(states: TaskStateMap, extra: Task[] = [], spec = SPEC
 }
 
 const ARTIFACT_LIST: Artifact[] = [
-  { id: 'a-request', title: '최초 요청 원문', kind: 'request', content_digest: fakeDigest('a1'), public_summary: '고객 문의를 분류하고 처리 상태를 관리하는 작은 대시보드가 필요하다.' },
+  { id: 'a-request', title: '최초 요청 원문', kind: 'request', content_digest: fakeDigest('a1'), public_summary: '할 일을 분류하고 처리 상태를 관리하는 작은 대시보드가 필요하다.' },
   { id: 'a-spec', title: '기획안 v1', kind: 'spec', content_digest: fakeDigest('a2'), public_summary: '목표·기능 4개·비범위 3개·AC 5개·스택·무료 정책' },
-  { id: 'a-contract', title: '문의 API 계약', kind: 'contract', content_digest: fakeDigest('a3'), public_summary: 'GET /inquiries, PATCH /inquiries/{id}/status' },
+  { id: 'a-contract', title: '할 일 API 계약', kind: 'contract', content_digest: fakeDigest('a3'), public_summary: 'GET /todos, PATCH /todos/{id}/status' },
   { id: 'a-diff-data', title: '데이터 적재 변경', kind: 'code_diff', content_digest: fakeDigest('a4'), public_summary: 'seed/inquiries.csv 적재, 키워드 분류 규칙 6개' },
   { id: 'a-diff-api', title: 'API 변경', kind: 'code_diff', content_digest: fakeDigest('a5'), public_summary: 'FastAPI 라우터 2개, SQLite 모델 1개' },
   { id: 'a-test-api', title: 'API 테스트 결과', kind: 'test_result', content_digest: fakeDigest('a6'), public_summary: '12개 중 12개 통과 (합성 예시 수치)' },
@@ -99,9 +99,9 @@ export function artifacts(ids: string[]): Artifact[] {
 
 export const PLAN_VIEW: PlanView = {
   spec_version_id: SPEC_V1,
-  goal: '합성 고객 문의 CSV를 분류하고 담당자가 처리 상태를 바꿀 수 있는 대시보드를 만든다.',
-  features: ['문의 목록·검색', '키워드 기반 자동 분류', '처리 상태 변경과 이력', '분류별 건수 요약'],
-  non_goals: ['실제 고객 개인정보 사용', '다중 사용자 권한 관리', '외부 메일 연동'],
+  goal: '합성 할 일 CSV를 분류하고 담당자가 처리 상태를 바꿀 수 있는 대시보드를 만든다.',
+  features: ['할 일 목록·검색', '키워드 기반 자동 분류', '처리 상태 변경과 이력', '분류별 건수 요약'],
+  non_goals: ['실제 개인정보 사용', '다중 사용자 권한 관리', '외부 메일 연동'],
   acceptance: [
     { id: 'AC-1', title: '기획 승인', description: '목표·범위·AC·대상이 승인된 버전으로 고정된다.' },
     { id: 'AC-2', title: '분류', description: '합성 CSV 200건이 6개 분류 중 하나로 저장된다.' },
@@ -110,7 +110,7 @@ export const PLAN_VIEW: PlanView = {
     { id: 'AC-5', title: '검토·배포', description: '검증·보안이 같은 후보를 통과하고 승인된 이미지만 배포된다.' },
   ],
   constraints: ['FastAPI + Vue + SQLite 템플릿', '무료 로컬 모델만 사용'],
-  assumptions: ['문의 데이터는 합성 CSV로 대체한다'],
+  assumptions: ['할 일 데이터는 합성 CSV로 대체한다'],
   changes: ['최초 요청의 "메일 자동 회신"을 비범위로 옮김'],
   stack: ['FastAPI', 'Vue 3', 'SQLite', 'Docker Compose'],
   repository: null,
@@ -118,8 +118,37 @@ export const PLAN_VIEW: PlanView = {
   free_policy: 'Local Ollama Qwen/DeepSeek only; no paid fallback or external API.',
   allowed_tools: ['문서 검색', '작업 파일 읽기·패치', '검증 도구 실행'],
   contract_digests: { 'protocol.v1': fakeDigest('c1'), 'http.v1': fakeDigest('c2') },
-  // CR-C14 합성 지원 정보: 작은 문의 앱 템플릿 안의 요청이라 알려진 공백이 없다
-  support: { template_id: 'requests-v1', spec_version_id: SPEC_V1, request_digest: fakeDigest('9b'), implementation_allowed: true, unsupported: [], external: [] },
+  // CR-C17 합성 확장: 아이디어 대안·작업 분해·점검·의존성(모두 합성 값이며 실제 검토 결과가 아니다)
+  alternatives: [
+    { id: 'alt-server', summary: '서버 저장 방식: FastAPI와 SQLite에 할 일을 저장하고 Vue 화면에서 조회·상태 변경한다.', differences: '재시작 뒤에도 데이터가 남고 여러 기기에서 같은 목록을 볼 수 있다.', risks: '서버·DB 구성이 필요하고 스키마가 바뀌면 이전 데이터를 옮겨야 한다.' },
+    { id: 'alt-browser', summary: '브라우저 저장 방식: 서버 없이 브라우저 저장소에만 할 일을 둔다.', differences: '서버·DB·컨테이너가 필요 없어 구성이 가볍다.', risks: '다른 기기에서 볼 수 없고 브라우저 데이터를 지우면 사라진다.' },
+  ],
+  selected_alternative_id: 'alt-server',
+  work_plan: [
+    { id: 'w-contract', kind: 'contract', title: '할 일 API 계약 정의', depends_on: [], acceptance_ids: ['AC-2', 'AC-3'], write_scope: ['contracts/api.md'] },
+    { id: 'w-data', kind: 'ai_data', title: '합성 할 일 CSV 적재·분류 규칙', depends_on: ['w-contract'], acceptance_ids: ['AC-2'], write_scope: ['app/data/**'] },
+    { id: 'w-api', kind: 'backend', title: '할 일 조회·상태 변경 API', depends_on: ['w-contract'], acceptance_ids: ['AC-3'], write_scope: ['app/api/**'] },
+    { id: 'w-infra', kind: 'infra', title: '컨테이너 이미지 빌드 구성', depends_on: ['w-api'], acceptance_ids: ['AC-5'], write_scope: ['Dockerfile', 'compose.yaml'] },
+    { id: 'w-ui', kind: 'frontend', title: '할 일 목록·상세 화면', depends_on: ['w-api'], acceptance_ids: ['AC-4'], write_scope: ['web/src/**'] },
+    { id: 'w-int', kind: 'integration', title: '화면·API 통합 확인', depends_on: ['w-ui', 'w-data'], acceptance_ids: ['AC-4'], write_scope: ['tests/e2e/**'] },
+  ],
+  omitted_areas: [],
+  verification: [
+    { id: 'c-classify', ac_ids: ['AC-2'], kind: 'command', argv: ['python', '-m', 'pytest', 'tests/test_classify.py', '-q'], expect: { exit: 0, stdout_contains: ['passed'] } },
+    { id: 'c-status', ac_ids: ['AC-3'], kind: 'http', steps: [
+      { method: 'PATCH', path: '/todos/1/status', json: { status: 'done' }, expect: { status: 200 } },
+      { method: 'PATCH', path: '/todos/1/status', json: { status: 'bogus' }, expect: { status: 422 } },
+    ] },
+    { id: 'c-image', ac_ids: ['AC-5'], kind: 'file', path: 'Dockerfile', expect: { exists: true, contains: ['FROM'] } },
+  ],
+  manual_acceptance: [
+    { ac_id: 'AC-1', reason: '기획 승인은 사용자가 직접 확인한다.' },
+    { ac_id: 'AC-4', reason: '390px 폭의 키보드 조작은 사람이 확인한다.' },
+  ],
+  dependencies: { pip: ['fastapi', 'uvicorn'], npm: ['vue', 'vite'] },
+  tool_policy_digest: fakeDigest('7a'),
+  // CR-C14 합성 지원 정보: 일반 시작 프로젝트 안의 요청이라 알려진 공백이 없다
+  support: { template_id: 'starter-app-v1', spec_version_id: SPEC_V1, request_digest: fakeDigest('9b'), implementation_allowed: true, unsupported: [], external: [] },
 }
 
 export const PLAN_APPROVAL_PENDING: Approval = {

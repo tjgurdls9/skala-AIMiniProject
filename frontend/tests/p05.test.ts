@@ -129,7 +129,7 @@ describe('CR-C12 근거 표시', () => {
   test('작업 화면에서 검색 근거 아티팩트를 열면 본문이 표시된다', async () => {
     const w = mount(RunWorkspace, { attachTo: document.body, props: { source: exampleSource(findScenario('building')!) } })
     await flush()
-    await w.findAll('button').find((b) => b.text().includes('문의 조회·상태 변경 API'))!.trigger('click')
+    await w.findAll('button').find((b) => b.text().includes('할 일 조회·상태 변경 API'))!.trigger('click')
     await flush()
     await w.find('aside.evidence').findAll('button').find((b) => b.text().includes('API 작업 검색 근거'))!.trigger('click')
     await flush()
@@ -142,7 +142,7 @@ describe('CR-C12 근거 표시', () => {
     const source = { ...exampleSource(scenario), getArtifact: async (id: string) => (id === 'a-retrieval-api' ? { bad: true } : scenario.artifactBodies[id]) }
     const w = mount(RunWorkspace, { attachTo: document.body, props: { source } })
     await flush()
-    await w.findAll('button').find((b) => b.text().includes('문의 조회·상태 변경 API'))!.trigger('click')
+    await w.findAll('button').find((b) => b.text().includes('할 일 조회·상태 변경 API'))!.trigger('click')
     await flush()
     await w.find('aside.evidence').findAll('button').find((b) => b.text().includes('API 작업 검색 근거'))!.trigger('click')
     await flush()
@@ -158,7 +158,7 @@ describe('CR-C12 근거 표시', () => {
     const warns = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const w = mount(RunWorkspace, { attachTo: document.body, props: { source } })
     await flush()
-    await w.findAll('button').find((b) => b.text().includes('문의 조회·상태 변경 API'))!.trigger('click')
+    await w.findAll('button').find((b) => b.text().includes('할 일 조회·상태 변경 API'))!.trigger('click')
     await flush()
     await w.find('aside.evidence').findAll('button').find((b) => b.text().includes('API 작업 검색 근거'))!.trigger('click')
     await flush()

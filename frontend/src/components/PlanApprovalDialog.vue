@@ -69,6 +69,21 @@ watch(
   { immediate: true },
 )
 
+/** 다른 대안으로 다시 기획: 승인이 아니라 수정 요청(request_changes, scope=spec, alternative_id)이다 */
+async function chooseAlternative(alternativeId: string): Promise<void> {
+  const target = plan.value?.alternatives?.find((a) => a.id === alternativeId)
+  if (!target) return
+  const text = feedback.value.trim()
+  const note = text || `다른 대안 선택: ${target.summary}`
+  const ok = await form.run((commandId) =>
+    props.send({ action: 'request_changes', payload: { scope: 'spec', feedback: note, alternative_id: alternativeId } }, commandId),
+  )
+  if (ok) {
+    clear()
+    emit('close')
+  }
+}
+
 async function decide(decision: 'approve' | 'reject'): Promise<void> {
   const approval = props.approval
   if (!approval) return
@@ -105,7 +120,7 @@ async function decide(decision: 'approve' | 'reject'): Promise<void> {
           표시 중인 기획({{ plan.spec_version_id }})과 승인 대상({{ approval.target.spec_version_id }})의 버전이 다릅니다. 최신 대상을 다시 여세요.
         </p>
         <PlanSupportBody v-if="support" :verdict="support" @reload="loadPlan(specArtifactId)" />
-        <PlanViewBody :plan="plan" :show-support="false" />
+        <PlanViewBody :plan="plan" :show-support="false" :interactive="!readOnly" :busy="form.submitting.value" @choose="chooseAlternative" />
       </template>
       <label class="field">
         의견

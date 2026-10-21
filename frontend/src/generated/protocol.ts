@@ -1,4 +1,4 @@
-/* 자동 생성 파일 — 수정 금지. 원본: docs/planning/protocol.v1.schema.json sha256:43e0f444b2f6fc408dd177d8db599a7a13f0f3e7e8f0e2993595701c89147147. 재생성: npm run gen:types */
+/* 자동 생성 파일 — 수정 금지. 원본: docs/planning/protocol.v1.schema.json sha256:68059821bced483c0b094c499ad3cbc8e3a570f635db39fbcc51f339102a9829. 재생성: npm run gen:types */
 
 export type DevelopmentLifecycleProtocolV1DesignNotImplemented = Snapshot | Command | Event
 export type Id = string
@@ -177,6 +177,7 @@ export interface ChangePayload {
   scope: 'implementation' | 'spec'
   feedback: string
   artifact_ids?: Id[]
+  alternative_id?: string
 }
 export interface EmptyPayload {}
 export interface Event {

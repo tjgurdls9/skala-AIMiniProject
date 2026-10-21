@@ -158,10 +158,10 @@ describe('건물형 사무실: 현재 층 단면이 화면 전체, 왼쪽 엘리
 
   test('층의 사람을 누르면 근거 패널이 그 작업을 열고, 그 층을 엘리베이터 선택으로 맞춘다', async () => {
     const w = await open('building')
-    const person = w.findAll('button.person').find((b) => b.attributes('aria-label')!.includes('문의 조회·상태 변경 API'))!
+    const person = w.findAll('button.person').find((b) => b.attributes('aria-label')!.includes('할 일 조회·상태 변경 API'))!
     await person.trigger('click')
     await flush()
-    expect(w.find('aside.evidence').text()).toContain('문의 조회·상태 변경 API')
+    expect(w.find('aside.evidence').text()).toContain('할 일 조회·상태 변경 API')
     w.unmount()
   })
 
@@ -291,7 +291,7 @@ describe('장면과 같은 DOM 좌석 목록', () => {
     const tasks = findScenario('building')!.snapshot.tasks.filter((t) => t.sprint_id === 'sp-2')
     const w = mount(SceneRoster, { props: { tasks, selectedTaskId: 't-api' } })
     expect(w.text()).toContain('구현 구역')
-    expect(w.find('[aria-pressed="true"]').text()).toContain('문의 조회·상태 변경 API')
+    expect(w.find('[aria-pressed="true"]').text()).toContain('할 일 조회·상태 변경 API')
     await w.findAll('button.seat')[0].trigger('click')
     expect(w.emitted('select')).toEqual([['t-contract']])
   })

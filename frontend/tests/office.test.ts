@@ -90,7 +90,7 @@ describe('등각 사무실 장면', () => {
     const { w } = scene()
     const people = w.findAll('button.person')
     expect(people.length).toBe(tasks.length)
-    const api = people.find((b) => b.attributes('aria-label')!.includes('문의 조회·상태 변경 API'))!
+    const api = people.find((b) => b.attributes('aria-label')!.includes('할 일 조회·상태 변경 API'))!
     expect(api.attributes('aria-pressed')).toBe('true')
     expect(api.attributes('aria-label')).toContain('구현')
     await people.find((b) => b !== api)!.trigger('click')
@@ -111,7 +111,7 @@ describe('등각 사무실 장면', () => {
     const { w, push } = scene()
     push({ ...buildEvents([['task_finished', '끝', { task_id: 't-api' }]])[0] })
     await flushPromises()
-    const api = w.findAll('button.person').find((b) => b.attributes('aria-label')!.includes('문의 조회·상태 변경 API'))!
+    const api = w.findAll('button.person').find((b) => b.attributes('aria-label')!.includes('할 일 조회·상태 변경 API'))!
     expect(api.text()).toContain('방금 끝남')
     w.unmount()
   })

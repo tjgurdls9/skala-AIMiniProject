@@ -7,7 +7,8 @@ type Need = PlanSupport['external'][number]['needs'][number]
 type ExternalStatus = PlanSupport['external'][number]['status']
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/
-const TEMPLATES = new Set<string>(['requests-v1', 'cafemap-v1'])
+/** CR-C16: 서버가 시작 프로젝트 ID를 데이터로 준다. 특정 이름을 고정하지 않고 계약 패턴만 확인한다 */
+const TEMPLATE_ID = /^[a-z0-9][a-z0-9-]{0,62}$/
 const NEEDS = new Set<string>(['free_eligibility', 'key', 'quota', 'attribution', 'consent', 'isolation'])
 const STATUSES = new Set<string>(['unconfirmed', 'confirmed', 'deferred'])
 
@@ -26,7 +27,7 @@ function isExternal(e: unknown): boolean {
 
 /** http.PlanSupport 형태인지 확인한다. 화면이 열거 값으로 이름표를 조회하므로 원소까지 확인한다 */
 export function isPlanSupport(value: unknown): value is PlanSupport {
-  return isRecord(value) && TEMPLATES.has(value.template_id as string) && isText(value.spec_version_id)
+  return isRecord(value) && typeof value.template_id === 'string' && TEMPLATE_ID.test(value.template_id) && isText(value.spec_version_id)
     && typeof value.request_digest === 'string' && DIGEST.test(value.request_digest)
     && typeof value.implementation_allowed === 'boolean'
     && Array.isArray(value.unsupported) && value.unsupported.every(isUnsupported)
@@ -52,7 +53,7 @@ export function supportVerdict(plan: PlanView): SupportVerdict {
   return { kind: support.implementation_allowed ? 'clear' : 'blocked', support }
 }
 
-// 템플릿은 이름을 붙이지 않고 서버 ID 그대로 보인다(과제 이름을 화면이 지어내지 않는다). TEMPLATES는 계약 enum 검사일 뿐이다.
+// 템플릿은 이름을 붙이지 않고 서버 ID 그대로 보인다(과제 이름을 화면이 지어내지 않는다).
 export const NEED_NAME: Record<Need, string> = {
   free_eligibility: '무료 자격',
   key: '키',

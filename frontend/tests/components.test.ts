@@ -54,7 +54,7 @@ describe('기획 승인', () => {
     const send = vi.fn(async (): Promise<ApiError | null> => null)
     const w = mountDialog(send)
     await flushPromises()
-    expect(w.text()).toContain('합성 고객 문의 CSV')
+    expect(w.text()).toContain('합성 할 일 CSV')
     await button(w, '이 기획으로 구현 시작').trigger('click')
     await flushPromises()
     expect(send).toHaveBeenCalledOnce()
