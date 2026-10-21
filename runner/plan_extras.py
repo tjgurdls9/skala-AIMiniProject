@@ -7,9 +7,9 @@ import re
 
 from jsonschema import Draft202012Validator, ValidationError
 
-from backend.contracts import SCHEMAS, DomainError, digest, require
+from backend.contracts import SCHEMAS, digest, require
 from backend.store import now
-from runner.context import SPEC_KEYS, bounded, mandatory
+from runner.context import bounded, mandatory
 from runner.plan_checks import AREAS, check_verification, check_work_plan
 
 DEFS = SCHEMAS["http.v1.schema.json"]["$defs"]

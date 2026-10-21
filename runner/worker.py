@@ -8,7 +8,7 @@ import time
 import httpx
 
 from backend.config import Settings
-from backend.contracts import ROOT, SCHEMAS, SECRET, DomainError, canonical, digest, plan_inputs, require, validate
+from backend.contracts import SCHEMAS, SECRET, DomainError, canonical, digest, plan_inputs, require, validate
 from backend.store import Store, now, uid
 from backend.templates import plan_support, template_contract
 from knowledge import Corpus

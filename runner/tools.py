@@ -5,7 +5,7 @@ from pathlib import Path
 from backend.contracts import DomainError, digest, require
 from backend.store import now
 from runner.commands import (TOOL_POLICY, package_name, redact, validate_command, validate_install, validate_test_command)
-from runner.tdd_gate import TDD_KINDS, is_test_path, mutated_paths, progress
+from runner.tdd_gate import TDD_KINDS, is_test_path, progress
 from runner.workspace import Workspace
 
 READ_ROLES = frozenset({"builder", "validator", "security"})

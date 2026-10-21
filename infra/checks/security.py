@@ -1,6 +1,5 @@
 """Conservative local static checks; dependency/image scanning is separate."""
 import ast
-import hashlib
 import json
 import os
 from pathlib import Path

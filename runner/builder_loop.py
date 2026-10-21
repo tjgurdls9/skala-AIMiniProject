@@ -10,7 +10,6 @@ from backend.contracts import DomainError, canonical, digest
 from runner.commands import redact
 from runner.context import BUDGET, bounded, mandatory
 from runner.tdd_gate import can_finish, progress
-from runner.tools import ToolBox
 
 TOOLS = ("list_files", "read_file", "write_file", "delete_file", "move_file", "run_command", "run_tests", "install_dependencies")
 TEXT = dict(type="string")
