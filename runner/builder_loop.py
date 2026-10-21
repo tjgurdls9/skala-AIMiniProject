@@ -2,6 +2,8 @@
 
 The model sees only its task, the approved criteria/checks for that task, a short ledger-derived history and the gate
 state. Completion is accepted only when the ledger shows the required RED -> GREEN evidence."""
+from collections import deque
+
 from jsonschema import Draft202012Validator, ValidationError
 
 from backend.contracts import DomainError, canonical, digest
@@ -14,6 +16,8 @@ TOOLS = ("list_files", "read_file", "write_file", "delete_file", "move_file", "r
 ACTION_SCHEMA = dict(type="object", additionalProperties=False, required=["tool"], properties=dict(
     tool=dict(enum=[*TOOLS, "finish"]), args=dict(type="object"), summary=dict(type="string", maxLength=2000)))
 STREAK_LIMIT = 3
+WINDOW = 8   # recent steps without a recorded change in which the same action and outcome may appear STREAK_LIMIT times
+CHANGING = frozenset({"write_file", "delete_file", "move_file", "run_command", "run_tests", "install_dependencies"})
 HISTORY = 8
 FILES_SHOWN = 60
 CONTENT_CAP, OUTPUT_CAP = 3000, 800
@@ -126,10 +130,11 @@ class BuilderLoop:
             ok=False, error_code="MODEL_FORMAT"))
 
     async def run(self, job, worker, toolbox):
-        options, last, streak, previous, steps = job["packet"]["options"], None, 0, None, 0
+        options, last, recent, steps = job["packet"]["options"], None, deque(maxlen=WINDOW), 0
         while True:
             entries, call = self.context(job, toolbox, last)
             steps += 1
+            action = None
             try:
                 action = await worker.infer(job, self.fit(call), ACTION_SCHEMA)
                 Draft202012Validator(ACTION_SCHEMA).validate(action)
@@ -147,8 +152,9 @@ class BuilderLoop:
                 else:
                     last, signature = self.execute(toolbox, action["tool"], action.get("args", {}))
                     signature = digest([action["tool"], action.get("args", {}), signature])
-            streak = streak + 1 if signature == previous else 1
-            previous = signature
-            if streak >= STREAK_LIMIT:
+            if last.get("ok") and isinstance(action, dict) and action.get("tool") in CHANGING and not last.get("unchanged"):
+                recent.clear()                  # a recorded change is progress; earlier repetition no longer counts
+            recent.append(signature)
+            if recent.count(signature) >= STREAK_LIMIT:
                 raise DomainError("INVALID_COMMAND", f"같은 동작과 결과가 {STREAK_LIMIT}번 반복돼 사람의 입력이 필요합니다: "
                                   f"{(last or {}).get('error', '진전 없음')[:200]}", 422)

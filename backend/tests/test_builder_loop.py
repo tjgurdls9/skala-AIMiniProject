@@ -110,6 +110,16 @@ class LoopChecks(unittest.TestCase):
         self.assertEqual(caught.exception.code, 'INVALID_COMMAND')
         self.assertIn('반복', caught.exception.message)
 
+    def test_alternating_between_two_failing_actions_is_a_repetition_too(self):
+        # the real model alternated finish / list_files for 40 calls; interleaving must not hide a loop
+        refused = FINISH
+        bad = act('list_files', path='.')                  # list_files takes no argument
+        script = Script([refused, bad] * 20)
+        with self.assertRaises(DomainError) as caught:
+            asyncio.run(BuilderLoop(self.store).run(self.job(), script, self.toolbox()))
+        self.assertIn('반복', caught.exception.message)
+        self.assertLessEqual(len(script.packets), 6)
+
     def test_progress_resets_the_repetition_streak(self):
         self.codes = [1, 0]
         result, _ = self.run_loop([act('read_file', path='missing.txt')] * 2 + [

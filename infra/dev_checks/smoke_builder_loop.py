@@ -2,7 +2,7 @@
 
 Runs ONE generic micro task through BuilderLoop with the real Ollama model and real Docker containers, in a temporary
 workspace and database. No prompt hint or answer is added. Limits: 40 model calls or 20 minutes, whichever comes first.
-Usage: backend/.venv/bin/python infra/dev_checks/smoke_builder_loop.py <python@sha256:...> <node@sha256:...> <model>"""
+Usage: backend/.venv/bin/python infra/dev_checks/smoke_builder_loop.py <python@sha256:...> <node@sha256:...> <model> <add|reverse>"""
 import asyncio
 import json
 from pathlib import Path
@@ -26,6 +26,11 @@ from runner.worker import POLICY  # noqa: E402
 from runner.workspace import Workspace  # noqa: E402
 
 MAX_CALLS, MAX_SECONDS = 40, 20 * 60
+TASKS = dict(   # generic micro tasks; the description is the whole input, no code and no hint
+    add=dict(goal="두 정수를 더하는 함수 add(a, b)를 제공한다", feature="add(a, b)는 두 정수의 합을 반환한다", title="덧셈",
+             description="add(2, 3)이 5를 반환한다", label="덧셈 함수"),
+    reverse=dict(goal="문자열을 뒤집는 함수 reverse(s)를 제공한다", feature="reverse(s)는 문자열을 거꾸로 뒤집어 반환한다", title="뒤집기",
+                 description="reverse('abc')가 'cba'를 반환한다", label="문자열 뒤집기 함수"))
 
 
 class Stop(Exception):
@@ -53,17 +58,18 @@ class Metered:
         return action
 
 
-async def main(python_image, node_image, model_name):
+async def main(python_image, node_image, model_name, task_name):
+    task = TASKS[task_name]
     work = Path(tempfile.mkdtemp(prefix="lc-smoke-"))
     (work / "ws").mkdir()
     store = Store(work / "state.sqlite3")
     project = store.project(dict(title="smoke", request="smoke"))
     run_id = store.create_run(project["project_id"], dict(mode="live"), template_id="blank-v1")["run_id"]
-    spec = dict(spec_version_id="0" * 32, goal="두 정수를 더하는 함수 add(a, b)를 제공한다", features=["add(a, b)는 두 정수의 합을 반환한다"], non_goals=[],
-                constraints=["무료 도구만 사용한다"], acceptance=[dict(id="AC1", title="덧셈", description="add(2, 3)이 5를 반환한다")],
+    spec = dict(spec_version_id="0" * 32, goal=task["goal"], features=[task["feature"]], non_goals=[],
+                constraints=["무료 도구만 사용한다"], acceptance=[dict(id="AC1", title=task["title"], description=task["description"])],
                 verification=[], dependencies=dict(pip=[], npm=[]))
     job = dict(run_id=run_id, id="smoke", packet=dict(latest_spec=spec, prior_draft=None, mandatory_policy=POLICY, unresolved_failures=[],
-               options=dict(task_id="t1", task_kind="backend", task_title="덧셈 함수", acceptance_ids=["AC1"], write_scope=["**"])))
+               options=dict(task_id="t1", task_kind="backend", task_title=task["label"], acceptance_ids=["AC1"], write_scope=["**"])))
     who = dict(role="builder", run_id=run_id, job_id="smoke", attempt_id="smoke", task_id="t1", task_kind="backend")
     toolbox = ToolBox(lambda: who, store, Workspace(work / "ws"), DockerExecutor(dict(python=python_image, node=node_image)), deps_dir=work / "deps")
     metered, outcome, began = Metered(Ollama(model_name)), "unknown", time.monotonic()
@@ -79,7 +85,7 @@ async def main(python_image, node_image, model_name):
     entries = store.tool_calls(run_id, "t1")
     phases = [progress(entries[: i + 1], "backend").phase for i in range(len(entries))]
     observations = [s["observation_of_previous"] for s in metered.steps[1:] if s.get("observation_of_previous")]
-    summary = dict(model=model_name, outcome=outcome, seconds=round(time.monotonic() - began, 1), model_calls=len(metered.steps),
+    summary = dict(task=task_name, model=model_name, outcome=outcome, seconds=round(time.monotonic() - began, 1), model_calls=len(metered.steps),
                    schema_valid=sum(1 for s in metered.steps if s.get("schema_valid")), model_errors=sum(1 for s in metered.steps if "error" in s),
                    observations_ok=sum(1 for o in observations if o.get("ok")), observations_error=sum(1 for o in observations if not o.get("ok")),
                    tool_calls=len(entries), tool_denied=sum(1 for e in entries if not e["ok"]),
@@ -94,4 +100,4 @@ async def main(python_image, node_image, model_name):
 
 
 if __name__ == "__main__":
-    asyncio.run(main(*sys.argv[1:4]))
+    asyncio.run(main(*sys.argv[1:5]))
