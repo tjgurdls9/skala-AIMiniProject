@@ -41,15 +41,16 @@ def state_message(phase, tests_written, implemented, last_run):
         return "run_tests가 시간 초과(종료 코드 없음). RED 판정에는 실패(종료 코드 ≠ 0)한 run_tests가 필요합니다."
     if not implemented:
         if last_run == 0:
-            return "구현 파일 기록 없이 run_tests가 통과. GREEN 판정에는 구현 파일을 작성한 뒤 통과한 run_tests가 필요합니다."
-        return "RED 확인됨, 구현 파일 기록 없음. GREEN 판정에는 구현 파일을 작성한 뒤 통과(종료 코드 0)한 run_tests가 필요합니다."
+            return "테스트 경로 밖 구현 파일 기록 없이 run_tests가 통과. GREEN 판정에는 테스트 경로 밖에 구현 파일을 작성한 뒤 통과한 run_tests가 필요합니다."
+        return "RED 확인됨, 테스트 경로 밖 구현 파일 기록 없음. GREEN 판정에는 구현 파일을 작성한 뒤 통과(종료 코드 0)한 run_tests가 필요합니다."
     if last_run == "none":
         return "구현 파일 있음, 이후 run_tests 기록 없음. GREEN 판정에는 통과(종료 코드 0)한 run_tests가 필요합니다."
     return "마지막 run_tests가 아직 실패. GREEN 판정에는 통과(종료 코드 0)한 run_tests가 필요합니다."
 
 
 def progress(entries, kind):
-    """Phase of the current task: `red` (write failing tests first), `impl` (tests fail or code changed since, make them pass), `done`."""
+    """Phase of the current task: `red` (write failing tests first), `impl` (RED seen; needs an implementation file and a passing run
+    after the last change), `done`. Editing tests after RED is allowed: forcing a second failure blocked legitimate test fixes in real runs."""
     if kind not in TDD_KINDS:
         return Progress("free", "")
     phase, tests_written, implemented, last_run = "red", False, False, "none"   # last_run: exit code since the last change, or "none"
@@ -58,10 +59,12 @@ def progress(entries, kind):
             continue
         if entry["tool"] in MUTATIONS:
             last_run = "none"
-            if any(is_test_path(p) for p in mutated_paths(entry)):
-                phase, tests_written, implemented = "red", True, False
-            elif phase != "red":
-                phase, implemented = "impl", True
+            tests_only = all(is_test_path(p) for p in mutated_paths(entry))
+            if phase == "red":
+                tests_written = tests_written or tests_only
+            else:   # a later change, even a test fix, only reopens the final pass; weakened tests are the independent validator's concern
+                phase = "impl"
+                implemented = implemented or not tests_only
         elif entry["tool"] == "run_tests":
             code = last_run = entry["exit_code"]
             if phase == "red" and tests_written and code not in (0, None):

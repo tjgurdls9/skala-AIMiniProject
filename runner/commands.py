@@ -97,7 +97,7 @@ class DockerExecutor:
         return image
 
     def build_args(self, name, workspace, argv, cwd, network, env, deps, deps_writable):
-        container_env = {"HOME": "/tmp", **(env or {})}
+        container_env = {"HOME": "/tmp", "PYTHONDONTWRITEBYTECODE": "1", **(env or {})}
         args = ["run", "--rm", *Sandbox.limits(name, network), "--mount", f"type=bind,src={workspace},dst={CONTAINER_WORK}",
                 "--workdir", CONTAINER_WORK if cwd == "." else f"{CONTAINER_WORK}/{cwd}"]
         if deps is not None:

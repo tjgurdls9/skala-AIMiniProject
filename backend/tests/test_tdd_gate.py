@@ -54,20 +54,28 @@ class TddProgress(unittest.TestCase):
         self.assertEqual(phase([write('tests/t.py', ok=False), tests(1)]), 'red')
         self.assertEqual(phase([write('tests/t.py'), tests(1, ok=False)]), 'red')
 
-    def test_changing_a_test_after_red_requires_a_fresh_failure(self):
-        entries = [write('tests/t.py'), tests(1), write('server/main.py'), tests(0)]
-        self.assertEqual(phase(entries + [write('tests/t.py')]), 'red')            # weakening a test reopens RED
-        self.assertEqual(phase(entries + [write('tests/t.py'), tests(0)]), 'red')  # and a pass does not close it
-        self.assertEqual(phase(entries + [write('tests/t.py'), tests(1)]), 'impl')
-        self.assertEqual(phase(entries + [delete('tests/t.py')]), 'red')
-        self.assertEqual(phase(entries + [move('tests/t.py', 'tests/u.py')]), 'red')
-
-    def test_changing_implementation_after_green_needs_a_new_green(self):
-        entries = [write('tests/t.py'), tests(1), write('server/main.py'), tests(0), write('server/main.py')]
+    def test_fixing_a_test_after_red_is_allowed_and_does_not_reset_the_gate(self):
+        # real runs: a test that failed for the wrong reason (a missing import) must be fixable without a second failure
+        entries = [write('tests/t.py'), tests(1), write('tests/t.py')]
         self.assertEqual(phase(entries), 'impl')
-        self.assertFalse(can_finish(entries, 'backend')[0])
-        self.assertEqual(phase(entries + [tests(1)]), 'impl')
-        self.assertEqual(phase(entries + [tests(0)]), 'done')
+        self.assertEqual(phase(entries + [delete('tests/t.py')]), 'impl')
+        self.assertEqual(phase(entries + [move('tests/t.py', 'tests/u.py')]), 'impl')
+
+    def test_green_needs_an_implementation_file_outside_the_test_paths_and_a_pass_after_the_last_change(self):
+        fixed_test_only = [write('tests/t.py'), tests(1), write('tests/t.py'), tests(0)]
+        self.assertEqual(phase(fixed_test_only), 'impl')                       # no implementation file was written
+        self.assertFalse(can_finish(fixed_test_only, 'backend')[0])
+        self.assertIn('테스트 경로 밖', progress(fixed_test_only, 'backend').message)
+        entries = [write('tests/t.py'), tests(1), write('server/main.py'), write('tests/t.py'), tests(0)]
+        self.assertEqual(phase(entries), 'done')                               # the test fix came before the passing run
+        self.assertEqual(phase(entries[:-1]), 'impl')                          # the pass must follow the last change
+
+    def test_any_change_after_green_needs_a_new_passing_run_but_keeps_the_implementation_credit(self):
+        entries = [write('tests/t.py'), tests(1), write('server/main.py'), tests(0)]
+        self.assertEqual(phase(entries + [write('tests/t.py')]), 'impl')
+        self.assertEqual(phase(entries + [write('server/main.py')]), 'impl')
+        self.assertEqual(phase(entries + [write('tests/t.py'), tests(1)]), 'impl')
+        self.assertEqual(phase(entries + [write('tests/t.py'), tests(0)]), 'done')
 
     def test_finish_is_refused_with_a_reason_until_done(self):
         ok, reason = can_finish([write('tests/t.py'), tests(1), write('server/main.py')], 'backend')

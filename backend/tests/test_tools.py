@@ -186,7 +186,7 @@ class DockerExecutorChecks(unittest.TestCase):
         self.assertIs(kwargs.get('shell', False), False)
         self.assertNotIn('env', kwargs)  # the host environment is never forwarded into the container
         env_pairs = [args[i + 1] for i, a in enumerate(args) if a == '--env']
-        self.assertEqual(env_pairs, ['HOME=/tmp'])
+        self.assertEqual(env_pairs, ['HOME=/tmp', 'PYTHONDONTWRITEBYTECODE=1'])
 
     def test_only_a_named_registry_network_is_ever_passed_and_never_host_env(self):
         self.executor.run(self.workspace, ['python'], '.', 30, network='lifecycle-registry', env=dict(HTTPS_PROXY='http://proxy:3128'))
@@ -194,7 +194,7 @@ class DockerExecutorChecks(unittest.TestCase):
         self.assertIn('--network lifecycle-registry', ' '.join(args))
         self.assertIn('HTTPS_PROXY=http://proxy:3128', args)
         env_pairs = [args[i + 1] for i, a in enumerate(args) if a == '--env']
-        self.assertEqual(env_pairs, ['HOME=/tmp', 'HTTPS_PROXY=http://proxy:3128'])
+        self.assertEqual(env_pairs, ['HOME=/tmp', 'HTTPS_PROXY=http://proxy:3128', 'PYTHONDONTWRITEBYTECODE=1'])
 
     def test_exit_code_output_cap_and_redaction(self):
         self.reply = FakeProcess(3, b'x' * 70000, ('leak ' + SECRET_LIKE).encode())
