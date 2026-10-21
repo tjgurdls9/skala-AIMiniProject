@@ -6,10 +6,12 @@
 
 이 절은 아래의 이전 기록보다 우선한다. 지시는 원본의 `docs/prompts/CLAUDE_PHASE_COMPLETION.md`와 `docs/planning/phase-completion.md`를 따른다. 기준은 Claude `b3a52bc`, Codex `c3e11c1`이다.
 
-**현재 상태: `WAITING_FOR_RUNTIME_INTEGRATION`** (관제 지시 5 완료. 이전: 관제 지시 2·4 완료. 통합 담당은 런타임 세션 f3이다. 이전의 "Codex 통합 대기"는 Codex가 멈춰 무효다)
-- 관제가 Claude 세션(skala-aiminiproject-61)으로 옮겨졌다. 기준 문서는 원본 `docs/planning/execution-boundary.md`다. 카공지도는 검증 과제이고 기존 실행 `846eed64…`는 작업 세션 개입이 있어 **로컬 모델 자율 수용 미검증**이다.
-- 프론트 최신 완료 커밋: 아래 "재개 10"(CR-C18 소비, 계약 채택 `6ecfb65`=db1300f). 그 전 `cabe631`(재개 9, CR-C16·C17), 계약 채택 `b412161`(=76147c6). 그 전 `d68a4da`(재개 8)·`4fc4084`(재개 7). 통합 대상은 관제가 정한다(`4fc4084`·`5addfd2`·`d68a4da`·`e5016e5`는 이전 요청에 포함, 새로 `b412161`·`cabe631`과 인계 커밋).
-- 대기 이유(구체): 런타임 세션이 위 커밋과 인계 커밋을 통합해야 한다. 이후 작업은 관제 지시를 받는다. 계약 없이 미리 구현하지 않는다.
+**현재 상태: `WAITING_FOR_RUNTIME_INTEGRATION`** (관제 지시 5·6 완료. 이전: 관제 지시 2·4 완료)
+- 프론트 최신 커밋: 인계 갱신 커밋(관제 지시 6, 이 문서를 고친 바로 이 커밋). 그 직전 코드 완료 커밋은 `9b502bd`(재개 10 인계)·`4c6f8db`(CR-C18 소비)·`6ecfb65`(계약 채택=db1300f)다. 그 전 `cabe631`(재개 9, CR-C16·C17), `b412161`(=76147c6), `d68a4da`(재개 8), `4fc4084`(재개 7).
+- 통합 대상: `4fc4084` … `9b502bd`(와 이 인계 커밋). 런타임(codex-runtime-b0)이 사용자 지시로 이제 merge한다. push는 런타임이 두 브랜치를 한 번에 한다. Claude는 push하지 않는다.
+- 다음 대기 항목: 실서버 전체 흐름을 사용자와 실시간으로 확인한다(F4d 서버 `5519f3b` 기준). 확인 대상은 실제 acceptance 승인, 거절, 무효화다. 그 전에는 계약 없이 미리 구현하지 않는다.
+- 세션 주소: 런타임 세션은 교대했다. 새 주소는 `codex-runtime-b0`이고 관제 주소는 `skala-aiminiproject-a7`이다(이전 f3, `skala-aiminiproject-61`은 무효).
+- 기준 문서는 원본 `docs/planning/execution-boundary.md`다. 카공지도는 검증 과제이고 기존 실행 `846eed64…`는 작업 세션 개입이 있어 **로컬 모델 자율 수용 미검증**이다.
 - Claude 측 서버 없음. 8000의 LIVE API 소유는 런타임 쪽이며 Claude가 띄우거나 종료하지 않는다.
 - 사용자 직접 디자인 지시(건물형 사무실)를 Artifact 시안에서 제품 코드로 반영했다(`4fc4084`, 아래 "재개 7").
 
