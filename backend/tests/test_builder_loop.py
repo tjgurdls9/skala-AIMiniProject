@@ -9,7 +9,7 @@ from backend.contracts import DomainError, canonical, digest
 from backend.store import Store
 from runner.commands import CommandResult
 from runner.context import BUDGET
-from runner.builder_loop import ACTION_SCHEMA, BuilderLoop
+from runner.builder_loop import ACTION_SCHEMA, INSTRUCTIONS, BuilderLoop, action_schema
 from runner.tools import ToolBox
 from runner.workspace import Workspace
 from test_tools import RecordingExecutor
@@ -24,10 +24,11 @@ SPEC = dict(spec_version_id='s' * 32, goal='목표', features=['기능'], non_go
 class Script:
     """Replays a fixed list of actions (dicts); records every packet it was shown."""
     def __init__(self, actions):
-        self.actions, self.packets = list(actions), []
+        self.actions, self.packets, self.schemas = list(actions), [], []
 
     async def infer(self, job, call, schema):
         self.packets.append(copy.deepcopy(call))
+        self.schemas.append(copy.deepcopy(schema))
         item = self.actions.pop(0)
         if isinstance(item, Exception):
             raise item
@@ -222,13 +223,42 @@ class LoopChecks(unittest.TestCase):
         self.assertIn('구현 파일을 작성', nexts[2])      # RED confirmed
         self.assertIn('run_tests', nexts[3])           # implementation written, not run yet
 
-    def test_action_schema_accepts_only_known_tools(self):
+    def test_action_schema_constrains_every_tool_to_its_own_arguments(self):
         from jsonschema import Draft202012Validator
-        validator = Draft202012Validator(ACTION_SCHEMA)
-        validator.validate(dict(tool='finish', summary='x'))
-        validator.validate(dict(tool='write_file', args={}))
-        with self.assertRaises(Exception):
-            validator.validate(dict(tool='rm_rf', args={}))
+        validator = Draft202012Validator(action_schema(True))
+        for good in (dict(tool='finish', summary='x'), dict(tool='list_files', args={}), dict(tool='read_file', args=dict(path='a')),
+                     dict(tool='write_file', args=dict(path='a', content='b')), dict(tool='write_file', args=dict(path='a', content='b', expected_digest=None)),
+                     dict(tool='run_tests', args=dict(argv=['python', '-m', 'unittest'], timeout=30)),
+                     dict(tool='install_dependencies', args=dict(manager='pip', packages=['x']))):
+            validator.validate(good)
+        for bad in (dict(tool='rm_rf', args={}), dict(tool='list_files', args=dict(path='.')), dict(tool='read_file', args={}),
+                    dict(tool='write_file', args=dict(path='a')), dict(tool='run_command', args=dict(argv='sh -c x')),
+                    dict(tool='install_dependencies', args=dict(manager='apt', packages=['x'])), dict(tool='read_file', args=dict(path='a', extra=1)),
+                    dict(tool='finish')):
+            self.assertFalse(validator.is_valid(bad), bad)
+
+    def test_finish_is_only_offered_in_the_schema_while_the_ledger_allows_it(self):
+        self.codes = [1, 0]
+        _, script = self.run_loop([
+            act('write_file', path='tests/test_a.py', content='t'), act('run_tests', argv=['python', '-m', 'pytest']),
+            act('write_file', path='server/main.py', content='c'), act('run_tests', argv=['python', '-m', 'pytest']), FINISH])
+
+        def offers_finish(schema):
+            return any(v['properties']['tool'].get('const') == 'finish' for v in schema['anyOf'])
+        self.assertEqual([offers_finish(sc) for sc in script.schemas], [False, False, False, False, True])
+
+    def test_a_finish_the_schema_does_not_offer_is_still_refused_with_the_gate_reason(self):
+        script = Script([FINISH, act('write_file', path='tests/test_a.py', content='t'), act('read_file', path='x'), FINISH])
+        with self.assertRaises(IndexError):
+            asyncio.run(BuilderLoop(self.store).run(self.job(), script, self.toolbox()))
+        self.assertIn('아직 끝낼 수 없습니다', script.packets[1]['last_observation']['error'])
+
+    def test_instructions_use_placeholders_and_no_task_material(self):
+        for placeholder in ('<path>', '<text>', '<runner>'):
+            self.assertIn(placeholder, INSTRUCTIONS)
+        for material in ('add(', 'reverse', 'Hello', '덧셈', '뒤집'):
+            self.assertNotIn(material, INSTRUCTIONS)
+        self.assertLess(len(INSTRUCTIONS.encode()), 2200)
 
 
 if __name__ == '__main__':

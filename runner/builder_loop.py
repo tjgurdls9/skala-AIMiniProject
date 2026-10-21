@@ -13,8 +13,37 @@ from runner.tdd_gate import can_finish, progress
 from runner.tools import ToolBox
 
 TOOLS = ("list_files", "read_file", "write_file", "delete_file", "move_file", "run_command", "run_tests", "install_dependencies")
-ACTION_SCHEMA = dict(type="object", additionalProperties=False, required=["tool"], properties=dict(
-    tool=dict(enum=[*TOOLS, "finish"]), args=dict(type="object"), summary=dict(type="string", maxLength=2000)))
+TEXT = dict(type="string")
+
+
+def obj(properties, required):
+    return dict(type="object", additionalProperties=False, properties=properties, required=required)
+
+
+COMMAND = dict(argv=dict(type="array", minItems=1, maxItems=32, items=TEXT), cwd=TEXT, timeout=dict(type="integer"))
+TOOL_ARGS = dict(
+    list_files=obj({}, []),
+    read_file=obj(dict(path=TEXT), ["path"]),
+    write_file=obj(dict(path=TEXT, content=TEXT, expected_digest=dict(type=["string", "null"])), ["path", "content"]),
+    delete_file=obj(dict(path=TEXT, expected_digest=TEXT), ["path", "expected_digest"]),
+    move_file=obj(dict(source=TEXT, target=TEXT, expected_digest=TEXT), ["source", "target", "expected_digest"]),
+    run_command=obj(COMMAND, ["argv"]),
+    run_tests=obj(COMMAND, ["argv"]),
+    install_dependencies=obj(dict(manager=dict(enum=["pip", "npm"]), packages=dict(type="array", minItems=1, maxItems=20, items=TEXT)),
+                             ["manager", "packages"]))
+
+
+def action_schema(allow_finish):
+    """One variant per tool with its own arguments; `finish` exists only while the ledger would accept it."""
+    variants = [dict(type="object", additionalProperties=False, required=["tool", "args"], properties=dict(tool=dict(const=name), args=args))
+                for name, args in TOOL_ARGS.items()]
+    if allow_finish:
+        variants.append(dict(type="object", additionalProperties=False, required=["tool", "summary"],
+                             properties=dict(tool=dict(const="finish"), summary=dict(type="string", maxLength=2000))))
+    return dict(anyOf=variants)
+
+
+ACTION_SCHEMA = action_schema(True)
 STREAK_LIMIT = 3
 WINDOW = 8   # recent steps without a recorded change in which the same action and outcome may appear STREAK_LIMIT times
 CHANGING = frozenset({"write_file", "delete_file", "move_file", "run_command", "run_tests", "install_dependencies"})
@@ -22,16 +51,17 @@ HISTORY = 8
 FILES_SHOWN = 60
 CONTENT_CAP, OUTPUT_CAP = 3000, 800
 INSTRUCTIONS = (
-    "You are the builder. Each step return exactly one JSON action: {\"tool\": <name>, \"args\": {...}} or {\"tool\": \"finish\", \"summary\": \"...\"}. "
-    "Tools: list_files(), read_file(path), write_file(path, content, expected_digest), delete_file(path, expected_digest), "
-    "move_file(source, target, expected_digest), run_command(argv, cwd, timeout), run_tests(argv, cwd, timeout), "
+    "You are the builder. Each step return exactly one JSON action. Shapes (placeholders only): "
+    '{"tool":"list_files","args":{}} ; {"tool":"read_file","args":{"path":"<path>"}} ; '
+    '{"tool":"write_file","args":{"path":"<path>","content":"<text>"}} ; {"tool":"run_tests","args":{"argv":["<runner>","<arg>"]}} ; '
+    '{"tool":"finish","summary":"<text>"} (finish is offered only when the server allows it). '
+    "Other tools: delete_file(path, expected_digest), move_file(source, target, expected_digest), run_command(argv, cwd, timeout), "
     "install_dependencies(manager, packages). argv is a list, never a shell string. Pass expected_digest (from read_file/list_files) when "
-    "changing an existing file. Write only inside write_scope. Follow gate.next: write failing tests first, run them, then implement until they pass. "
-    "The server decides RED, GREEN and completion from recorded exit codes; stating that something passed has no effect. "
-    "Environment facts: commands run in a container without network; the python image has only the standard library (no pytest) and the node image "
-    "has the built-in test runner (node --test) unless dependencies were installed. "
-    "Test files must also live inside write_scope and use conventional names (test_*.py, *_test.py, *.test.js, tests/). "
-    "Implement only the acceptance criteria shown. Do not add dependencies outside the approved list.")
+    "changing an existing file. Write only inside write_scope; test files must be inside it too, with conventional names "
+    "(test_*.py, *_test.py, *.test.js, tests/). Environment: commands have no network; the python image has only the standard library "
+    "(no pytest); the node image has the built-in test runner (node --test). The server decides RED, GREEN and completion from recorded "
+    "exit codes; stating that something passed has no effect. Follow gate.next. Implement only the acceptance criteria shown; "
+    "do not install packages outside the approved list.")
 
 
 def describe_check(check):
@@ -57,6 +87,10 @@ def summarize_args(tool, args):
 
 def history_entry(entry):
     return dict(tool=entry["tool"], args=summarize_args(entry["tool"], entry["args"]), ok=entry["ok"], error=entry["error_code"], exit_code=entry["exit_code"])
+
+
+class Refused(Exception):
+    """The model asked to finish while the ledger does not allow it."""
 
 
 class BuilderLoop:
@@ -135,9 +169,15 @@ class BuilderLoop:
             entries, call = self.context(job, toolbox, last)
             steps += 1
             action = None
+            allowed, reason = can_finish(entries, options.get("task_kind"))
+            schema = action_schema(allowed)
             try:
-                action = await worker.infer(job, self.fit(call), ACTION_SCHEMA)
-                Draft202012Validator(ACTION_SCHEMA).validate(action)
+                action = await worker.infer(job, self.fit(call), schema)
+                if isinstance(action, dict) and action.get("tool") == "finish" and not allowed:
+                    raise Refused(reason)
+                Draft202012Validator(schema).validate(action)
+            except Refused as refused:
+                last, signature = dict(ok=False, error="아직 끝낼 수 없습니다: " + str(refused)), "finish:" + str(refused)
             except ValueError as error:   # the answer was not decodable JSON; keep the raw head as evidence, never crash the run
                 self.record_format_error(job, error)
                 last, signature = dict(ok=False, error="출력이 올바른 JSON이 아닙니다: " + str(error)[:120]), "decode:" + str(error)[:80]
@@ -145,13 +185,9 @@ class BuilderLoop:
                 last, signature = dict(ok=False, error="형식 오류: " + error.message[:200]), "format:" + error.message[:200]
             else:
                 if action["tool"] == "finish":
-                    done, reason = can_finish(entries, options.get("task_kind"))
-                    if done:
-                        return dict(summary=action.get("summary", ""), steps=steps)
-                    last, signature = dict(ok=False, error="아직 끝낼 수 없습니다: " + reason), "finish:" + reason
-                else:
-                    last, signature = self.execute(toolbox, action["tool"], action.get("args", {}))
-                    signature = digest([action["tool"], action.get("args", {}), signature])
+                    return dict(summary=action.get("summary", ""), steps=steps)
+                last, signature = self.execute(toolbox, action["tool"], action.get("args", {}))
+                signature = digest([action["tool"], action.get("args", {}), signature])
             if last.get("ok") and isinstance(action, dict) and action.get("tool") in CHANGING and not last.get("unchanged"):
                 recent.clear()                  # a recorded change is progress; earlier repetition no longer counts
             recent.append(signature)

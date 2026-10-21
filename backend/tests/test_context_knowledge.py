@@ -3,6 +3,7 @@ import asyncio
 import copy
 import json
 import unittest
+import unittest.mock
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -30,6 +31,50 @@ class SystemPromptChecks(unittest.TestCase):
         self.assertIn('Never modify code', prompts['validator'])
         self.assertIn('Never modify code', prompts['security'])
         self.assertNotIn('Never modify code', prompts['planner'])
+
+
+class ThinkFlagChecks(unittest.IsolatedAsyncioTestCase):
+    async def sent(self, **kwargs):
+        from runner import model as module
+        captured = {}
+
+        class Client:
+            def __init__(self, *a, **k):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def get(self, url):
+                class Response:
+                    def raise_for_status(self):
+                        pass
+
+                    def json(self):
+                        return {'models': [{'name': 'qwen3.5:4b'}]} if url.endswith('/api/tags') else {'models': []}
+                return Response()
+
+            async def post(self, url, json):
+                captured.update(json)
+
+                class Response:
+                    def raise_for_status(self):
+                        pass
+
+                    def json(self):
+                        return {'message': {'content': '{"tool": "finish", "summary": "x"}'}}
+                return Response()
+        with unittest.mock.patch.object(module.httpx, 'AsyncClient', Client):
+            await module.Ollama('qwen3.5:4b', **kwargs).generate(dict(role='builder', step='act'), {})
+        return captured
+
+    async def test_thinking_is_off_by_default_and_can_be_switched_on_for_comparison(self):
+        self.assertIs((await self.sent())['think'], False)
+        self.assertIs((await self.sent(think=True))['think'], True)
+        self.assertEqual((await self.sent(think=True))['options']['temperature'], 0)
 
 
 class ContextChecks(unittest.TestCase):

@@ -58,13 +58,13 @@ def system_prompt(packet):
 
 
 class Ollama:
-    def __init__(self, model, base_url="http://127.0.0.1:11434"):
+    def __init__(self, model, base_url="http://127.0.0.1:11434", think=False):
         # Fixed loopback endpoint: no cloud tags, arbitrary hosts, proxy or inherited API keys.
         if base_url != "http://127.0.0.1:11434":
             raise ValueError("Only native loopback Ollama is enabled")
         if model and (not re.fullmatch(r"(?:qwen|deepseek)[a-zA-Z0-9._-]*:[a-zA-Z0-9._-]+", model) or "cloud" in model.lower()):
             raise ValueError("Select an explicit local Qwen/DeepSeek tag")
-        self.model, self.base_url = model, base_url
+        self.model, self.base_url, self.think = model, base_url, think
 
     async def idle(self, client):
         response = await client.get(self.base_url + '/api/ps')
@@ -93,7 +93,7 @@ class Ollama:
                 "messages": [
                     {"role": "system", "content": system_prompt(packet)},
                     {"role": "user", "content": json.dumps(packet, ensure_ascii=False)},
-                ], "options": {"num_ctx": 16384, "num_predict": 4096, "temperature": 0}, "think": False,
+                ], "options": {"num_ctx": 16384, "num_predict": 4096, "temperature": 0}, "think": self.think,
             })
             result.raise_for_status()
             return json.loads(result.json()["message"]["content"])
