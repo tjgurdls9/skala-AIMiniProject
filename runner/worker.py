@@ -82,13 +82,15 @@ class Worker:
                     continue
                 spec = db.execute("SELECT package FROM specs WHERE run_id=? ORDER BY rowid DESC LIMIT 1", (row["run_id"],)).fetchone()
                 template_id = self.store.template_id(db, row["run_id"])
-                if snapshot["state"] != "planning" and not any(
+                package = json.loads(spec[0]) if spec else None
+                approved = package is not None and any(
                         a["state"] == "approved" and a["target"]["gate"] == "plan" and
                         a["target"]["spec_version_id"] == snapshot["spec_version_id"] and
-                        a["target_digest"] == digest(a["target"]) and spec and
-                        a["target"]["plan_digest"] == digest(json.loads(spec[0])) and
-                        json.loads(spec[0]).get("support", {}).get("implementation_allowed", True) and
-                        json.loads(spec[0])["contract_digests"] == plan_inputs(template_id) for a in snapshot["approvals"]):
+                        a["target_digest"] == digest(a["target"]) and
+                        a["target"]["plan_digest"] == digest(package) and
+                        package.get("support", {}).get("implementation_allowed", True) and
+                        package["contract_digests"] == plan_inputs(template_id) for a in snapshot["approvals"])
+                if snapshot["state"] != "planning" and not approved:
                     snapshot.update(state="needs_input", reason="최신 계약·템플릿·검사 입력에 대한 기획 승인이 필요합니다.")
                     self.store.save(db, snapshot, "warning", snapshot["reason"])
                     db.execute("UPDATE jobs SET state='superseded' WHERE id=?", (row["id"],))
@@ -115,7 +117,7 @@ class Worker:
                     self.store.save(db, snapshot, "task_started", task["title"], bump=False, task_id=task["id"])
                 packet = dict(role=row["role"], run_id=row["run_id"], state_version=row["version"],
                               spec_version_id=snapshot["spec_version_id"], requests=requests,
-                              latest_spec=json.loads(spec[0]) if spec else None,
+                              latest_spec=package if approved else None,  # an unapproved draft is history, never the approved scope
                               mandatory_policy=POLICY, permissions=["propose_plan"] if row["role"] == "planner" else [],
                               unresolved_failures=list(dict.fromkeys(options.get("unresolved_failures", []) + ([snapshot["reason"]] if snapshot.get("reason") else []))),
                               next_action="Propose one plan. Preserve corrections, list assumptions; never approve or execute tools.",

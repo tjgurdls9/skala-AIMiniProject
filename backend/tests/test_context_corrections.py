@@ -84,6 +84,25 @@ class CorrectionChecks(unittest.TestCase):
         self.assertEqual(job['packet']['latest_spec']['constraints'], ['blue'])
         self.assertEqual(job['packet']['latest_spec']['acceptance'], NEW['acceptance'])
 
+    def test_unapproved_prior_plan_is_never_sent_as_approved_spec(self):
+        seen = []
+        class Recording(Correcting):
+            async def generate(self, packet, schema):
+                seen.append(packet)
+                return await super().generate(packet, schema)
+        class Initial(fixtures.FakeModel):
+            async def generate(self, packet, schema):
+                return copy.deepcopy(OLD)
+        self.worker.model = Initial()
+        before = self.planned()
+        self.assertEqual(before['state'], 'awaiting_plan_approval')
+        self.post_command(self.command(before, 'request_changes', dict(scope='spec', feedback=CORRECTION)))
+        self.worker.model = Recording()
+        # The prior draft was never approved: it must not be labelled approved nor duplicated into the planning context.
+        asyncio.run(self.worker.tick())
+        self.assertTrue(seen)
+        self.assertTrue(all(p['approved_spec'] is None for p in seen))
+
     def test_unexplained_model_omission_does_not_create_current_plan(self):
         class Forgetting(Correcting):
             async def generate(self, packet, schema):

@@ -222,7 +222,8 @@ class RuntimeChecks(unittest.TestCase):
         self.assertEqual(self.post_command(request).status_code, 202)
         job = self.worker.claim()
         self.assertEqual(job["packet"]["requests"][-1]["content"], "문의 상세도 추가")
-        self.assertEqual(job["packet"]["latest_spec"]["goal"], PLAN["goal"])
+        # The prior draft was never approved: history lives in requests, not in the approved-scope slot.
+        self.assertIsNone(job["packet"]["latest_spec"])
         self.worker.finish(job, PLAN)
         after = self.store.snapshot(before["run_id"])
         self.assertNotEqual(after["spec_version_id"], before["spec_version_id"])
