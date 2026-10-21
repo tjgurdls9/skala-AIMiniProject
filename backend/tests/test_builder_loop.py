@@ -9,7 +9,7 @@ from backend.contracts import DomainError, canonical, digest
 from backend.store import Store
 from runner.commands import CommandResult
 from runner.context import BUDGET
-from runner.builder_loop import ACTION_SCHEMA, INSTRUCTIONS, BuilderLoop, action_schema
+from runner.builder_loop import ACTION_SCHEMA, INSTRUCTIONS, BuilderLoop, action_schema, failure_summary
 from runner.tools import ToolBox
 from runner.workspace import Workspace
 from test_tools import RecordingExecutor
@@ -228,6 +228,38 @@ class LoopChecks(unittest.TestCase):
         self.assertIn('run_tests', nexts[1])           # tests written, not run yet
         self.assertIn('구현 파일을 작성', nexts[2])      # RED confirmed
         self.assertIn('run_tests', nexts[3])           # implementation written, not run yet
+
+    def test_failure_summary_is_the_last_error_line_of_the_real_output(self):
+        python = "Traceback (most recent call last):\n  File \"/work/t.py\", line 5, in test_x\n    f(2, 3)\nNameError: name 'f' is not defined\n\n" \
+                 "----------------------------------------------------------------------\nRan 1 test in 0.001s\n\nFAILED (errors=1)\n"
+        self.assertEqual(failure_summary('', python), "NameError: name 'f' is not defined")
+        node = "TAP version 13\n# Subtest: reverses\nnot ok 1 - reverses\n  error: 'Expected values to be strictly equal:'\n# tests 1\n# fail 1\n"
+        self.assertEqual(failure_summary(node, ''), "error: 'Expected values to be strictly equal:'")
+        self.assertIsNone(failure_summary('', ''))
+        self.assertIsNone(failure_summary('ok\n', 'Ran 1 test\n\nOK\n'))
+        self.assertEqual(len(failure_summary('', 'ValueError: ' + 'x' * 900)), 200)
+
+    def test_a_failing_run_carries_the_summary_and_a_passing_run_does_not(self):
+        outputs = [CommandResult(1, '', "NameError: name 'f' is not defined\n\nRan 1 test in 0.1s\n\nFAILED (errors=1)\n", False, False),
+                   CommandResult(0, 'ok', 'Ran 1 test\n\nOK\n', False, False)]
+        self.executor.run = lambda workspace, argv, cwd, timeout, **kw: outputs.pop(0)
+        script = Script([act('write_file', path='tests/test_a.py', content='t'), act('run_tests', argv=['python', '-m', 'unittest']),
+                         act('write_file', path='server/main.py', content='c'), act('run_tests', argv=['python', '-m', 'unittest']), FINISH])
+        asyncio.run(BuilderLoop(self.store).run(self.job(), script, self.toolbox()))
+        self.assertEqual(script.packets[2]['last_observation']['failure_summary'], "NameError: name 'f' is not defined")
+        self.assertNotIn('failure_summary', script.packets[4]['last_observation'])
+
+    def test_the_same_run_repeated_without_any_change_is_reported_as_a_fact(self):
+        self.executor.run = lambda workspace, argv, cwd, timeout, **kw: CommandResult(1, '', "NameError: x\n", False, False)
+        run = act('run_tests', argv=['python', '-m', 'unittest'])
+        script = Script([act('write_file', path='tests/test_a.py', content='t'), run, run, act('write_file', path='tests/test_a.py', content='u'), run, run])
+        with self.assertRaises(IndexError):
+            asyncio.run(BuilderLoop(self.store).run(self.job(), script, self.toolbox()))
+        first, second, after_change, again = (script.packets[i]['last_observation'] for i in (2, 3, 5, 6))
+        self.assertNotIn('repeated_without_change', first)                  # the first run of a command is just a result
+        self.assertEqual(second['repeated_without_change'], '파일 변경 없이 같은 명령이 같은 결과를 냈습니다.')
+        self.assertNotIn('repeated_without_change', after_change)           # a change in between resets it
+        self.assertIn('repeated_without_change', again)
 
     def test_action_schema_constrains_every_tool_to_its_own_arguments(self):
         from jsonschema import Draft202012Validator

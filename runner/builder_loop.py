@@ -85,6 +85,34 @@ def summarize_args(tool, args):
     return {k: v for k, v in args.items() if k != "content"}
 
 
+SKIPPED_LINE = ("-", "=", "Ran ", "FAILED", "OK", "#", "^", "~")
+ERROR_WORDS = ("error", "exception", "assert")
+MUTATING = frozenset({"write_file", "delete_file", "move_file", "install_dependencies"})
+SUMMARY_CHARS = 200
+
+
+def failure_summary(stdout, stderr):
+    """The last line of the real output that names an error (stderr first, then stdout); None when no line does."""
+    for text in (stderr, stdout):
+        for line in reversed(text.splitlines()):
+            line = line.strip()
+            if line and not line.startswith(SKIPPED_LINE) and any(word in line.lower() for word in ERROR_WORDS):
+                return line[:SUMMARY_CHARS]
+    return None
+
+
+def repeated_without_change(entries):
+    """True when the newest run produced exactly the previous same command's output and no file was changed in between."""
+    current = entries[-1]
+    for index in range(len(entries) - 2, -1, -1):
+        entry = entries[index]
+        if entry["ok"] and entry["tool"] in MUTATING:
+            return False
+        if entry["ok"] and entry["tool"] == current["tool"] and entry["args"].get("argv") == current["args"].get("argv"):
+            return entry["stdout_digest"] == current["stdout_digest"] and entry["stderr_digest"] == current["stderr_digest"]
+    return False
+
+
 def history_entry(entry):
     return dict(tool=entry["tool"], args=summarize_args(entry["tool"], entry["args"]), ok=entry["ok"], error=entry["error_code"], exit_code=entry["exit_code"])
 
@@ -150,6 +178,10 @@ class BuilderLoop:
         elif tool in ("run_command", "run_tests", "install_dependencies"):
             observation.update(exit_code=result["exit_code"], timed_out=result["timed_out"], stdout=tail(result["stdout"], OUTPUT_CAP),
                                stderr=tail(result["stderr"], OUTPUT_CAP))
+            if result["exit_code"] not in (0, None):
+                summary = failure_summary(result["stdout"], result["stderr"])
+                if summary:
+                    observation["failure_summary"] = summary
         else:
             observation.update({k: v for k, v in result.items() if k != "content"})
             if same:
@@ -187,6 +219,10 @@ class BuilderLoop:
                 if action["tool"] == "finish":
                     return dict(summary=action.get("summary", ""), steps=steps)
                 last, signature = self.execute(toolbox, action["tool"], action.get("args", {}))
+                if last.get("ok") and action["tool"] in ("run_tests", "run_command"):
+                    ledger = self.store.tool_calls(job["run_id"], options["task_id"])
+                    if ledger and repeated_without_change(ledger):
+                        last["repeated_without_change"] = "파일 변경 없이 같은 명령이 같은 결과를 냈습니다."
                 signature = digest([action["tool"], action.get("args", {}), signature])
             if last.get("ok") and isinstance(action, dict) and action.get("tool") in CHANGING and not last.get("unchanged"):
                 recent.clear()                  # a recorded change is progress; earlier repetition no longer counts
