@@ -292,3 +292,55 @@ describe('S12 화면', () => {
     w.unmount()
   })
 })
+
+describe('작업에 묶이지 않은 실행 근거 (실제 S09 LIVE 846eed64: 기획 단계 근거, 작업 0개)', () => {
+  // 실제 서버 본문과 같은 모양: planner 의미 검색(project:// 출처), 미완료 문맥(spec 없음)
+  const realRetrieval = {
+    method: 'semantic', model: `qwen3-embedding:0.6b@${fakeDigest('ac')}`, role: 'planner', status: 'found',
+    sources: [{ chunk_id: fakeDigest('91'), collected_at: '2026-10-21T00:39:48.189827+00:00', content_digest: fakeDigest('ef'), license: 'project-local', roles: ['planner', 'builder', 'validator', 'security'], score: 0.47695513870498535, url: 'project://contracts/v1', version: `v1@${fakeDigest('73')}` }],
+  }
+  const realContext = {
+    completed_fragments: 0, total_fragments: 2, status: 'needs_input', spec_version_id: null, source_digest: fakeDigest('bb'),
+    sources: [{ request_id: '7df94f096d6a49eea3e987a2ba93d7ac', content_digest: fakeDigest('94'), offset: 0, length: 108 }],
+  }
+  const base = findScenario('failed')!
+  const snapshot: Snapshot = {
+    ...base.snapshot, state: 'needs_input', spec_version_id: null, phases: [], sprints: [], tasks: [], approvals: [], reports: [],
+    artifacts: [
+      { id: 'a-ctx-live', kind: 'context', title: '문맥 준비 근거', public_summary: '문맥 준비 근거', content_digest: fakeDigest('c3') },
+      { id: 'a-ret-live', kind: 'retrieval', title: '역할별 검색 근거', public_summary: '역할별 검색 근거', content_digest: fakeDigest('c4') },
+    ],
+  }
+  const bodies: Record<string, unknown> = { 'a-ctx-live': realContext, 'a-ret-live': realRetrieval }
+
+  test('실제와 같은 모양의 본문이 스키마와 가드를 통과한다', () => {
+    expect(valid('http.v1.schema.json#/$defs/RetrievalEvidence', realRetrieval)).toBe(true)
+    expect(valid('http.v1.schema.json#/$defs/ContextEvidence', realContext)).toBe(true)
+    expect(isRetrievalEvidence(realRetrieval)).toBe(true)
+    expect(isContextEvidence(realContext)).toBe(true)
+  })
+
+  test('작업이 없어도 실행 근거로 나열하고, 열면 본문을 보여 준다(project:// 출처는 링크로 만들지 않음)', async () => {
+    const source = { ...exampleSource(base), kind: 'live' as const, getSnapshot: async () => snapshot, getArtifact: async (id: string) => bodies[id] }
+    const w = mount(RunWorkspace, { attachTo: document.body, props: { source } })
+    await flush()
+    const region = w.find('aside.evidence section[aria-label="실행 근거"]')
+    expect(region.exists()).toBe(true)
+    expect(region.text()).toContain('역할별 검색 근거')
+    expect(region.text()).toContain('문맥 준비 근거')
+    await region.findAll('button').find((b) => b.text().includes('역할별 검색 근거'))!.trigger('click')
+    await flush()
+    const panel = w.find('aside.evidence').text()
+    expect(panel).toContain('의미 검색')
+    expect(panel).toContain('project://contracts/v1')
+    expect(w.find('aside.evidence a[href^="project:"]').exists()).toBe(false)
+    w.unmount()
+  })
+
+  test('작업에 연결된 근거는 실행 근거에 다시 나열하지 않는다', async () => {
+    const w = mount(RunWorkspace, { attachTo: document.body, props: { source: exampleSource(findScenario('building')!) } })
+    await flush()
+    expect(w.find('aside.evidence section[aria-label="실행 근거"]').exists()).toBe(false)
+    w.unmount()
+  })
+})

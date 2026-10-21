@@ -7,7 +7,7 @@ import { indexById, reviewPair, waitingReason } from '../model/derive'
 import { isContextEvidence, isRetrievalEvidence } from '../model/evidence'
 import { isPlanView } from '../model/planView'
 import EvidenceBody from './EvidenceBody.vue'
-import { EVENT_TYPE, formatTime, ROLE, shortDigest, TASK_STATE, WORK_KIND } from '../model/labels'
+import { EVENT_TYPE, formatTime, ROLE, shortDigest, shortId, TASK_STATE, WORK_KIND } from '../model/labels'
 import AcceptanceList from './AcceptanceList.vue'
 import PlanViewBody from './PlanViewBody.vue'
 import ReviewPair from './ReviewPair.vue'
@@ -35,6 +35,14 @@ const EVIDENCE_KINDS = new Set(['retrieval', 'context'])
 const evidenceArtifacts = computed(() =>
   task.value ? props.snapshot.artifacts.filter((a) => task.value!.artifact_ids.includes(a.id) && EVIDENCE_KINDS.has(a.kind)) : [],
 )
+/**
+ * 작업에 묶이지 않은 실행 근거. 기획 단계 근거는 작업이 생기기 전에 발급돼 task_id가 없다(실제 S09 LIVE에서 확인).
+ * 작업에 연결된 근거는 작업 쪽에서 보여 주므로 여기서 다시 나열하지 않는다. 최신 것부터.
+ */
+const runEvidence = computed(() => {
+  const linked = new Set(props.snapshot.tasks.flatMap((t) => t.artifact_ids))
+  return props.snapshot.artifacts.filter((a) => EVIDENCE_KINDS.has(a.kind) && !linked.has(a.id)).reverse()
+})
 const retrievalEvents = computed(() => taskEvents.value.filter((e) => e.event_type === 'retrieval_finished'))
 const dependents = computed(() => (task.value ? props.snapshot.tasks.filter((t) => t.depends_on.includes(task.value!.id)) : []))
 
@@ -136,6 +144,15 @@ watch(
     </section>
 
     <p v-if="!task && !artifact" class="muted">지도나 장면에서 작업을 선택하면 입력 명세·AC·아티팩트·사건이 여기에 표시됩니다.</p>
+
+    <section v-if="runEvidence.length" class="block" aria-label="실행 근거">
+      <h3>실행 근거 <span class="small muted">(작업에 묶이지 않은 검색·문맥 근거 · 기획 단계 등)</span></h3>
+      <ul class="plain">
+        <li v-for="a in runEvidence" :key="a.id">
+          <button type="button" class="link" :aria-pressed="artifactId === a.id" @click="emit('artifact', a.id)">⌕ {{ a.title }} <span class="small muted">({{ a.kind === 'retrieval' ? '검색' : '문맥' }} · {{ shortId(a.id) }})</span></button>
+        </li>
+      </ul>
+    </section>
 
     <section class="block" aria-label="독립 검토">
       <h3>독립 검토 (각자 판정)</h3>
