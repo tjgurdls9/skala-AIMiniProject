@@ -57,6 +57,17 @@
         "plan_digest": {"$ref": "#/$defs/Digest"}
       }
     },
+    "AcceptanceTarget": {
+      "type": "object", "additionalProperties": false,
+      "required": ["gate", "spec_version_id", "plan_digest", "commit_sha", "image_digest", "ac_ids", "validator_report_id", "validator_report_digest"],
+      "properties": {
+        "gate": {"const": "acceptance"}, "spec_version_id": {"$ref": "#/$defs/Id"},
+        "plan_digest": {"$ref": "#/$defs/Digest"}, "commit_sha": {"$ref": "#/$defs/Commit"},
+        "image_digest": {"$ref": "#/$defs/Digest"},
+        "ac_ids": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 4000}, "minItems": 1, "maxItems": 50, "uniqueItems": true},
+        "validator_report_id": {"$ref": "#/$defs/Id"}, "validator_report_digest": {"$ref": "#/$defs/Digest"}
+      }
+    },
     "ReleaseTarget": {
       "type": "object", "additionalProperties": false,
       "required": ["gate", "spec_version_id", "plan_digest", "commit_sha", "image_digest", "environment_id", "environment_config_digest", "rollback_manifest_digest", "review_report_ids"],
@@ -66,7 +77,8 @@
         "image_digest": {"$ref": "#/$defs/Digest"}, "environment_id": {"$ref": "#/$defs/Id"},
         "environment_config_digest": {"$ref": "#/$defs/Digest"},
         "rollback_manifest_digest": {"$ref": "#/$defs/Digest"},
-        "review_report_ids": {"type": "array", "items": {"$ref": "#/$defs/Id"}, "minItems": 2, "maxItems": 2, "uniqueItems": true}
+        "review_report_ids": {"type": "array", "items": {"$ref": "#/$defs/Id"}, "minItems": 2, "maxItems": 2, "uniqueItems": true},
+        "acceptance_approval_id": {"$ref": "#/$defs/Id"}
       }
     },
     "Approval": {
@@ -75,7 +87,7 @@
       "properties": {
         "id": {"$ref": "#/$defs/Id"}, "state": {"enum": ["pending", "approved", "rejected", "invalidated"]},
         "target_digest": {"$ref": "#/$defs/Digest"},
-        "target": {"oneOf": [{"$ref": "#/$defs/PlanTarget"}, {"$ref": "#/$defs/ReleaseTarget"}]},
+        "target": {"oneOf": [{"$ref": "#/$defs/PlanTarget"}, {"$ref": "#/$defs/AcceptanceTarget"}, {"$ref": "#/$defs/ReleaseTarget"}]},
         "decided_by": {"$ref": "#/$defs/Id"}, "decided_at": {"type": "string", "format": "date-time"},
         "feedback": {"type": "string"}
       }
