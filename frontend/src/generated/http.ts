@@ -1,4 +1,4 @@
-/* 자동 생성 파일 — 수정 금지. 원본: docs/planning/http.v1.schema.json sha256:2b8516cebbb75cb28f1c20ac371706532063f65f3ffa4c425e75f0f37ab2cddc. 재생성: npm run gen:types */
+/* 자동 생성 파일 — 수정 금지. 원본: docs/planning/http.v1.schema.json sha256:f35c48532161dbc2adb6ff3c4538c8563541e8c9d05687a351ed2b96dda61c81. 재생성: npm run gen:types */
 
 /**
  * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
@@ -56,9 +56,100 @@ export interface Runtime {
   model_status: 'not_configured' | 'unavailable' | 'ready'
   runner_status: 'unavailable' | 'ready'
   inference_slots: 1
+  template_id?: 'requests-v1' | 'cafemap-v1'
+  data_source_status?: 'not_required' | 'unconfigured'
   external_api_enabled: false
   deployment_enabled: false
   reasons: string[]
+}
+/**
+ * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
+ * via the `definition` "PlanSupport".
+ */
+export interface PlanSupport {
+  template_id: 'requests-v1' | 'cafemap-v1'
+  spec_version_id: string
+  request_digest: string
+  implementation_allowed: boolean
+  unsupported: {
+    request_quote: string
+    reason: string
+    requires: string[]
+  }[]
+  external: {
+    provider: string | null
+    purpose: string
+    needs: ('free_eligibility' | 'key' | 'quota' | 'attribution' | 'consent' | 'isolation')[]
+    status: 'unconfirmed' | 'confirmed' | 'deferred'
+    reason: string
+  }[]
+}
+/**
+ * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
+ * via the `definition` "ReleaseView".
+ */
+export interface ReleaseView {
+  run_id: string
+  enabled: false
+  state:
+    | 'unconfigured'
+    | 'prepared'
+    | 'accepted'
+    | 'applied'
+    | 'uncertain'
+    | 'not_applied'
+    | 'superseded'
+    | 'rolled_back'
+    | 'failed'
+  target: null | ReleaseTarget
+  details: null | {
+    repository: {
+      url: string
+      branch: string
+      auto_deploy: boolean
+    }
+    environment: Environment
+    image_reference: string
+    free_policy: string
+    rollback: {
+      action: 'unpublish_first_release'
+      data_policy: 'preserve_volume_no_schema_migration'
+    }
+  }
+  operations: {
+    operation_id: string
+    action: 'push' | 'deploy' | 'rollback'
+    state: 'accepted' | 'applied' | 'uncertain' | 'failed' | 'rolled_back' | 'not_applied' | 'superseded'
+    accepted_at: string | null
+    observed_at: string | null
+    reason: string
+    volume_preserved: boolean | null
+  }[]
+  reason: string
+}
+export interface ReleaseTarget {
+  gate: 'release'
+  spec_version_id: string
+  plan_digest: string
+  commit_sha: string
+  image_digest: string
+  environment_id: string
+  environment_config_digest: string
+  rollback_manifest_digest: string
+  /**
+   * @minItems 2
+   * @maxItems 2
+   */
+  review_report_ids: [string, string]
+}
+/**
+ * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
+ * via the `definition` "Environment".
+ */
+export interface Environment {
+  id: string
+  label: string
+  exposure: 'local' | 'private' | 'public'
 }
 /**
  * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
@@ -178,21 +269,6 @@ export interface PlanTarget {
   spec_version_id: string
   plan_digest: string
 }
-export interface ReleaseTarget {
-  gate: 'release'
-  spec_version_id: string
-  plan_digest: string
-  commit_sha: string
-  image_digest: string
-  environment_id: string
-  environment_config_digest: string
-  rollback_manifest_digest: string
-  /**
-   * @minItems 2
-   * @maxItems 2
-   */
-  review_report_ids: [string, string]
-}
 export interface ReviewReport {
   id: string
   role: 'validator' | 'security'
@@ -292,18 +368,10 @@ export interface PlanDraft {
 }
 /**
  * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
- * via the `definition` "Environment".
- */
-export interface Environment {
-  id: string
-  label: string
-  exposure: 'local' | 'private' | 'public'
-}
-/**
- * This interface was referenced by `LifecycleHTTPPayloadsV1`'s JSON-Schema
  * via the `definition` "PlanView".
  */
 export interface PlanView {
+  support?: PlanSupport
   goal: string
   /**
    * @maxItems 50

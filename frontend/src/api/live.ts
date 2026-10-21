@@ -5,6 +5,7 @@ import type {
   AcceptanceStatus,
   RecordingBundle,
   RecordingImportResult,
+  ReleaseView,
   Command, CommandReceipt, Environment, Project, ProjectCreate, ReplayRecording, RunCreate, Runtime, Session, Snapshot,
 } from './types'
 
@@ -66,6 +67,11 @@ export class LiveApi {
   /** 실행의 공개 기록 묶음(동결 snapshot·events·공개 artifact). 키·작업 내부는 빠지지만 변경 요청·명세 등 사용자 입력은 포함될 수 있다 */
   getRecording(runId: string): Promise<RecordingBundle> {
     return this.request('GET', `/api/runs/${encodeURIComponent(runId)}/recording`)
+  }
+
+  /** 출시·복구 공개 근거. 서버는 단순 GET으로 공급자를 다시 조회하거나 재실행하지 않는다 */
+  getRelease(runId: string): Promise<ReleaseView> {
+    return this.request('GET', `/api/runs/${encodeURIComponent(runId)}/release`)
   }
 
   /** 서명 없는 기록 가져오기. 같은 manifest면 같은 읽기 전용 run을 돌려준다 */
@@ -157,6 +163,7 @@ export function liveSource(api: LiveApi, runId: string): RunSource {
     getSnapshot: () => api.getSnapshot(runId),
     getAcceptance: () => api.getAcceptance(runId),
     getRecording: () => api.getRecording(runId),
+    getRelease: () => api.getRelease(runId),
     openEvents: (after, handlers) => api.openEvents(runId, after, handlers),
     sendCommand: (command) => api.sendCommand(runId, command),
     getArtifact: (id) => api.getArtifact(id),

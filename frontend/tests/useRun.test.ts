@@ -18,6 +18,7 @@ function controllableSource(initial: Snapshot) {
     runId: initial.run_id,
     getSnapshot: vi.fn(async () => current),
     getRecording: vi.fn(),
+    getRelease: vi.fn(),
     getAcceptance: vi.fn(async () => ({ spec_version_id: current.spec_version_id, items: [] })),
     openEvents: vi.fn((after: number, handlers: StreamHandlers) => {
       const stream = { after, handlers, closed: false }

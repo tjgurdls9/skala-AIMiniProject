@@ -93,12 +93,12 @@ describe('기획 승인', () => {
 })
 
 describe('배포 승인', () => {
-  test('두 검토가 통과하고 대상과 같은 후보일 때만 승인 버튼이 열린다', async () => {
+  test('(출시 실행이 활성일 때) 두 검토가 통과하고 대상과 같은 후보일 때만 승인 버튼이 열린다', async () => {
     const s = scenario('release-approval')
     const send = vi.fn(async () => null)
     const w = mount(ReleaseApprovalDialog, {
       attachTo: document.body,
-      props: { open: true, approval: pendingApproval(s.snapshot, 'release'), snapshot: s.snapshot, source: exampleSource(s), readOnly: false, send },
+      props: { open: true, approval: pendingApproval(s.snapshot, 'release'), snapshot: s.snapshot, source: exampleSource(s), readOnly: false, releaseEnabled: true, send },
     })
     await flushPromises()
     expect(w.text()).toContain('스테이징 (합성)')
@@ -113,7 +113,7 @@ describe('배포 승인', () => {
     const failing = { ...s.snapshot, reports: s.snapshot.reports.map((r) => (r.role === 'security' ? { ...r, verdict: 'fail' as const } : r)) }
     const blocked = mount(ReleaseApprovalDialog, {
       attachTo: document.body,
-      props: { open: true, approval: pendingApproval(failing, 'release'), snapshot: failing, source: exampleSource(s), readOnly: false, send },
+      props: { open: true, approval: pendingApproval(failing, 'release'), snapshot: failing, source: exampleSource(s), readOnly: false, releaseEnabled: true, send },
     })
     await flushPromises()
     expect(blocked.text()).toContain('두 검토가 모두 통과하지 않아')
@@ -125,7 +125,7 @@ describe('배포 승인', () => {
     const s = scenario('release-approval')
     const w = mount(ReleaseApprovalDialog, {
       attachTo: document.body,
-      props: { open: true, approval: pendingApproval(s.snapshot, 'release'), snapshot: s.snapshot, source: exampleSource({ ...s, environments: {} }), readOnly: false, send: vi.fn() },
+      props: { open: true, approval: pendingApproval(s.snapshot, 'release'), snapshot: s.snapshot, source: exampleSource({ ...s, environments: {} }), readOnly: false, releaseEnabled: true, send: vi.fn() },
     })
     await flushPromises()
     expect(w.text()).toContain('제공하지 않습니다(미설정)')

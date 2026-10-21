@@ -38,6 +38,7 @@ function fake(initial: Snapshot) {
     runId: initial.run_id,
     getSnapshot: vi.fn(async () => initial),
     getRecording: vi.fn(),
+    getRelease: vi.fn(),
     getAcceptance: vi.fn(async () => ({ spec_version_id: initial.spec_version_id, items: [] })),
     openEvents: vi.fn((after: number, h: StreamHandlers) => {
       streams.push({ after, h })

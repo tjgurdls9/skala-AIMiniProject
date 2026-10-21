@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ApiError } from '../api/errors'
 import type { RunSource } from '../api/source'
 import type { Approval, PlanTarget, PlanView } from '../api/types'
@@ -8,9 +8,11 @@ import { useCommandForm } from '../composables/useCommandForm'
 import { useDraft } from '../composables/useDraft'
 import type { CommandInput } from '../composables/useRun'
 import { shortDigest } from '../model/labels'
+import { supportVerdict } from '../model/planSupport'
 import { isPlanView } from '../model/planView'
 import BaseDialog from './BaseDialog.vue'
 import CommandFeedback from './CommandFeedback.vue'
+import PlanSupportBody from './PlanSupportBody.vue'
 import PlanViewBody from './PlanViewBody.vue'
 
 /**
@@ -33,26 +35,36 @@ const planError = ref<string | null>(null)
 const { text: feedback, clear } = useDraft(`draft:${props.runId}:plan-feedback`)
 const form = useCommandForm()
 
+const support = computed(() => (plan.value ? supportVerdict(plan.value) : null))
+/** 승인 가능: 본문이 있고, 승인 대상과 같은 명세이며, 지원 정보가 다른 명세이거나 구현 불가로 표시되지 않았을 때 */
+const canApprove = computed(() =>
+  !!plan.value && plan.value.spec_version_id === props.approval?.target.spec_version_id
+  && support.value?.kind !== 'mismatch' && support.value?.kind !== 'blocked')
+
+async function loadPlan(id: string | null): Promise<void> {
+  plan.value = null
+  planError.value = null
+  if (!id) {
+    planError.value = '기획 아티팩트가 스냅샷에 없습니다.'
+    return
+  }
+  try {
+    const body = await props.source.getArtifact(id)
+    if (props.specArtifactId !== id) return
+    if (isPlanView(body)) plan.value = body
+    else planError.value = '기획 본문 형식이 계약(PlanView)과 맞지 않습니다.'
+  } catch (error) {
+    planError.value = error instanceof ApiError ? error.message : '기획 본문을 읽지 못했습니다.'
+  }
+}
+
 watch(
   () => [props.open, props.specArtifactId, props.approval?.id, props.approval?.target_digest] as const,
   async ([open, id], prev) => {
     if (!open) return
     // 새로 열면 새 결정, 열린 채 대상이 바뀌면(409 뒤 재조회) 안내는 남기고 ID만 새로
     form.renew({ keepError: prev?.[0] === true })
-
-    plan.value = null
-    planError.value = null
-    if (!id) {
-      planError.value = '기획 아티팩트가 스냅샷에 없습니다.'
-      return
-    }
-    try {
-      const body = await props.source.getArtifact(id)
-      if (isPlanView(body)) plan.value = body
-      else planError.value = '기획 본문 형식이 계약(PlanView)과 맞지 않습니다.'
-    } catch (error) {
-      planError.value = error instanceof ApiError ? error.message : '기획 본문을 읽지 못했습니다.'
-    }
+    await loadPlan(id)
   },
   { immediate: true },
 )
@@ -92,6 +104,7 @@ async function decide(decision: 'approve' | 'reject'): Promise<void> {
         <p v-if="plan.spec_version_id !== approval.target.spec_version_id" class="error-box" role="alert">
           표시 중인 기획({{ plan.spec_version_id }})과 승인 대상({{ approval.target.spec_version_id }})의 버전이 다릅니다. 최신 대상을 다시 여세요.
         </p>
+        <PlanSupportBody v-if="support" :verdict="support" @reload="loadPlan(specArtifactId)" />
         <PlanViewBody :plan="plan" />
       </template>
       <label class="field">
@@ -112,7 +125,7 @@ async function decide(decision: 'approve' | 'reject'): Promise<void> {
         <button
           type="button"
           class="btn primary"
-          :disabled="form.submitting.value || !plan || plan.spec_version_id !== approval.target.spec_version_id"
+          :disabled="form.submitting.value || !canApprove"
           @click="decide('approve')"
         >
           {{ form.submitting.value ? '보내는 중…' : '이 기획으로 구현 시작' }}

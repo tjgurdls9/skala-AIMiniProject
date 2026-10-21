@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ApiError } from '../api/errors'
 import type { RunSource } from '../api/source'
 import type { SendResult } from '../composables/useCommandForm'
+import { useRelease } from '../composables/useRelease'
 import { useRun, type CommandInput } from '../composables/useRun'
 import { useSnapScroll } from '../composables/useSnapScroll'
 import { acIndex as indexAcceptance } from '../model/acceptance'
@@ -18,6 +19,7 @@ import PlanApprovalDialog from './PlanApprovalDialog.vue'
 import PreviewDialog from './PreviewDialog.vue'
 import ReleaseApprovalDialog from './ReleaseApprovalDialog.vue'
 import RecordingExport from './RecordingExport.vue'
+import ReleasePanel from './ReleasePanel.vue'
 import RunHeader from './RunHeader.vue'
 import SceneRoster from './SceneRoster.vue'
 import SprintBoard from './SprintBoard.vue'
@@ -29,6 +31,7 @@ const emit = defineEmits<{ home: [] }>()
 
 const run = useRun(props.source)
 const snapshot = run.snapshot
+const release = useRelease(props.source, snapshot, run.events)
 
 // 화면 선택은 서버 필드가 아닌 view state. 스냅샷 교체·재연결로 초기화하지 않는다.
 const view = reactive({ sprintId: null as string | null, taskId: null as string | null, artifactId: null as string | null })
@@ -253,6 +256,7 @@ onBeforeUnmount(() => {
             />
             <EventLog :events="run.events.value" :tasks="snapshot.tasks" @task="selectTask" />
           </div>
+          <ReleasePanel :view="release.view.value" :error="release.error.value" :kind="source.kind" />
           <RecordingExport :source="source" :run-id="snapshot.run_id" />
         </section>
       </main>
@@ -283,6 +287,7 @@ onBeforeUnmount(() => {
         :snapshot="snapshot"
         :source="source"
         :read-only="run.isReplay.value"
+        :release-enabled="false"
         :send="send"
         @close="dialog = null"
         @artifact="selectArtifact"
