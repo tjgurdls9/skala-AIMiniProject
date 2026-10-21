@@ -27,29 +27,48 @@ def _ok_mutations(entries):
     return [e for e in entries if e["ok"] and e["tool"] in MUTATIONS]
 
 
+def state_message(phase, tests_written, implemented, last_run):
+    """Ledger facts plus the gate rule that applies; never what to test or how to implement."""
+    if phase == "done":
+        return "RED와 GREEN 기록 확인됨. finish 가능."
+    if phase == "red":
+        if not tests_written:
+            return "테스트 파일 기록 없음. RED 판정에는 실패하는 테스트 파일 작성과 실패한 run_tests 기록이 필요합니다."
+        if last_run == "none":
+            return "테스트 파일 있음, run_tests 기록 없음. RED 판정에는 실패(종료 코드 ≠ 0)한 run_tests가 필요합니다."
+        if last_run == 0:
+            return "run_tests가 바로 통과(종료 코드 0). RED 판정에는 실패(종료 코드 ≠ 0)한 run_tests가 필요합니다."
+        return "run_tests가 시간 초과(종료 코드 없음). RED 판정에는 실패(종료 코드 ≠ 0)한 run_tests가 필요합니다."
+    if not implemented:
+        if last_run == 0:
+            return "구현 파일 기록 없이 run_tests가 통과. GREEN 판정에는 구현 파일을 작성한 뒤 통과한 run_tests가 필요합니다."
+        return "RED 확인됨, 구현 파일 기록 없음. GREEN 판정에는 구현 파일을 작성한 뒤 통과(종료 코드 0)한 run_tests가 필요합니다."
+    if last_run == "none":
+        return "구현 파일 있음, 이후 run_tests 기록 없음. GREEN 판정에는 통과(종료 코드 0)한 run_tests가 필요합니다."
+    return "마지막 run_tests가 아직 실패. GREEN 판정에는 통과(종료 코드 0)한 run_tests가 필요합니다."
+
+
 def progress(entries, kind):
     """Phase of the current task: `red` (write failing tests first), `impl` (tests fail or code changed since, make them pass), `done`."""
     if kind not in TDD_KINDS:
         return Progress("free", "")
-    phase, tests_written, implemented = "red", False, False
+    phase, tests_written, implemented, last_run = "red", False, False, "none"   # last_run: exit code since the last change, or "none"
     for entry in entries:
         if not entry["ok"]:
             continue
         if entry["tool"] in MUTATIONS:
+            last_run = "none"
             if any(is_test_path(p) for p in mutated_paths(entry)):
                 phase, tests_written, implemented = "red", True, False
             elif phase != "red":
                 phase, implemented = "impl", True
         elif entry["tool"] == "run_tests":
-            code = entry["exit_code"]
+            code = last_run = entry["exit_code"]
             if phase == "red" and tests_written and code not in (0, None):
                 phase, implemented = "impl", False
             elif phase == "impl" and implemented and code == 0:
                 phase = "done"
-    message = dict(red="먼저 실패하는 테스트를 작성하고 run_tests로 실패(종료 코드 0이 아님)를 확인해야 구현 파일을 쓸 수 있습니다.",
-                   impl="테스트가 실패하는 상태입니다. 구현을 작성한 뒤 run_tests가 통과(종료 코드 0)해야 합니다.",
-                   done="테스트가 통과했습니다.")[phase]
-    return Progress(phase, message)
+    return Progress(phase, state_message(phase, tests_written, implemented, last_run))
 
 
 def can_finish(entries, kind):

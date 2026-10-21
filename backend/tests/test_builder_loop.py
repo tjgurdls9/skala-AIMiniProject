@@ -28,7 +28,10 @@ class Script:
 
     async def infer(self, job, call, schema):
         self.packets.append(copy.deepcopy(call))
-        return self.actions.pop(0)
+        item = self.actions.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
 
 
 def act(tool, **args):
@@ -163,6 +166,51 @@ class LoopChecks(unittest.TestCase):
         result, script = self.run_loop([act('write_file', path='contract/api.json', content='{}'), FINISH], kind='contract')
         self.assertEqual(result['summary'], '끝')
         self.assertEqual(script.packets[0]['gate']['phase'], 'free')
+
+    def test_undecodable_model_output_becomes_an_observation_and_is_ledgered(self):
+        import json
+        broken = json.JSONDecodeError('Unterminated string', '{"tool": "write_file", "args": {"path": "a.py", "content": "def f():\n', 40)
+        self.codes = [1, 0]
+        result, script = self.run_loop([
+            broken, act('write_file', path='tests/test_a.py', content='t'), act('run_tests', argv=['python', '-m', 'pytest']),
+            act('write_file', path='server/main.py', content='c'), act('run_tests', argv=['python', '-m', 'pytest']), FINISH])
+        self.assertEqual(result['summary'], '끝')
+        self.assertFalse(script.packets[1]['last_observation']['ok'])
+        self.assertIn('JSON', script.packets[1]['last_observation']['error'])
+        entry = next(e for e in self.store.tool_calls(self.run_id, 't1') if e['tool'] == 'model_output_error')
+        self.assertEqual((entry['ok'], entry['error_code']), (False, 'MODEL_FORMAT'))
+        self.assertIn('def f()', entry['args']['raw_head'])
+        # a ledgered format error does not move the RED/GREEN state
+        self.assertEqual(script.packets[1]['gate']['phase'], 'red')
+
+    def test_repeated_undecodable_output_stops_for_the_user(self):
+        import json
+        broken = json.JSONDecodeError('Unterminated string', '{"tool": "wri', 12)
+        with self.assertRaises(DomainError) as caught:
+            self.run_loop([broken] * 5)
+        self.assertIn('반복', caught.exception.message)
+
+    def test_a_rewrite_with_unchanged_content_is_reported_and_counts_toward_repetition(self):
+        (self.temp / 'ws' / 'tests').mkdir()
+        (self.temp / 'ws' / 'tests' / 'test_a.py').write_text('t')
+        same = act('write_file', path='tests/test_a.py', content='t', expected_digest=digest('t'))
+        script = Script([same, same, same, same])
+        with self.assertRaises(DomainError) as caught:
+            asyncio.run(BuilderLoop(self.store).run(self.job(), script, self.toolbox()))
+        self.assertEqual(len(script.packets), 3)                     # stopped by the one repetition rule, not a special case
+        self.assertTrue(script.packets[1]['last_observation']['unchanged'])
+        self.assertIn('반복', caught.exception.message)
+
+    def test_the_gate_next_names_the_step_the_ledger_is_waiting_for(self):
+        self.codes = [1, 0]
+        result, script = self.run_loop([
+            act('write_file', path='tests/test_a.py', content='t'), act('run_tests', argv=['python', '-m', 'pytest']),
+            act('write_file', path='server/main.py', content='c'), act('run_tests', argv=['python', '-m', 'pytest']), FINISH])
+        nexts = [p['gate']['next'] for p in script.packets]
+        self.assertIn('실패하는 테스트', nexts[0])
+        self.assertIn('run_tests', nexts[1])           # tests written, not run yet
+        self.assertIn('구현 파일을 작성', nexts[2])      # RED confirmed
+        self.assertIn('run_tests', nexts[3])           # implementation written, not run yet
 
     def test_action_schema_accepts_only_known_tools(self):
         from jsonschema import Draft202012Validator

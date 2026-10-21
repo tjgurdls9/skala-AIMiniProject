@@ -16,6 +16,22 @@ import test_pipeline
 import test_runtime
 
 
+class SystemPromptChecks(unittest.TestCase):
+    def test_each_role_has_wording_that_matches_its_authority(self):
+        from runner.model import system_prompt
+        prompts = {role: system_prompt(dict(role=role)) for role in ('planner', 'builder', 'validator', 'security')}
+        self.assertEqual(len(set(prompts.values())), 4)
+        self.assertEqual(system_prompt(dict(role='builder', step='act')), prompts['builder'])
+        self.assertEqual(system_prompt(dict(role='unknown')), prompts['planner'])
+        self.assertNotIn('execute tools', prompts['builder'])         # the builder only proposes; the server runs the tools
+        self.assertIn('You only propose', prompts['builder'])
+        for role in ('planner', 'validator', 'security'):
+            self.assertIn('Never approve', prompts[role])
+        self.assertIn('Never modify code', prompts['validator'])
+        self.assertIn('Never modify code', prompts['security'])
+        self.assertNotIn('Never modify code', prompts['planner'])
+
+
 class ContextChecks(unittest.TestCase):
     setUp = test_pipeline.PipelineChecks.setUp
     live = test_pipeline.PipelineChecks.live

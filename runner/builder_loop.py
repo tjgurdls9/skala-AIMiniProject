@@ -5,6 +5,7 @@ state. Completion is accepted only when the ledger shows the required RED -> GRE
 from jsonschema import Draft202012Validator, ValidationError
 
 from backend.contracts import DomainError, canonical, digest
+from runner.commands import redact
 from runner.context import BUDGET, bounded, mandatory
 from runner.tdd_gate import can_finish, progress
 from runner.tools import ToolBox
@@ -87,8 +88,16 @@ class BuilderLoop:
                 break
         return bounded(call)
 
+    @staticmethod
+    def unchanged(toolbox, args):
+        try:
+            return toolbox.workspace.read(args["path"])["content_digest"] == digest(args["content"])
+        except (DomainError, KeyError, TypeError):
+            return False
+
     def execute(self, toolbox, tool, args):
         method = getattr(toolbox, tool)
+        same = tool == "write_file" and isinstance(args, dict) and self.unchanged(toolbox, args)
         try:
             result = method(**args)
         except TypeError as error:
@@ -105,16 +114,28 @@ class BuilderLoop:
                                stderr=tail(result["stderr"], OUTPUT_CAP))
         else:
             observation.update({k: v for k, v in result.items() if k != "content"})
+            if same:
+                observation.update(unchanged=True, note="파일 내용이 이미 같아 변경이 없습니다.")
         return observation, digest(result)
+
+    def record_format_error(self, job, error):
+        options = job["packet"]["options"]
+        self.store.record_tool_call(dict(
+            run_id=job["run_id"], job_id=job.get("id"), attempt_id=job.get("attempt_id"), task_id=options["task_id"], role="builder",
+            tool="model_output_error", args=dict(error=str(error)[:200], raw_head=redact(str(getattr(error, "doc", ""))[:300])),
+            ok=False, error_code="MODEL_FORMAT"))
 
     async def run(self, job, worker, toolbox):
         options, last, streak, previous, steps = job["packet"]["options"], None, 0, None, 0
         while True:
             entries, call = self.context(job, toolbox, last)
-            action = await worker.infer(job, self.fit(call), ACTION_SCHEMA)
             steps += 1
             try:
+                action = await worker.infer(job, self.fit(call), ACTION_SCHEMA)
                 Draft202012Validator(ACTION_SCHEMA).validate(action)
+            except ValueError as error:   # the answer was not decodable JSON; keep the raw head as evidence, never crash the run
+                self.record_format_error(job, error)
+                last, signature = dict(ok=False, error="출력이 올바른 JSON이 아닙니다: " + str(error)[:120]), "decode:" + str(error)[:80]
             except ValidationError as error:
                 last, signature = dict(ok=False, error="형식 오류: " + error.message[:200]), "format:" + error.message[:200]
             else:

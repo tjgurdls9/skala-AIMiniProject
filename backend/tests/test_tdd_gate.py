@@ -77,6 +77,21 @@ class TddProgress(unittest.TestCase):
         self.assertFalse(ok)
 
 
+class GateMessages(unittest.TestCase):
+    def message(self, entries):
+        return progress(entries, 'backend').message
+
+    def test_each_state_names_what_to_do_next(self):
+        self.assertIn('실패하는 테스트', self.message([]))
+        self.assertIn('run_tests', self.message([write('tests/t.py')]))
+        self.assertIn('바로 통과', self.message([write('tests/t.py'), tests(0)]))
+        self.assertIn('시간 초과', self.message([write('tests/t.py'), tests(None)]))
+        self.assertIn('구현 파일을 작성', self.message([write('tests/t.py'), tests(1)]))
+        self.assertIn('run_tests', self.message([write('tests/t.py'), tests(1), write('server/main.py')]))
+        self.assertIn('아직 실패', self.message([write('tests/t.py'), tests(1), write('server/main.py'), tests(1)]))
+        self.assertIn('finish', self.message([write('tests/t.py'), tests(1), write('server/main.py'), tests(0)]))
+
+
 class OtherKinds(unittest.TestCase):
     def test_contract_and_infra_tasks_have_no_test_phase_but_must_change_something(self):
         for kind in ('contract', 'infra'):
