@@ -13,7 +13,9 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from backend.contracts import ROOT, DomainError, validate
+from backend.contracts import ROOT, SCHEMAS, DomainError, validate
+from jsonschema import Draft202012Validator, ValidationError
+from runner.context import plan_step_schema
 import test_runtime as fixtures
 
 
@@ -21,6 +23,14 @@ class PostIntegrationChecks(unittest.TestCase):
     setUp = fixtures.RuntimeChecks.setUp
     command = fixtures.RuntimeChecks.command
     post_command = fixtures.RuntimeChecks.post_command
+
+    def test_first_fragment_schema_cannot_invent_prior_requirement_revisions(self):
+        proposal = dict(fixtures.PLAN, revisions=[dict(field='goal', previous_digest='sha256:'+'a'*64, quote='synthetic')])
+        schema = SCHEMAS['http.v1.schema.json']['$defs']['PlanDraft']
+        with self.assertRaises(ValidationError):
+            Draft202012Validator(plan_step_schema(schema)).validate(proposal)
+        proposal['revisions'] = []
+        Draft202012Validator(plan_step_schema(schema)).validate(proposal)
 
     def test_support_is_per_plan_frozen_and_blocks_approve_without_mutation(self):
         self.worker.heartbeat()

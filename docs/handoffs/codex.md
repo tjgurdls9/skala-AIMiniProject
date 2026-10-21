@@ -9,7 +9,11 @@
 - CR-C15 ReleaseView는 정확한 target/details와 operation별 accepted/applied/uncertain/failed/rolled_back·의도 기록 시각/실제 조회 시각/안전한 이유/볼륨 보존 조회 여부를 제공한다. 없는 과거 조회 근거는 null이며 GET 시각으로 만들지 않는다. 현재 enabled=false, rolled_back은 첫 출시 공개 중단/볼륨 보존이고 이전 버전 복원이 아니다.
 - Claude 요청: 위 정정 계약을 채택해 타입/hash를 생성하고 **기획 승인 화면의 별도 지원 공백**과 **출시/복구 결과**를 각각 원래 ID로 구현·인계한다. 현재 계약 제공 단계이며 새 LIVE 서버 주소/제공자 구현은 준비 뒤 이 절에 확정한다.
 - 제공자 구현 점검: 새 고정 cafemap-v1 프로필/run별 불변 선택·기획별 support/approve 차단·planner 실제 코퍼스 검색/공개 문맥을 planner 작업에 연결·출시 원장 GET/operation별 실제 조회 시각과 사건/artifact 연결을 구현했다. 공급자 미설정은 독립 검토 not_run·신뢰 프록시 차단이며 가짜 장소/실제 앱 완료로 취급하지 않는다. backend 자체 검사 **61개/43.281초** 통과(합성 결정/도구 fixture 포함, 실제 사용자 승인 아님). 실제 모델 새 실행/서버 연결은 다음 단계다.
-- 기동 준비: API 8000/프론트 5173 listener가 없음을 확인했다. 기존 Ollama PID 25744는 재사용하며 임의 종료하지 않는다. qwen3.5:4b / qwen3-embedding:0.6b 설치 및 /api/ps의 models=[] 확인. Docker 29.6.2·기존 고정 runtime image 준비 확인. 실제 API/worker는 아직 기동 전이다. Codex가 기동/종료를 소유하며 다른 세션은 임의 종료하지 않는다.
+- 실제 모델 1차 실행: 1cb6e5674eaaa9f83083d5f15a4617eb3c424f34의 API/worker에서 실제 qwen3.5:4b·로컬 embedding을 사용했다. S09 run **846eed645f8245909d72cff799099d0b**, DB `runtime-data/s09-cafemap.sqlite3`. 원래 사용자 요청과 **“외부 연결은 나중에 결정”** 답변은 보존했다. 모델이 첫 조각에 존재하지 않는 이전 요구의 정정 근거를 생성하여 `needs_input`으로 안전하게 차단됐다. 승인/구현/외부 연결은 없었다.
+- 정정: 최초 조각 출력 스키마의 revisions를 빈 배열로 제한하고 기존 정정 검증을 유지했다. checkpoint 입력 버전을 올려 실패 원문/기록을 덮어쓰지 않고 새 시도를 구별한다. 회귀 포함 backend 전체 **62개/43.546초** 통과. 합성 검사와 실제 모델 실패를 구분한다.
+- **LIVE 일시 중지**: 수정 적용을 위해 Codex 소유 API PID 3704/PTY 41829와 worker PTY 55970을 종료했다. 현재 8000 서버 없음. 기존 Ollama PID 25744는 종료하지 않았다. 재기동 후 정확한 코드·주소·소유자·가용 조건을 이 절에 다시 기록한다.
+- Claude 완료 소비자 `d625f74`/인계 `4f396c8`을 확인했다. CR-C14/CR-C15를 원래 ID로 연결한 완료 커밋을 통합한 후 실제 서버 경로를 확인한다. 미완료 diff 복사/상대 파일 직접 수정은 하지 않는다.
+
 
 
 ## P01–P05 보완 배정 — 현재 작업 목록

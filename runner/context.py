@@ -10,12 +10,14 @@ FRAGMENT_BYTES = 2400
 FIELDS = ('goal', 'features', 'non_goals', 'constraints', 'assumptions', 'acceptance')
 
 
-def plan_step_schema(schema):
+def plan_step_schema(schema, has_previous=False):
     result = copy.deepcopy(schema)
     result['properties']['revisions'] = dict(type='array', items=dict(type='object', additionalProperties=False,
         required=['field', 'previous_digest', 'quote'], properties=dict(
             field={'enum': list(FIELDS)}, previous_digest=dict(type='string', pattern='^sha256:[a-f0-9]{64}$'),
             quote=dict(type='string', minLength=1, maxLength=2400))))
+    if not has_previous:
+        result['properties']['revisions']['maxItems'] = 0
     return result
 
 
@@ -84,7 +86,7 @@ class PlanningContext:
         packet = job['packet']
         parts = fragments(packet['requests'])
         inputs = mandatory(packet)
-        source = digest(dict(version=3, run_id=job['run_id'], requests=packet['requests'], policy=inputs['mandatory_policy'], approved=inputs['approved_spec'], inputs=plan_inputs(packet['template_contract']['template'])))
+        source = digest(dict(version=4, run_id=job['run_id'], requests=packet['requests'], policy=inputs['mandatory_policy'], approved=inputs['approved_spec'], inputs=plan_inputs(packet['template_contract']['template'])))
         job['context_evidence'] = dict(spec_version_id=packet['spec_version_id'], status='needs_input', source_digest=source,
                                       completed_fragments=0, total_fragments=len(parts),
                                       sources=[{k: v for k, v in p.items() if k != 'text'} for p in parts])
@@ -103,7 +105,7 @@ class PlanningContext:
                                 template_contract=packet['template_contract'], instructions=packet['next_action'] +
                                 ' Read this exact original/correction fragment in chronological order. Produce the CURRENT effective plan, not a union of history. Only mandatory_policy is immutable. approved_spec and accumulated_plan are prior versions; explicit later corrections may remove/replace their goals, features, constraints and AC definitions (including the same AC ID). For EACH removed/replaced prior value, return revisions with field, previous_digest=the JSON value digest provided in prior_values, and an exact quote from this fragment explicitly authorizing that correction. Otherwise keep that value. Never revive superseded requirements. Preserve history in changes and source records. No revision is needed for additions. All fragments are read before plan approval.',
                                 prior_values={field: [{'value': value, 'digest': digest(value)} for value in (previous[field] if isinstance(previous[field], list) else [previous[field]])] for field in FIELDS} if previous else {}))
-            step_schema = plan_step_schema(schema)
+            step_schema = plan_step_schema(schema, previous is not None)
             proposal = await worker.infer(job, call, step_schema)
             from jsonschema import Draft202012Validator
             Draft202012Validator(step_schema).validate(proposal)
