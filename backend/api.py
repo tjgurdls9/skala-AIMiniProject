@@ -132,7 +132,7 @@ def create_app(settings=None, store=None, model=None):
             value["reasons"].append("실행기 heartbeat가 없습니다.")
         if status != "ready":
             value["reasons"].append("명시적으로 설정한 로컬 Qwen/DeepSeek 모델이 필요합니다.")
-        value["reasons"].append("카공지도 프로필: 카카오맵 선택, 무료 자격·키·격리 연결은 미확인입니다. 기획별 지원 공백을 확인하세요." if value["template_id"] == "cafemap-v1" else
+        value["reasons"].append("카공지도 프로필: Geoapify Free 선택, 프로젝트 플랜·키·격리 연결은 미확인입니다. 기획별 지원 공백을 확인하세요." if value["template_id"] == "cafemap-v1" else
                                 "작은 문의 앱 템플릿만 지원합니다. 격리 이미지·취약점 DB 준비가 필요하며 실제 배포는 비활성입니다.")
         validate("Runtime", value)
         return value

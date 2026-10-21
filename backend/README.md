@@ -60,6 +60,8 @@ backend/.venv/bin/python -m backend.archive import --database runtime-data/keyle
 
 ## POST-INTEGRATION / 카공지도 프로필
 
+**최신 선택: Geoapify Free.** [키 준비 안내](../docs/setup/geoapify-local.md)를 따른다. 카카오 준비는 보존하지만 이번 실습에서 사용하지 않는다. `backend/geoapify.py`는 호스트 전용 키·명시 동의·고정 HTTPS 목적지·지역 후보 선택·카페 검색·출처 반환·영속 일 200회 검색/지오코딩 시도 제한을 준비했다. 실제 생성 앱·지도 화면·프리뷰와의 연결 및 사용자 위치 수용은 남아 있다. 아래의 외부 연결 보류/카카오 설명은 이전 시점의 기록이다.
+
 `LIFECYCLE_TEMPLATE=cafemap-v1`을 API에 설정하면 새 LIVE run의 기본 프로필을 카공지도로 기록한다. 프로필은 run별 불변이며 기존 문의 run/재생을 바꾸지 않는다. worker는 저장된 프로필을 사용하고 실행 이미지/고정 의존성·MCP 쓰기 경계는 재사용한다. 설정하지 않으면 requests-v1이다.
 
 이 확장은 요청 검증·외부 연결 대기·좌표 없는 검색 설정 저장과 해당 모델/작업·독립 검토 경로를 준비한 것이다. 사용자가 외부 연결을 나중에 결정했으므로 공급자·키·지도/실제 카페 데이터는 없다. PlanView.support는 실제 요청/정정·명세에 결속된 공백을 표시하고 implementation_allowed=false인 기획의 approve는 서버도 거절한다. 모델은 요청한 지도/주변 추천을 CRUD·가짜 장소로 바꾸지 않아야 한다.

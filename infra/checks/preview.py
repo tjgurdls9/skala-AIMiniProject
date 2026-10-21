@@ -46,8 +46,8 @@ class Proxy(BaseHTTPRequestHandler):
         body = self.rfile.read(length) if length else None
         if template_id == "cafemap-v1" and self.path.split('?', 1)[0].startswith('/api/map/'):
             source = self.command == "GET" and self.path == "/api/map/source"
-            payload = json.dumps(dict(status="unconfigured", provider="kakao", external_requests=False,
-                                      message="카카오맵 무료 자격·키·격리 연결 검증 전입니다.") if source else
+            payload = json.dumps(dict(status="unconfigured", provider="geoapify", external_requests=False,
+                                      message="Geoapify Free 플랜·키·격리 연결 검증 전입니다.") if source else
                                  dict(error=dict(code="PROVIDER_UNCONFIGURED", message="지도·장소 공급자가 미설정입니다. 외부 전송하지 않았습니다."))).encode()
             self.send_response(200 if source else 503)
             self.send_header("Content-Type", "application/json")

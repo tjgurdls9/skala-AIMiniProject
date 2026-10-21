@@ -1,18 +1,13 @@
 """Trusted Kakao adapter; credentials never enter model packets or generated containers."""
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-import json
 import math
-import os
 from pathlib import Path
 import re
-import sqlite3
-import stat
 
-import httpx
 from pydantic import BaseModel, Field
 
 from backend.contracts import ROOT, DomainError, require
+from backend.map_access import private_settings, provider_json
 
 KEY_FILE = ROOT / 'runtime-data/secrets/kakao.json'
 MAP_ORIGIN = 'http://localhost:8017'
@@ -34,25 +29,7 @@ class KakaoConfig:
 
 
 def load_config(path=KEY_FILE):
-    try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        with os.fdopen(fd, 'rb') as source:
-            info = os.fstat(source.fileno())
-            require(stat.S_ISREG(info.st_mode) and stat.S_IMODE(info.st_mode) == 0o600 and info.st_uid == os.getuid(),
-                    'FORBIDDEN', '카카오 키 파일은 현재 사용자 소유의 일반 파일·권한 600이어야 합니다.', 403)
-            raw = source.read(4097)
-        require(len(raw) <= 4096, 'INVALID_COMMAND', '카카오 로컬 설정 형식을 확인하세요.', 422)
-        def unique(pairs):
-            require(len(dict(pairs)) == len(pairs), 'INVALID_COMMAND', '카카오 설정에 중복 항목이 있습니다.', 422)
-            return dict(pairs)
-        value = json.loads(raw, object_pairs_hook=unique)
-        require(isinstance(value, dict) and set(value) == {'javascript_key', 'rest_api_key', 'free_quota_confirmed', 'paid_api_disabled_confirmed'} and
-                all(isinstance(value[k], str) for k in ('javascript_key', 'rest_api_key')) and
-                all(type(value[k]) is bool for k in ('free_quota_confirmed', 'paid_api_disabled_confirmed')),
-                'INVALID_COMMAND', '카카오 로컬 설정 형식을 확인하세요.', 422)
-        return KakaoConfig(**value)
-    except (OSError, ValueError, RecursionError):
-        raise DomainError('RUNTIME_UNAVAILABLE', '카카오 키 파일이 없거나 읽을 수 없습니다. 키 값을 로그/채팅에 붙이지 마세요.') from None
+    return KakaoConfig(**private_settings(path, ('javascript_key', 'rest_api_key'), ('free_quota_confirmed', 'paid_api_disabled_confirmed')))
 
 
 class KakaoQuery(BaseModel):
@@ -68,19 +45,6 @@ class KakaoPlaces:
     def __init__(self, config, usage_database, transport=None):
         self.config, self.path, self.transport = config, Path(usage_database), transport
 
-    def usage(self, block=False):
-        day = datetime.now(timezone.utc).date().isoformat()
-        with sqlite3.connect(self.path) as db:
-            db.execute('BEGIN IMMEDIATE')
-            db.execute('CREATE TABLE IF NOT EXISTS kakao_usage (day TEXT PRIMARY KEY, count INTEGER NOT NULL, blocked INTEGER NOT NULL)')
-            db.execute('INSERT OR IGNORE INTO kakao_usage VALUES (?,0,0)', (day,))
-            count, blocked = db.execute('SELECT count,blocked FROM kakao_usage WHERE day=?', (day,)).fetchone()
-            if block:
-                db.execute('UPDATE kakao_usage SET blocked=1 WHERE day=?', (day,))
-            else:
-                require(not blocked and count < DAILY_LIMIT, 'RUNTIME_UNAVAILABLE', '카카오 검색 테스트 쿼터가 소진/차단됐습니다. 자동 재시도·유료 전환하지 않습니다.', 429)
-                db.execute('UPDATE kakao_usage SET count=count+1 WHERE day=?', (day,))
-
     async def search(self, query):
         require(isinstance(query, KakaoQuery), 'INVALID_COMMAND', '검증된 카페 검색 요청이 필요합니다.', 422)
         self.config.require_ready()
@@ -94,20 +58,9 @@ class KakaoPlaces:
         if located:
             params.update(x=query.longitude, y=query.latitude, radius=query.radius_m, sort='distance')
         path = '/v2/local/search/' + ('keyword.json' if 'query' in params else 'category.json')
-        self.usage()  # Count attempts before I/O, including errors and lost responses.
+        data = await provider_json('kakao', path, params, {'Authorization': 'KakaoAK ' + self.config.rest_api_key},
+                                   self.path, DAILY_LIMIT, self.transport)
         try:
-            async with httpx.AsyncClient(base_url='https://dapi.kakao.com', trust_env=False, follow_redirects=False,
-                                         timeout=8, transport=self.transport) as client:
-                async with client.stream('GET', path, params=params, headers={'Authorization': 'KakaoAK ' + self.config.rest_api_key}) as response:
-                    if response.status_code == 429:
-                        self.usage(block=True)
-                    require(response.status_code == 200, 'RUNTIME_UNAVAILABLE',
-                            '카카오 검색이 거절/실패했습니다. 무료 자격·키·권한·쿼터를 확인하세요. 자동 재시도하지 않습니다.', 503)
-                    raw = bytearray()
-                    async for chunk in response.aiter_bytes():
-                        raw.extend(chunk)
-                        require(len(raw) <= 131072, 'TEMPORARILY_UNAVAILABLE', '카카오 응답 크기 한도를 초과했습니다.', 503)
-            data = json.loads(raw)
             documents = data['documents']
             require(type(data['meta']['is_end']) is bool and isinstance(documents, list) and len(documents) <= 15,
                     'TEMPORARILY_UNAVAILABLE', '카카오 응답 형식이 맞지 않습니다.', 503)
@@ -124,5 +77,5 @@ class KakaoPlaces:
             return dict(provider='kakao', places=places, is_end=data['meta']['is_end'],
                         recommendation_basis='distance' if located else 'keyword_relevance',
                         notice='카카오 장소 정보입니다. 조용함·콘센트·Wi-Fi·장시간 이용 가능 여부는 확인되지 않았습니다.')
-        except (httpx.HTTPError, ValueError, TypeError, KeyError):
+        except (ValueError, TypeError, KeyError):
             raise DomainError('TEMPORARILY_UNAVAILABLE', '카카오 연결/응답 확인에 실패했습니다. 원본 오류·위치·키는 공개하지 않습니다.', 503) from None

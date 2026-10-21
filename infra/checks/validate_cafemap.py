@@ -32,4 +32,4 @@ else:
     status, value = call('/api/preferences')
     checks = dict(persistent_preferences=status == 200 and value == dict(radius_m=2000, internet_only=True))
 print(json.dumps(dict(checks=checks, not_run=['location_consent', 'map_search', 'nearby_recommendation'],
-                      reason='External connection is deferred; no provider/place data or actual location permission was tested.')))
+                      reason='Geoapify Free is selected but credentials/isolated integration are not configured; no live data or actual location permission was tested.')))

@@ -37,8 +37,8 @@ def health():
 
 @app.get("/api/map/source")
 def source():
-    return {"status": "unconfigured", "provider": "kakao", "external_requests": False,
-            "message": "카카오맵을 선택했지만 무료 자격·키·격리 연결 검증 전입니다. 실제 검색/추천 결과가 없습니다."}
+    return {"status": "unconfigured", "provider": "geoapify", "external_requests": False,
+            "message": "Geoapify Free를 선택했지만 프로젝트 플랜·키·격리 연결 검증 전입니다. 실제 검색/추천 결과가 없습니다."}
 
 
 @app.post("/api/map/search")
