@@ -13,6 +13,7 @@
 - Claude 6fe75ee/78acde0을 2dcbd46에 통합: 작업 밖 검색/문맥 근거 표시. 통합 프론트 242개/6.25초·타입/빌드 통과(JS gzip 75.16KB). 실제 Chrome에서 기획별 support·원문/공급자 보류·구현 승인 disabled, planner 문맥 ready 2/2와 동일 spec, 새로고침 뒤 14사건·출시 읽기 전용을 확인했다. 사용자 결정을 보내지 않았다.
 - 새 실제 기획 기록 manifest `sha256:83c5f1a1ea2141ca728d3b9937e1f0232913129809efa04c59547ef436965c76`: 별도 키/모델/worker 없는 DB의 CLI/HTTP import/export 200·멱등·support 동결·resume 409·권한 원장 4종 0건. 14사건/8공개 artifact이며 후보/보고서는 없다. 기획 검토 dialog는 support를 보여 주지만 PlanViewBody 아티팩트 경로는 누락해 Claude에게 같은 CR-C14의 읽기 전용 표시 후속을 요청했다.
 - 새 ReleaseView 기록의 저장소 URL에도 기존 기획과 같은 자격증명 제외 검증을 적용했다. hash 재계산으로 사용자정보 URL을 포장해도 거절한다(수정 전 회귀 실패). backend 전체 **64개/45.543초** 통과. 합성 release fixture이며 실제 외부 승인·출시 결과가 아니다.
+- Claude c892a7f/1f1953a를 f9f60d8에 통합했다. 별도 DB의 실제 재생에서 기획 아티팩트의 support/읽기 전용 문구·동일 요청 hash·결정 버튼 없음 확인. 프론트 **245개/6.27초**·타입/빌드 통과(JS gzip 75.30KB). 실제 기획 승인/거절과 앱 후보 생성은 하지 않았다.
 - actual LIVE DB와 run 주소·실행 코드·프로세스 소유자/가동 상태의 단일 원본은 Codex 인계의 POST-INTEGRATION 절이다. 아래 옛 제출 후보는 이번 확장과 새 수용 근거를 포함하지 않는다.
 
 ## 기준과 검증
@@ -54,7 +55,7 @@ Claude 최종 인계의 임시 파일 서버 접근 제한 우회 정정은 기�
 
 ## 제출 후보
 
-`runtime-data/submission-check/skala-lifecycle-review.tar.gz`와 `.sha256`을 제공한다. 포함한 코드의 revision, public recording manifest, 파일별 hash는 `CHECKSUMS.json`, 실제 분리 환경 확인은 `KEYLESS_CHECK.json`을 따른다. 키·원본 DB·가중치·venv·node_modules/cache는 제외한다. 실제 배포/전체 사용자 수용의 증거로 취급하지 않는다.
+이전 후보 `runtime-data/submission-check/skala-lifecycle-review.tar.gz`는 1dd51e3의 당시 확인 범위로 보존한다. 후속 후보는 `runtime-data/submission-check/skala-lifecycle-post-integration-review.tar.gz`와 `.sha256`이며 생성/검증 결과는 최신 Codex 인계가 기준이다. 포함한 코드의 revision, public recording manifest, 파일별 hash는 `CHECKSUMS.json`, 실제 분리 환경 확인은 `KEYLESS_CHECK.json`을 따른다. 키·원본 DB·가중치·venv·node_modules/cache는 제외한다. 실제 배포/전체 사용자 수용의 증거로 취급하지 않는다.
 
 ## 열람 재현
 
