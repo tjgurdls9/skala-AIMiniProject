@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 import re
 import subprocess
+import threading
 
 from backend.contracts import SECRET, DomainError, digest, require
 from backend.store import uid
@@ -22,6 +23,37 @@ PIP_SPEC = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}(?:==[A-Za-z0-9][A-Za-z0-
 NPM_SPEC = re.compile(r"(?:@[a-z0-9][a-z0-9._-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,99}(?:@[A-Za-z0-9][A-Za-z0-9._^~<>=|-]{0,39})?")
 SPECS = dict(pip=PIP_SPEC, npm=NPM_SPEC)
 CONTAINER_WORK, CONTAINER_DEPS = "/work", "/deps"
+
+
+CAPTURE_BYTES = 262144      # per stream kept in host memory; the rest is read and dropped
+FILE_BYTES_LIMIT = 256 * 1024 * 1024   # docker --ulimit fsize: the largest single file a sandboxed program can write (large wheels need room)
+
+
+def bounded_run(args, stdin=None, capture_output=True, timeout=None, shell=False):
+    """subprocess.run that keeps at most CAPTURE_BYTES + 1 bytes of each stream, so runaway output cannot exhaust the host."""
+    process = subprocess.Popen(args, stdin=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=shell)
+    kept = {"out": b"", "err": b""}
+
+    def drain(stream, key):
+        while chunk := stream.read(65536):
+            if len(kept[key]) <= CAPTURE_BYTES:
+                kept[key] += chunk[:CAPTURE_BYTES + 1 - len(kept[key])]
+    readers = [threading.Thread(target=drain, args=(process.stdout, "out"), daemon=True),
+               threading.Thread(target=drain, args=(process.stderr, "err"), daemon=True)]
+    for reader in readers:
+        reader.start()
+    try:
+        process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+        raise subprocess.TimeoutExpired(args, timeout) from None
+    finally:
+        for reader in readers:
+            reader.join(timeout=5)
+        process.stdout.close()
+        process.stderr.close()
+    return subprocess.CompletedProcess(args, process.returncode, kept["out"], kept["err"])
 
 
 def tool_policy_digest():
@@ -84,7 +116,7 @@ class DockerExecutor:
 
     LANGUAGES = dict(python="python", python3="python", node="node", npm="node")
 
-    def __init__(self, images, runner=subprocess.run):
+    def __init__(self, images, runner=bounded_run):
         """`images` is one digest-pinned reference for every program, or {"python": ref, "node": ref} per language."""
         mapping = dict(python=images, node=images) if isinstance(images, str) else dict(images or {})
         require(bool(mapping) and set(mapping) <= {"python", "node"} and all(isinstance(v, str) and IMAGE.fullmatch(v) for v in mapping.values()),
@@ -98,7 +130,7 @@ class DockerExecutor:
 
     def build_args(self, name, workspace, argv, cwd, network, env, deps, deps_writable):
         container_env = {"HOME": "/tmp", "PYTHONDONTWRITEBYTECODE": "1", **(env or {})}
-        args = ["run", "--rm", *Sandbox.limits(name, network), "--mount", f"type=bind,src={workspace},dst={CONTAINER_WORK}",
+        args = ["run", "--rm", *Sandbox.limits(name, network), "--ulimit", f"fsize={FILE_BYTES_LIMIT}:{FILE_BYTES_LIMIT}", "--mount", f"type=bind,src={workspace},dst={CONTAINER_WORK}",
                 "--workdir", CONTAINER_WORK if cwd == "." else f"{CONTAINER_WORK}/{cwd}"]
         if deps is not None:
             args += ["--mount", f"type=bind,src={deps},dst={CONTAINER_DEPS}" + ("" if deps_writable else ",readonly")]

@@ -2,6 +2,7 @@
 import asyncio
 import copy
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -70,6 +71,30 @@ class LoopChecks(unittest.TestCase):
         script = Script(actions)
         result = asyncio.run(BuilderLoop(self.store).run(self.job(kind), script, toolbox or self.toolbox(kind)))
         return result, script
+
+    def test_a_slow_tool_does_not_block_the_event_loop_so_the_worker_can_keep_its_lease(self):
+        # review H-4: a blocking docker call starved the keep-alive task; with a 10 s lease the worker lost its own attempt
+        def slow(workspace, argv, cwd, timeout, **kwargs):
+            time.sleep(0.6)
+            return CommandResult(1, 'out', 'err', False, False)
+        self.executor.run = slow
+        ticks = []
+
+        async def main():
+            async def keep_alive():
+                while True:
+                    ticks.append(time.monotonic())
+                    await asyncio.sleep(0.05)
+            task = asyncio.create_task(keep_alive())
+            try:
+                await BuilderLoop(self.store).run(self.job(), Script([
+                    act('write_file', path='tests/test_a.py', content='t'), act('run_tests', argv=['python', '-m', 'pytest']),
+                    RuntimeError('stop')]), self.toolbox())
+            finally:
+                task.cancel()
+        with self.assertRaises(RuntimeError):
+            asyncio.run(main())
+        self.assertGreater(len(ticks), 6)   # a 0.6 s tool leaves room for about a dozen 50 ms ticks only if the loop stays free
 
     def test_a_full_tdd_cycle_is_executed_recorded_and_accepted_by_the_server(self):
         self.codes = [1, 0]

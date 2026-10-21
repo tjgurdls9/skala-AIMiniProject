@@ -13,7 +13,7 @@ import time
 from backend.contracts import ROOT, DomainError, digest
 from backend.store import uid
 from runner.check_runner import CheckOutcome, acceptance_verdicts, evaluate
-from runner.commands import CommandResult, redact
+from runner.commands import CommandResult, bounded_run, redact
 from runner.model import ModelUnavailable
 from runner.sandbox import Sandbox
 from runner.workspace import Workspace
@@ -91,7 +91,7 @@ class CandidateEnv:
 
 
 class Reviewer:
-    def __init__(self, engine, current=lambda: True, runner=subprocess.run, sleep=time.sleep):
+    def __init__(self, engine, current=lambda: True, runner=bounded_run, sleep=time.sleep):
         self.engine, self.current, self.runner, self.sleep = engine, current, runner, sleep
 
     def check_current(self):

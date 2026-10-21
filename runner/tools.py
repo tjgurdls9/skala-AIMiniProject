@@ -134,8 +134,13 @@ class ToolBox:
                                    deps=self.deps_dir, deps_writable=deps_writable)
         if result.exit_code in self.INFRASTRUCTURE_EXIT_CODES:
             raise DomainError("RUNTIME_UNAVAILABLE", "격리 컨테이너가 명령을 실행하지 못했습니다: " + excerpt(result.stderr)[:200], 503)
+        removed = self.workspace.sanitize()
+        try:
+            self.workspace.require_room()
+        except DomainError as error:
+            raise EscalateToUser(error.message) from None
         public = dict(exit_code=result.exit_code, stdout=redact(result.stdout), stderr=redact(result.stderr),
-                      timed_out=result.timed_out, truncated=result.truncated, removed_links=self.workspace.sanitize())
+                      timed_out=result.timed_out, truncated=result.truncated, removed_links=removed)
         return public, dict(exit_code=result.exit_code, stdout_digest=digest(result.stdout), stderr_digest=digest(result.stderr),
                             stdout_excerpt=excerpt(result.stdout), stderr_excerpt=excerpt(result.stderr), result_digest=digest(public))
 

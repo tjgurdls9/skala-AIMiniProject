@@ -2,6 +2,7 @@
 
 The model sees only its task, the approved criteria/checks for that task, a short ledger-derived history and the gate
 state. Completion is accepted only when the ledger shows the required RED -> GREEN evidence."""
+import asyncio
 from collections import deque
 
 from jsonschema import Draft202012Validator, ValidationError
@@ -197,7 +198,7 @@ class BuilderLoop:
     async def run(self, job, worker, toolbox):
         options, last, recent, steps = job["packet"]["options"], None, deque(maxlen=WINDOW), 0
         while True:
-            entries, call = self.context(job, toolbox, last)
+            entries, call = await asyncio.to_thread(self.context, job, toolbox, last)   # file and DB reads must not starve the lease keep-alive
             steps += 1
             action = None
             allowed, reason = can_finish(entries, options.get("task_kind"))
@@ -217,9 +218,9 @@ class BuilderLoop:
             else:
                 if action["tool"] == "finish":
                     return dict(summary=action.get("summary", ""), steps=steps)
-                last, signature = self.execute(toolbox, action["tool"], action.get("args", {}))
+                last, signature = await asyncio.to_thread(self.execute, toolbox, action["tool"], action.get("args", {}))   # docker calls block for minutes
                 if last.get("ok") and action["tool"] in ("run_tests", "run_command"):
-                    ledger = self.store.tool_calls(job["run_id"], options["task_id"])
+                    ledger = await asyncio.to_thread(self.store.tool_calls, job["run_id"], options["task_id"])
                     if ledger and repeated_without_change(ledger):
                         last["repeated_without_change"] = "파일 변경 없이 같은 명령이 같은 결과를 냈습니다."
                 signature = digest([action["tool"], action.get("args", {}), signature])

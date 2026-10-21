@@ -9,6 +9,8 @@ from backend.contracts import SECRET, DomainError, digest, require
 MAX_PATH = 200
 MAX_FILE_BYTES = 65536
 MAX_FILES = 200
+MAX_WORKSPACE_BYTES = 64 * 1024 * 1024   # everything a task keeps in its workspace; a command that inflates it escalates to the user
+HASH_CHUNK = 1024 * 1024
 VCS_DIR = ".git"
 
 
@@ -23,6 +25,15 @@ def relative_parts(name, allow_dot=False):
         require(allow_dot, "FORBIDDEN", "파일 경로가 필요합니다.", 403)
         return ()
     return path.parts
+
+
+def file_sha256(path):
+    """Hex SHA-256 of a file read in chunks, so a huge file never has to fit in memory."""
+    hasher = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(HASH_CHUNK), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
 
 
 def matches(name, patterns):
@@ -69,7 +80,13 @@ class Workspace:
         return dict(path=name, content=content, content_digest=digest(content))
 
     def manifest(self):
-        return {p.relative_to(self.root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in self._files()}
+        return {p.relative_to(self.root).as_posix(): file_sha256(p) for p in self._files()}
+
+    def total_bytes(self):
+        return sum(p.stat().st_size for p in self._files())
+
+    def require_room(self):
+        require(self.total_bytes() <= MAX_WORKSPACE_BYTES, "INVALID_COMMAND", "작업 공간 전체 크기 한도를 넘었습니다. 생성된 큰 파일을 정리해야 합니다.", 422)
 
     # -- mutations -----------------------------------------------------
     def write(self, name, content, expected_digest=None, enforce_scope=True):
@@ -129,6 +146,8 @@ class Workspace:
     @staticmethod
     def _text(path):
         try:
+            if path.stat().st_size > MAX_FILE_BYTES:   # never load an oversized file just to digest or show it
+                raise DomainError("NOT_FOUND", "너무 큰 파일은 읽을 수 없습니다.", 404)
             return path.read_text()
         except (UnicodeDecodeError, OSError):
             raise DomainError("NOT_FOUND", "UTF-8 텍스트 파일만 읽을 수 있습니다.", 404) from None

@@ -21,6 +21,7 @@ from runner.intervention import unledgered
 from runner.tools import ToolBox
 from runner.model import ModelUnavailable
 from runner.sandbox import Sandbox
+from runner.workspace import MAX_FILE_BYTES, file_sha256
 from runner.review import Reviewer, model_validation_body
 
 
@@ -81,7 +82,8 @@ class Pipeline:
         for path in sorted(workspace.rglob("*")):
             if path.is_file() and not path.is_symlink() and ".git" not in path.relative_to(workspace).parts:
                 try:
-                    tree[path.relative_to(workspace).as_posix()] = path.read_text()
+                    name = path.relative_to(workspace).as_posix()
+                    tree[name] = path.read_text() if path.stat().st_size <= MAX_FILE_BYTES else f"[oversized file sha256:{file_sha256(path)}]"
                 except UnicodeDecodeError:
                     continue
         return tree
@@ -107,10 +109,10 @@ class Pipeline:
         template_id = job["packet"]["template_contract"]["template"]
         workspace = await asyncio.to_thread(self.engine.workspace, job["run_id"], job["packet"]["spec_version_id"], template_id)
         inherited = await asyncio.to_thread(self.edits_between_tasks, job, workspace)
-        before = self.read_tree(workspace)
+        before = await asyncio.to_thread(self.read_tree, workspace)
         await self.model_edit(job, worker, workspace)
-        after = self.read_tree(workspace)
-        ledger = self.store.tool_calls(job["run_id"], options["task_id"])
+        after = await asyncio.to_thread(self.read_tree, workspace)
+        ledger = await asyncio.to_thread(self.store.tool_calls, job["run_id"], options["task_id"])
         # one commit per finished task keeps the history reviewers and rollbacks need
         commit = await asyncio.to_thread(commit_task, workspace, options["task_id"], options.get("task_title", "작업"))
         with self.store.transaction() as db:
