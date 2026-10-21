@@ -7,17 +7,20 @@
 - **계약 번호 정정(사용자 지적 반영)**: Claude 원래 요청을 유지한다. **CR-C14=기획별 지원 공백**, **CR-C15=출시·복구 결과**. 8ff4ca1의 번호/Runtime 대체 설명은 폐기한다. 계약 전용 **8ff4ca1 → a6eb8a4**를 순서대로 채택한다(이미 8ff를 채택했다면 a6eb8a4만 추가). HTTP SHA256 **f35c48532161dbc2adb6ff3c4538c8563541e8c9d05687a351ed2b96dda61c81**, protocol **43e0f444b2f6fc408dd177d8db599a7a13f0f3e7e8f0e2993595701c89147147**.
 - CR-C14는 각 PlanView.support에 template/spec/request digest·요청 인용과 미지원 이유/필요 입력·공급자/무료·키/쿼터/attribution/동의/격리 의존·구현 승인 가능 여부를 동결한다. Runtime 템플릿 상태는 보조 정보이며 기획별 공백을 대신하지 않는다. support 미제공/다른 spec은 지원 완료로 추정하지 않는다. implementation_allowed=false는 UI/서버 모두 approve를 거절하며 reject/수정 요청은 유지한다. 실제 공급자 결정 보류는 deferred다.
 - CR-C15 ReleaseView는 정확한 target/details와 operation별 accepted/applied/uncertain/failed/rolled_back·의도 기록 시각/실제 조회 시각/안전한 이유/볼륨 보존 조회 여부를 제공한다. 없는 과거 조회 근거는 null이며 GET 시각으로 만들지 않는다. 현재 enabled=false, rolled_back은 첫 출시 공개 중단/볼륨 보존이고 이전 버전 복원이 아니다.
-- Claude 요청: 위 정정 계약을 채택해 타입/hash를 생성하고 **기획 승인 화면의 별도 지원 공백**과 **출시/복구 결과**를 각각 원래 ID로 구현·인계한다. 현재 계약 제공 단계이며 새 LIVE 서버 주소/제공자 구현은 준비 뒤 이 절에 확정한다.
-- 제공자 구현 점검: 새 고정 cafemap-v1 프로필/run별 불변 선택·기획별 support/approve 차단·planner 실제 코퍼스 검색/공개 문맥을 planner 작업에 연결·출시 원장 GET/operation별 실제 조회 시각과 사건/artifact 연결을 구현했다. 공급자 미설정은 독립 검토 not_run·신뢰 프록시 차단이며 가짜 장소/실제 앱 완료로 취급하지 않는다. backend 자체 검사 **61개/43.281초** 통과(합성 결정/도구 fixture 포함, 실제 사용자 승인 아님). 실제 모델 새 실행/서버 연결은 다음 단계다.
+- Claude 요청: 위 정정 계약을 채택해 타입/hash를 생성하고 **기획 승인 화면의 별도 지원 공백**과 **출시/복구 결과**를 각각 원래 ID로 구현·인계한다. 제공자/소비자와 실제 LIVE 서버 정보는 아래 최신 확인을 따른다.
+- 제공자 구현 점검: 새 고정 cafemap-v1 프로필/run별 불변 선택·기획별 support/approve 차단·planner 실제 코퍼스 검색/공개 문맥을 planner 작업에 연결·출시 원장 GET/operation별 실제 조회 시각과 사건/artifact 연결을 구현했다. 공급자 미설정은 독립 검토 not_run·신뢰 프록시 차단이며 가짜 장소/실제 앱 완료로 취급하지 않는다. backend 자체 검사 **61개/43.281초** 통과(합성 결정/도구 fixture 포함, 실제 사용자 승인 아님). 이 수치는 최초 제공자 검사이며 후속 실제 실행/수정 결과는 아래와 같다.
 - 실제 모델 1차 실행: 1cb6e5674eaaa9f83083d5f15a4617eb3c424f34의 API/worker에서 실제 qwen3.5:4b·로컬 embedding을 사용했다. S09 run **846eed645f8245909d72cff799099d0b**, DB `runtime-data/s09-cafemap.sqlite3`. 원래 사용자 요청과 **“외부 연결은 나중에 결정”** 답변은 보존했다. 모델이 첫 조각에 존재하지 않는 이전 요구의 정정 근거를 생성하여 `needs_input`으로 안전하게 차단됐다. 승인/구현/외부 연결은 없었다.
 - 정정: 최초 조각 출력 스키마의 revisions를 빈 배열로 제한하고 기존 정정 검증을 유지했다. checkpoint 입력 버전을 올려 실패 원문/기록을 덮어쓰지 않고 새 시도를 구별한다. 회귀 포함 backend 전체 **62개/43.546초** 통과. 합성 검사와 실제 모델 실패를 구분한다.
 - 실제 두 번째 시도: 첫 조각 1/2를 저장한 뒤 두 번째 입력 14,928bytes가 예산 14,000을 넘어 needs_input으로 차단됐다. 앞선 기획 전체 2,853bytes를 두 번 실은 것이 원인이었다. **754165a**에서 원문/계획 전문은 한 번만 전달하고 prior_values를 위치별 hash로 변경했다. CT40 원문 인용/hash 검증을 유지했으며 전체 backend **63개/44.048초** 통과했다. 실패 checkpoint/공개 근거는 그대로 보존했다.
 - **LIVE 현재 기동 완료**: 실행 코드 **754165ade393c1ed0154e8db830e3920c51e7bb2** (Claude 완료 4f396c8 통합 포함). API/빌드된 사무실 **http://127.0.0.1:8000**, 직접 주소 **http://127.0.0.1:8000/?run=846eed645f8245909d72cff799099d0b**. API PID **10470**/PTY **88596**, worker PTY **21788**. 기동·종료 소유자는 **Codex**다. 이전 API 5398/worker 4627은 종료했다. Claude는 이 서비스와 기존 Ollama PID 25744를 임의 종료하지 않는다. 자기 Vite 127.0.0.1:5173 사용 시 API 프록시 8000이다.
 - 실제 runtime: qwen3.5:4b ready·worker ready·live_available=true·추론 슬롯 1, 로컬 qwen3-embedding:0.6b. 외부 지도/키/좌표 전송·배포는 비활성, 데이터 unconfigured. LIVE는 키 없는 재생 사본이 아니며 지도 지원/수용 통과를 뜻하지 않는다. DB는 Codex worktree `runtime-data/s09-cafemap.sqlite3`다.
 - 같은 실제 run에서 **Codex 개발자 제어**로 resume→pause→resume과 각 같은 command_id 재전송의 동일 receipt를 확인했다. paused 상태/버전/명세/공개 artifact가 유지돼 중지 뒤 옛 시도의 결과를 게시하지 않았다. 사용자 기획/배포 승인은 보내지 않았다. 주체·명령/결과는 `runtime-data/s09-developer-controls-754165a.json`에 보존했다. 실제 기획은 v8/seq14의 awaiting_plan_approval로 생성됐다. 명세 **8e303310f79542f9967a6c64e9cfb642**, plan digest **sha256:308c1eb1d3c81993e41b2881d9da054b7d6242af4cdd0c1e24d1a0daf11b643b**. 실제 요청 묶음 digest **sha256:c9a7df3bac04c1ece3235aa796c0aac89c796215ff15b96d4c197ba5f4243b1a**와 support가 결속됐고 implementation_allowed=false/provider=null/status=deferred다. 실제 planner의 spec/context/retrieval 3개가 작업에 연결됐다. 모델 기획 생성은 전체 기능·사용자 기획 승인 통과를 뜻하지 않는다.
-- Claude 완료 소비자 `d625f74`/인계 `4f396c8` 통합, 프론트 **239개/5.99초**·vue-tsc/Vite build 통과(JS gzip 74.95KB). 직접 frontend 수정/미완료 diff 복사는 하지 않았다. 실제 support UI 수용은 확인 중이다. 실제 release GET은 enabled=false/unconfigured/target=null/operations=[]이며 외부 호출·출시 실행이 없다.
-- Claude 후속 완료 `6fe75ee`/인계 `78acde0`을 확인했다. 실패 시 작업 밖 retrieval/context 근거를 여는 소비자 수정이며 완료 커밋을 추가 통합한다.
+- Claude 완료 소비자 `d625f74`/인계 `4f396c8` 통합, 프론트 **239개/5.99초**·vue-tsc/Vite build 통과(JS gzip 74.95KB). 직접 frontend 수정/미완료 diff 복사는 하지 않았다. 실제 브라우저에서 지원 공백 원문/무료·키·쿼터·출처·동의·격리/보류와 구현 승인 버튼 disabled를 확인했다. 승인/거절은 누르지 않았다. 화면 `runtime-data/s09-plan-support-2dcbd46.jpg`를 보존했다. 실제 release GET은 enabled=false/unconfigured/target=null/operations=[]이며 외부 호출·출시 실행이 없다.
+- Claude 후속 완료 `6fe75ee`/인계 `78acde0`을 **2dcbd46**에 통합했다. 실패 시 작업 밖 retrieval/context 근거를 여는 소비자 수정이다. 통합 프론트 **242개/6.25초**·타입/빌드 통과(JS gzip 75.16KB). 실제 Chrome에서 planner에 연결된 문맥 ready 2/2·동일 명세와 의미 검색 근거/과거 실패 근거를 열 수 있고 새로고침 뒤 사건 14건을 다시 받음을 확인했다.
 - **Claude 다음 확인 요청**: 위 실제 LIVE run에서 검색/문맥 근거와 CR-C14 기획별 지원 공백·CR-C15 출시 미설정 상태, 중지/재연결 표시를 확인한다. 실제 사용자 승인/거절을 대신 생성하지 않는다. 외부 연결과 사람 승인을 성공으로 보고하지 않는다.
+- 새 실제 기록 이동: `runtime-data/s09-cafemap-2dcbd46.json`, manifest **sha256:83c5f1a1ea2141ca728d3b9937e1f0232913129809efa04c59547ef436965c76**. 별도 모델/worker 없는 DB `s09-keyless-2dcbd46.sqlite3`에 CLI/HTTP import/export 200·동일 manifest 멱등·support 완전 동결·resume 409 REPLAY_READ_ONLY·jobs/commands/grants/operations 전부 0건을 확인했다. 14사건/8공개 artifact이며 아직 후보/두 검토 보고서가 없는 **실제 기획 대기 기록**이다. 이전 합성 문의 완주 기록을 대체하지 않는다.
+- 읽기 전용 확인: 별도 Chrome 탭에서 서명 없음/읽기 전용과 기획 검토 dialog의 support를 확인했다. **추가 소비자 요청(기존 CR-C14)**: PlanViewBody 아티팩트 본문 경로는 support를 누락한다. 기획 검토 dialog에서는 읽을 수 있으므로 재생 전체가 읽기 불가한 것은 아니다. 같은 지원 공백을 아티팩트에도 재사용하고 읽기 전용 문구를 구분하도록 사용자에게 수동 전달을 요청했고 전달 답변을 받았다. frontend/Claude 인계는 직접 수정하지 않는다. 해당 소비자 후속과 실제 후보/수정·배포 수용은 미완료로 남긴다.
+- 새 ReleaseView의 저장소 URL도 기획 기록과 같은 자격증명 제외 검증이 필요함을 회귀에서 확인했다(수정 전 실패). deployment.details.repository에 사용자정보가 든 URL을 hash 재계산으로 포장해도 import/export에서 거절하도록 공통 검증을 확장했다. 회귀 포함 전체 backend **64개/45.543초** 통과. 실제 출시/push는 하지 않았다.
 
 
 
@@ -28,14 +31,14 @@
 | DEV-P/S | 현재 구현·근거·다음 입력 |
 |---|---|
 | P01/S01 | 원본의 검토한 계획/진입점/프롬프트 10개를 명시 반영. Git/worktree·무료 모델/실행기·소유 경계의 기존 근거 유지. 원본 제품 초안은 가져오지 않음 |
-| P01/S02 | CR-C09/10/11·CR-C12/S12 제공자/소비자 hash 일치. Claude 900425a까지 통합(CT36/CT46 포함), 최종 프론트 217개·타입/빌드 통과. 최신 LIVE 수정/재검토 수용은 별도 |
+| P01/S02 | CR-C14/15 원래 번호로 계약·소비자·실제 기획 공백/출시 미설정 연결. Claude 78acde0까지 통합, 프론트 242개·타입/빌드 통과. 기획 아티팩트의 공백 표시 후속/최신 후보 수정·재검토 수용은 별도 |
 | P02/S03 | lease/시도/버전 fence·실제 자식 프로세스 인계 검사·손상 artifact 503·attempt별 프리뷰·취소 자원 조정 구현. 실제 모델/Docker 프로세스 강제 종료·응답 유실의 종합 수용은 미확인 |
 | P02/S04 | 원문 조각/정정 증거·최신 AC·영속 checkpoint/패치 의도·유실 조정 구현/검사. CT40은 c8bbdd7에서 철회/대체를 활성 조건 합집합으로 남기지 않도록 보완. 실제 모델 정정 품질과 필수 집합/한 파일 초과 needs_input 경계는 별도 |
 | P02/S05 | 로컬 Qwen3-Embedding/ACL·버전 cache·단일 추론 lock/순차 unload 및 공개 근거 연결 구현. 실제 의미 검색 6.6초(키워드 0→semantic found), 역할/오류 경계 검사. 일반 검색 품질·장비 전체 경합은 보증하지 않음 |
 | P03/S06 | Infra→Backend/Data→Frontend→통합 작업/DAG/불변 쓰기 scope·실제 diff/candidate 연결. 작은 문의 스택에 한정하며 AI/별도 Data 생략 이유 명시. 실제 모델 분야별 완주·카공지도 지원은 미확인 |
 | P03/S07 | 같은 후보 독립 검토·불변 원본·미확정 상호 차단·실패/미실행 차단/새 회차 검사 유지. 전체 백엔드 57개(43.294초) 통과, 후속 archive 6개(5.544초) 통과. 개발 fixture 판정은 실제 사용자/출시 근거 아님 |
 | P04/S08 | 사용자의 직접 디자인·피드백과 CT36/CT46/기록 안내 수정까지 Claude 완료 커밋만 통합. 최신 실제 API의 키 없는 재생 확인. 사용자 시각 수용·최신 LIVE 수정 흐름·실기기/타 브라우저는 미확인 |
-| P04/S09 | 실제 카공지도 원문/project 저장. 지도·위치 기반 추천/장소 검색은 requests-v1 지원 밖이며 공급자 무료 자격/키/격리·위치 동의 경로 미설정. 실제 기획 생성/사용자 승인·프리뷰 수정/재기획 수용 미완료 |
+| P04/S09 | 실제 카공지도 원문/외부 연결 보류를 보존한 cafemap-v1 기획 생성, 지원 공백·승인 차단/검색·문맥 2/2·중지/재개/재접속 확인. 실제 지도 공급자·키/권한·인간 기획 승인/앱 후보·프리뷰 수정/재기획 수용 미완료 |
 | P05/S10 | 고정 Git/registry 조회·보호 프록시/내부망의 로컬 Docker 첫 출시·unpublish/볼륨 보존·불변 manifest·응답 유실 조회 어댑터 구현/fixture 검사. 실제 대상/무료·권한/정확한 HITL 미정으로 제품 출시 API/worker 비활성 |
 | P05/S11 | 원장 1,200개 추가 사건 페이지/이동, 프론트 1만 건 묶음 검사, 복구 경계 자체 검사와 실제 별도 환경 열람 근거 확보. 실제 사용자→배포/복구 전체 완주·장기 장애/장비 전체 자원 측정 미완료 |
 | P05/S12 | CLI/HTTP export/import·검증·멱등 unsigned 재생과 사무실 연결. 새 venv/별도 DB/Git archive 사본에서 실제 HTTP/화면 열람 확인. 브라우저 파일 선택 권한·다운로드된 파일 확인은 미실행; 보고서/제출 후보 패키지 제공 |

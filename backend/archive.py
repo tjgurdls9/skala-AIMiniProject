@@ -47,11 +47,6 @@ def check(bundle):
             support = entry['content'].get('support')
             require(support is None or support['spec_version_id'] == entry['content']['spec_version_id'],
                     'INVALID_COMMAND', '지원 공백이 다른 명세에 연결됐습니다.', 422)
-            repository = entry['content']['repository']
-            if repository:
-                parsed = urlsplit(repository['url'])
-                require(parsed.scheme == 'https' and parsed.hostname is not None and parsed.username is None and parsed.password is None,
-                        'FORBIDDEN', '기록의 저장소 URL 형식을 확인하세요.', 403)
         elif metadata['kind'] in ('preview', 'retrieval', 'context', 'deployment'):
             name = {'preview': 'Preview', 'retrieval': 'RetrievalEvidence', 'context': 'ContextEvidence', 'deployment': 'ReleaseView'}[metadata['kind']]
             validate(name, entry['content'])
@@ -64,6 +59,13 @@ def check(bundle):
                 parsed = urlsplit(url)
                 require(parsed.scheme in ('http', 'https', 'project') and parsed.hostname is not None and parsed.username is None and parsed.password is None,
                         'FORBIDDEN', '기록에 실행 가능한/비밀 포함 URL을 넣을 수 없습니다.', 403)
+        if metadata['kind'] in ('spec', 'deployment'):
+            repository = (entry['content']['repository'] if metadata['kind'] == 'spec' else
+                          (entry['content']['details'] or {}).get('repository'))
+            if repository:
+                parsed = urlsplit(repository['url'])
+                require(parsed.scheme == 'https' and parsed.hostname is not None and parsed.username is None and parsed.password is None,
+                        'FORBIDDEN', '기록의 저장소 URL 형식을 확인하세요.', 403)
     specs = {e['content']['spec_version_id']: e['content'] for e in entries.values() if e['metadata']['kind'] == 'spec'}
     require(snapshot['spec_version_id'] is None or snapshot['spec_version_id'] in specs, 'INVALID_COMMAND', '현재 명세 원본이 없습니다.', 422)
     for report in snapshot['reports']:

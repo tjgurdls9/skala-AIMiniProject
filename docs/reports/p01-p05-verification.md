@@ -10,6 +10,9 @@
 - 실제 S09 요청과 **“외부 연결은 나중에 결정”**을 보존했다. cafemap-v1은 공급자 미설정 경계/설정 저장을 준비한 스캐폴드이며 실제 지도·장소 검색/추천이 구현된 앱이 아니다. 가짜 장소/문의 CRUD를 사용하지 않는다. 외부 공급자·키/좌표 전송과 실제 배포는 비활성이다.
 - 실제 로컬 qwen3.5:4b/단일 worker/로컬 qwen3-embedding:0.6b의 실행에서 검색 근거를 발급했다. 첫 시도는 최초 조각의 존재하지 않는 정정 증거로 차단했고 151cb86에서 최초 출력 revisions=[]를 스키마로 강제했다(62개/43.546초 통과). 다음 시도는 첫 조각을 보존한 뒤 두 번째 호출의 14,928bytes 예산 초과로 차단됐다. 실패 기록/원문은 보존했고 사람 승인·구현을 만들지 않았다. 후속 수정/실제 성공 여부는 최신 Codex 인계를 따른다.
 - 후속 754165a: 기존 요구 원문을 중복하지 않도록 위치별 digest만 전달했다. backend 전체 63개/44.048초 통과. 실제 run 846eed645f8245909d72cff799099d0b는 개발자 resume→pause→resume과 중복 명령 동일 receipt/중지 fence를 확인한 뒤 v8/seq14의 awaiting_plan_approval로 기획을 생성했다. spec 8e303310f79542f9967a6c64e9cfb642, 지원 공백은 provider=null/deferred/implementation_allowed=false다. 실제 로컬 semantic 검색·완료 문맥 근거를 planner 작업에 연결했다. 사람의 승인/거절·지도 앱 생성/외부 검색·후보 검토는 수행하지 않았다.
+- Claude 6fe75ee/78acde0을 2dcbd46에 통합: 작업 밖 검색/문맥 근거 표시. 통합 프론트 242개/6.25초·타입/빌드 통과(JS gzip 75.16KB). 실제 Chrome에서 기획별 support·원문/공급자 보류·구현 승인 disabled, planner 문맥 ready 2/2와 동일 spec, 새로고침 뒤 14사건·출시 읽기 전용을 확인했다. 사용자 결정을 보내지 않았다.
+- 새 실제 기획 기록 manifest `sha256:83c5f1a1ea2141ca728d3b9937e1f0232913129809efa04c59547ef436965c76`: 별도 키/모델/worker 없는 DB의 CLI/HTTP import/export 200·멱등·support 동결·resume 409·권한 원장 4종 0건. 14사건/8공개 artifact이며 후보/보고서는 없다. 기획 검토 dialog는 support를 보여 주지만 PlanViewBody 아티팩트 경로는 누락해 Claude에게 같은 CR-C14의 읽기 전용 표시 후속을 요청했다.
+- 새 ReleaseView 기록의 저장소 URL에도 기존 기획과 같은 자격증명 제외 검증을 적용했다. hash 재계산으로 사용자정보 URL을 포장해도 거절한다(수정 전 회귀 실패). backend 전체 **64개/45.543초** 통과. 합성 release fixture이며 실제 외부 승인·출시 결과가 아니다.
 - actual LIVE DB와 run 주소·실행 코드·프로세스 소유자/가동 상태의 단일 원본은 Codex 인계의 POST-INTEGRATION 절이다. 아래 옛 제출 후보는 이번 확장과 새 수용 근거를 포함하지 않는다.
 
 ## 기준과 검증

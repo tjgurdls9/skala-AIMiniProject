@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import ANY, patch
 
 from backend.contracts import ROOT, DomainError, canonical, digest, plan_inputs, validate
+from backend.archive import check, export_recording
 from backend.store import Store, now, uid
 from runner.model import ModelUnavailable
 from runner.release import ReleaseOperations
@@ -53,6 +54,17 @@ class ReleaseChecks(unittest.TestCase):
             snapshot.update(state='deploying')
             snapshot['approvals'].append(dict(id=uid(), state='approved', target=target, target_digest=digest(target)))
             self.store.save(db, snapshot, 'warning', 'synthetic release decision only')
+
+    def test_recorded_release_repository_cannot_embed_credentials(self):
+        bundle = export_recording(self.store.path, self.snapshot['run_id'])
+        view = self.store.release_view(self.snapshot['run_id'])
+        view['details']['repository']['url'] = 'https://synthetic:private@example.org/app.git'
+        metadata = dict(id=uid(), kind='deployment', title='synthetic release', public_summary='synthetic', content_digest=digest(view))
+        bundle['snapshot']['artifacts'].append(metadata)
+        bundle['artifacts'].append(dict(metadata=metadata, content=view))
+        bundle['manifest_digest'] = digest({k:v for k,v in bundle.items() if k != 'manifest_digest'})
+        with self.assertRaises(DomainError):
+            check(bundle)
 
     def test_missing_or_changed_approval_blocks_every_mutation(self):
         with patch.object(self.operations.git, 'push') as push, patch.object(self.operations.environment, 'deploy') as deploy:
