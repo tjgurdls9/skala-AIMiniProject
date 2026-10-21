@@ -6,11 +6,47 @@
 
 이 절은 아래의 이전 기록보다 우선한다. 지시는 원본의 `docs/prompts/CLAUDE_PHASE_COMPLETION.md`와 `docs/planning/phase-completion.md`를 따른다. 기준은 Claude `b3a52bc`, Codex `c3e11c1`이다.
 
-**현재 상태: `WAITING_FOR_LIVE_SERVER`** (재개 지시: 원본 `docs/prompts/POST_INTEGRATION_RESUME.md` Claude 절. `WAITING_FOR_CONTROL_TOWER`는 해제됐다. CR-C14·CR-C15 소비 완료 `d625f74`)
+**현재 상태: `WAITING_FOR_LIVE_PLAN`** (재개 지시: 원본 `docs/prompts/POST_INTEGRATION_RESUME.md` Claude 절. CR-C14·CR-C15 소비 `d625f74`, 실제 LIVE 확인과 실행 근거 수정 `6fe75ee`)
 - 관제탑은 Codex `7e9a15e`, Claude `4c54896`을 대조했다. CT36·CT40·CT46 수정의 통합과 CT48 정정을 확인했다. 실제 사용자 기획·배포 승인, 실제 LIVE·복구 수용은 별도로 남는다.
-- 프론트 최신 완료 커밋: **`d625f74`**(아래 "재개 2", CR-C14·CR-C15). 그 전 `5c80346`(재개 1)도 아직 통합 대상이다. 계약 채택 `ec7be82`(=8ff4ca1)·`0a87679`(=a6eb8a4).
-- 대기 이유(구체): Codex 인계(POST-INTEGRATION 절)에 새 LIVE 서버 주소가 아직 확정되지 않았다("준비 뒤 이 절에 확정"). 그 전에는 실제 모델·worker와 사무실을 연결하지 않는다. LIVE 서버나 worker를 Claude가 직접 띄우지 않는다.
-- 남은 확인용 서버 없음. 8000·5173 포트는 비어 있다.
+- 프론트 최신 완료 커밋: **`6fe75ee`**(아래 "재개 3", 실제 LIVE 확인 중 발견한 실행 근거 표시). `d625f74`(재개 2)·`5c80346`(재개 1)은 Codex `f5a2bc0`에 통합됐다. 계약 채택 `ec7be82`(=8ff4ca1)·`0a87679`(=a6eb8a4).
+- 대기 이유(구체): 실제 LIVE run이 기획 단계 `needs_input`(문맥 예산 초과)에 멈춰 PlanView가 없다. CR-C14 실제 확인은 Codex 수정(`754165a`) 뒤 기획이 진행돼야 가능하다. LIVE 서버나 worker를 Claude가 직접 띄우거나 종료하지 않는다.
+- Claude 측 서버 없음(5173 종료). 8000은 Codex 소유 LIVE API(PID 10470, `754165a`)이며 Claude가 종료하지 않는다.
+
+### 재개 3 — 실제 S09 LIVE run 확인 (2026-10-21)
+
+Codex 전달: `4f396c8`이 `f5a2bc0`에 통합됐다. 실제 LIVE API·사무실은 `http://127.0.0.1:8000`, run `846eed645f8245909d72cff799099d0b`(카공지도, DB `runtime-data/s09-cafemap.sqlite3`). API·worker의 기동과 종료는 Codex 소유다.
+
+**방법(읽기 전용)**
+- 세션 발급 외에는 GET과 SSE만 썼다. 명령·승인·거절·재개·외부 연결은 보내지 않았다.
+- 브라우저: 처음에는 Codex가 빌드한 사무실(8000)로 보고, 수정 뒤에는 내 Vite(5173, `/api`를 8000으로 프록시)로 봤다. Vite는 확인 후 종료했다.
+- 확인 도중 Codex가 문맥 예산 수정을 위해 API를 종료했다(PID 5398, `754165a`). Claude는 종료하거나 다시 띄우지 않았고, 재기동(PID 10470)을 기다린 뒤 다시 확인했다.
+
+**실제 상태**
+- runtime: `live_available=true`, qwen3.5:4b ready, worker ready, `template_id=cafemap-v1`, `data_source_status=unconfigured`.
+- run: `needs_input`, v4·seq 8, 이유 "필수 목표·제약·AC 또는 한 파일 자체가 문맥 예산을 초과했습니다…". spec, 작업, 승인은 없다.
+- 사건 8개: 기획 접수 → context_saved → retrieval_finished → warning(첫 조각 정정 대상) → resume(`command_id` 있음) → context_saved → retrieval_finished → warning(문맥 예산).
+- 공개 근거 4개(문맥 2, 검색 2). 모두 `task_id`가 없다.
+
+**확인 결과**
+
+| 항목 | 결과 |
+|---|---|
+| CR-C15 출시·복구 | 실제 `/release` 응답이 `unconfigured`, target·details null, operations 0이었다. 패널에는 "출시 대상 미설정 — 실제 출시 대상·무료 자격/권한·정확한 사용자 승인이 미설정입니다…", "실제 출시 실행 비활성 · 읽기 전용", "기록된 출시 작업이 없습니다"가 표시됐다 |
+| Runtime 보조 정보 | 시작 화면 조건(cafemap-v1·unconfigured)과 서버 이유가 일치했다 |
+| 검색·문맥 근거 | **결함 발견 → `6fe75ee`로 수정**(아래). 수정 뒤 실제 근거 4개를 모두 열어 확인했다. 검색은 "✓ 근거 찾음", 기획 역할, 의미 검색 `qwen3-embedding:0.6b@sha256:ac6d…`, 출처 `project://contracts/v1`(http(s)가 아니라 링크 없이 텍스트로만), 버전·`project-local`·수집 시각·본문 해시, 허용 역할 4개, 관련도 0.48 "판정 아님"이 나왔다. 문맥은 "? 입력 필요", 조각 0/2와 1/2, 명세 미확정, 요청별 위치·해시, "승인 증거가 아닙니다"가 나왔다 |
+| CR-C14 지원 공백 | **확인 불가**: 기획이 문맥 예산 초과로 `needs_input`에서 멈춰 PlanView와 support가 아직 없다 |
+| 콘솔 | 첫 세션 확인 401 외에 오류 없음 |
+
+**고친 것 — `6fe75ee` 작업 밖 실행 근거 표시**
+- 결함: 기획 단계 근거는 작업이 생기기 전에 발급돼 `task_id`가 없다. 근거 패널은 작업의 `artifact_ids`로만 근거를 찾았다. 그래서 실제 run의 근거 4개를 사무실에서 열 방법이 없었다.
+- 수정: 어느 작업에도 연결되지 않은 retrieval·context 아티팩트를 근거 패널의 "실행 근거" 구역에 최신순으로 나열한다. 누르면 같은 본문 표시 경로로 연다. 작업에 연결된 근거는 중복해 나열하지 않는다.
+- 근거: `tests/p05.test.ts` 3개. 실제 서버와 같은 모양의 본문이 스키마·가드를 통과하는지, 작업 0개에서 나열·열람·`project://`를 링크로 만들지 않는지, 작업 연결 근거를 중복 나열하지 않는지를 본다. 수정 전 1개 실패, 수정 후 전체 242개 통과, `vue-tsc` 0.
+
+**남은 것**
+- CR-C14 실제 확인: 문맥 예산 수정(`754165a`) 뒤 기획이 실제로 PlanView와 support를 만들면 승인 화면에서 확인한다. 사용자 승인·거절은 대신 보내지 않는다.
+- 같은 command_id 반영 확인, 중지·재개·재연결, 후보·검토 회차, 프리뷰: 이 run이 기획 단계에서 멈춰 아직 해당 사건이 없다.
+
+**Codex에게**: `6fe75ee` 통합. 기획이 진행되면(새 PlanView 발급) 알려 달라.
 
 ### 재개 2 — CR-C14 기획별 지원 공백 · CR-C15 출시·복구 결과 (2026-10-21)
 
