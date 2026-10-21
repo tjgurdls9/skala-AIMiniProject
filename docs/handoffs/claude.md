@@ -6,11 +6,49 @@
 
 이 절은 아래의 이전 기록보다 우선한다. 지시는 원본의 `docs/prompts/CLAUDE_PHASE_COMPLETION.md`와 `docs/planning/phase-completion.md`를 따른다. 기준은 Claude `b3a52bc`, Codex `c3e11c1`이다.
 
-**현재 상태: `WAITING_FOR_CODEX_INTEGRATION`** (카카오맵 전환 후속 계약 `fa07aec` 소비자 완료. 다음은 Codex의 통합과 새 기획 공개다. 사람의 기획 승인은 여전히 사용자 몫이다)
-- 관제탑은 Codex `7e9a15e`, Claude `4c54896`을 대조했다. CT36·CT40·CT46 수정의 통합과 CT48 정정을 확인했다. 실제 사용자 기획·배포 승인, 실제 LIVE·복구 수용은 별도로 남는다.
-- 프론트 최신 완료 커밋: **`38aa2d8`**(아래 "재개 5", free_policy enum). 계약 채택 `075a0fa`(=fa07aec). `c892a7f`/`1f1953a`는 Codex `f9f60d8`에 통합됐다. 이전 계약 채택 `ec7be82`(=8ff4ca1)·`0a87679`(=a6eb8a4).
-- 대기 이유(구체): Codex가 `38aa2d8`을 통합한 뒤 새 기획(provider=kakao, status=unconfirmed)을 공개한다. 키·계정·무료 배지 확인·생성 앱 지도 UI는 Codex 범위다. 사람의 기획 승인과 외부 호출은 Claude가 대신하지 않는다.
-- Claude 측 서버 없음. 8000은 Codex 소유 LIVE API(PID 51993, `f9f60d8`)이며 Claude가 종료하지 않는다.
+**현재 상태: `WAITING_FOR_RUNTIME_INTEGRATION`** (관제 지시 2 완료. 통합 담당은 런타임 세션 f3이다. 이전의 "Codex 통합 대기"는 Codex가 멈춰 무효다)
+- 관제가 Claude 세션(skala-aiminiproject-61)으로 옮겨졌다. 기준 문서는 원본 `docs/planning/execution-boundary.md`다. 카공지도는 검증 과제이고 기존 실행 `846eed64…`는 작업 세션 개입이 있어 **로컬 모델 자율 수용 미검증**이다.
+- 프론트 최신 완료 커밋: **`d72e888`**(아래 "재개 6" 정정, 사유 중복 제거)와 `2ee4a30`(공통 화면의 과제 전용 문구 제거). `075a0fa`(=fa07aec)·`38aa2d8`·`21492ae`는 런타임 HEAD(`9ff9508`)에 이미 들어가 있다(merge-base 확인, 관제 정정 1).
+- 대기 이유(구체): 런타임 세션 f3이 새로 통합할 것은 `2ee4a30`·`d72e888`과 이 인계 커밋뿐이다. 템플릿 enum 범용화는 계약 변경이라 CR 초안 CR-C16으로만 남겼다(아래). 사람의 기획 승인과 외부 호출은 Claude가 대신하지 않는다.
+- Claude 측 서버 없음. 8000의 LIVE API 소유는 런타임 쪽이며 Claude가 띄우거나 종료하지 않는다.
+- 사용자 직접 디자인 지시(건물형 사무실 시안)는 Artifact로 진행 중이다. 제품 코드에는 아직 반영하지 않았다.
+
+### 재개 6 — 공통 화면의 검증 과제 전용 문구 감사·제거 (2026-10-21, 관제 지시 2)
+
+관제 지시: frontend/src와 tests에서 검증 과제(카공지도) 전용 문구와 분기를 감사한다. 계약 변경 없이 되는 범위만 범용으로 고치고, 계약이 필요한 것은 CR 초안으로 남긴다.
+
+**감사표(21492ae 기준, `src/generated` 제외)**
+
+| 위치 | 내용 | 분류 | 처리 |
+|---|---|---|---|
+| `StartScreen.vue` TEMPLATE·DATA_SOURCE·dataNotice | "카공지도(cafemap-v1)", "지도·장소 데이터 미설정 — 외부 검색·추천은…"을 프론트가 만듦 | 과제 전용(공통 화면) | 고침: 템플릿은 서버 ID를 `code`로 표시하고, 안내는 "외부 데이터 미설정 — 외부 데이터가 필요한 기능은…"으로 범용화했다. 끝에 서버 `reasons`를 그대로 붙인다. "LIVE 가능 ≠ 기능 가능" 문장은 유지 |
+| `model/planSupport.ts` TEMPLATE_NAME | 'requests-v1'→"작은 문의 앱", 'cafemap-v1'→"카공지도" 이름 고정 | 과제 전용(공통 화면) | 고침: 삭제하고 `PlanSupportBody`가 template_id를 그대로 표시 |
+| `model/planSupport.ts` NEED_NAME.consent | "위치 동의" | 과제 전용(공통 화면) | 고침: "사용자 동의". 과제 맥락은 서버 문장(requires·reason)에만 남는다 |
+| `model/planSupport.ts` TEMPLATES | 계약 enum 두 값의 형식 검사 | 계약 의존 | 유지(계약 소비). 근원은 계약 enum → CR-C16 |
+| `generated/http.ts` template_id enum (Runtime·PlanSupport) | 'requests-v1' \| 'cafemap-v1' | 계약(런타임 소유) | 수정 안 함 → CR-C16 |
+| `examples/base.ts`, `examples/scenarios.ts` | 합성 "고객 문의" 예시, support.template_id='requests-v1' | 합성 예시 | 유지(합성 표시가 있는 예시) |
+| `StartScreen.vue` placeholder "예: 고객 문의 분류 대시보드" | 범용 입력 예시 | 공통 화면 | 유지(과제 전용 아님) |
+| `office/*`, `SprintBoard`, `WorkTree`의 "지도" | 타일 지도·작업 지도(화면 용어) | 공통 화면 | 해당 없음 |
+| `tests/plan-support.test.ts` CAFEMAP 고정값 | 카공 요청 인용·지도 공급자 공백을 서버 값으로 흉내 | 합성·테스트 | 유지. 화면이 서버 문장을 그대로 보이는지 검사하는 용도. 과제명 기대만 template_id로 바꿨다 |
+| `tests/release.test.ts:209-229` | 카공지도 문구 기대 | 테스트 | 새 기준으로 고침 |
+
+**고친 것 — `2ee4a30`** (계약 변경 없음)
+- 시작 화면과 지원 구역이 과제 이름이나 지도·장소 문구를 만들지 않는다. 서버가 준 template_id·reasons만 그대로 보인다.
+- 회귀 방지 `tests/task-neutral.test.ts`를 추가했다. src(예시·생성 타입 제외)에서 카공·카페·지도·장소·위치 동의·카카오·Kakao·Geoapify 문구를 검사한다.
+- RED→GREEN
+  - 수정 전 3개가 실패했다. 소스 검사는 4곳을 적발했다(StartScreen 2, planSupport 2). 지원 구역에는 "카공지도(cafemap-v1)"가 나왔고, 시작 화면 안내는 범용이 아니었다.
+  - 수정 후 전체 248개 통과, `vue-tsc` 0, 빌드 통과(JS gzip 75.34KB).
+
+**관제 정정 2 — `d72e888`**
+- 문제: LIVE가 불가이면서 외부 데이터가 미설정이면, 입력 아래(blocked)에 reasons[0]이 나오고 외부 데이터 안내에도 같은 사유가 다시 붙었다.
+- 수정: LIVE가 불가이면 외부 데이터 안내에는 첫 사유를 빼고 나머지만 붙인다. "실행 가능성" 대화상자의 전체 사유 목록은 그대로 둔다.
+- 근거: `release.test.ts`에 1개 추가. 수정 전에는 안내에 첫 사유가 다시 나와 실패했다. 수정 후 전체 249개 통과, `vue-tsc` 0.
+
+**CR-C16 초안 — 템플릿 ID를 과제 중립 시작 프로젝트로 (계약 변경 필요, 런타임 소유)**
+- 문제: `Runtime.template_id`와 `PlanSupport.template_id`가 `'requests-v1' | 'cafemap-v1'` enum이다. 검증 과제 이름(cafemap)이 공통 계약에 들어 있어, 과제를 바꾸거나 추가할 때마다 계약과 소비자를 다시 만들어야 한다.
+- 제안: template_id를 범용 시작 프로젝트 ID(예: `^[a-z0-9][a-z0-9-]{0,62}$` 패턴 문자열)로 바꾼다. 화면용 이름이 필요하면 서버가 `template_label`(문자열)을 함께 준다. 과제 전용 의미(지도 공급자 등)는 기존 `PlanSupport.unsupported/external` 문장으로만 전달한다.
+- 소비자 영향: `planSupport.ts` TEMPLATES 집합을 패턴 검사로 바꾼다. 화면 변경은 없다(이미 서버 ID를 그대로 표시한다). 옛 기록의 'requests-v1'·'cafemap-v1'은 패턴을 만족하므로 호환된다.
+- 함께 볼 것: 런타임 세션 f3의 공통 기반 부족분 감사(templates/cafemap-v1/**·backend 템플릿 분기 출처 점검)와 같이 결정한다. 관제 승인 전에는 적용하지 않는다.
 
 ### 재개 5 — 카카오맵 전환 계약 fa07aec: free_policy enum (2026-10-21)
 

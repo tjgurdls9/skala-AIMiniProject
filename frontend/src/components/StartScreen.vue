@@ -33,18 +33,20 @@ const createdProject = ref<{ key: string; id: string } | null>(null)
 
 const MODEL_STATUS: Record<Runtime['model_status'], string> = { not_configured: '미설정', unavailable: '연결 안 됨', ready: '준비됨' }
 const RUNNER_STATUS: Record<Runtime['runner_status'], string> = { unavailable: '연결 안 됨', ready: '준비됨' }
-const TEMPLATE: Record<NonNullable<Runtime['template_id']>, string> = { 'requests-v1': '작은 문의 앱(requests-v1)', 'cafemap-v1': '카공지도(cafemap-v1)' }
-const DATA_SOURCE: Record<NonNullable<Runtime['data_source_status']>, string> = { not_required: '필요 없음', unconfigured: '미설정 — 외부 지도·장소 검색·추천은 동작하지 않음' }
+const DATA_SOURCE: Record<NonNullable<Runtime['data_source_status']>, string> = { not_required: '필요 없음', unconfigured: '미설정 — 외부 데이터가 필요한 기능은 동작하지 않음' }
 
 /**
  * Runtime 템플릿 보조 정보(계약 a6eb8a4). 운영자 기본값일 뿐 실행별 지원 공백(CR-C14 PlanView.support)을 대신하지 않는다.
- * 외부 데이터가 미설정이면 LIVE 가능이 지도 기능 가능으로 읽히지 않게 입력 아래에 알린다.
+ * 사무실은 어떤 요청이든 받는 공통 화면이라 과제 이름·기능을 지어내지 않는다. 템플릿은 서버 ID 그대로, 사유는 서버 reasons 그대로 보인다.
+ * 외부 데이터가 미설정이면 LIVE 가능이 기능 가능으로 읽히지 않게 입력 아래에 알린다.
  */
 const dataNotice = computed<string | null>(() => {
   const rt = runtime.value
   if (!rt || rt.data_source_status !== 'unconfigured') return null
-  const name = rt.template_id ? TEMPLATE[rt.template_id] : '현재 템플릿'
-  return `${name} · 지도·장소 데이터 미설정 — 외부 검색·추천은 동작하지 않습니다. LIVE 가능은 로컬 모델·실행기 준비만 뜻합니다. 이 요청의 지원 공백은 기획 승인 화면에서 확인하세요.`
+  // LIVE 불가면 첫 사유는 입력 아래(blocked)에 이미 보이므로 나머지만 붙인다
+  const rest = rt.live_available ? rt.reasons : rt.reasons.slice(1)
+  const reasons = rest.length ? ` ${rest.join(' ')}` : ''
+  return `외부 데이터 미설정 — 외부 데이터가 필요한 기능은 동작하지 않습니다. LIVE 가능은 로컬 모델·실행기 준비만 뜻합니다. 요청별 지원 공백은 기획 승인 화면에서 확인하세요.${reasons}`
 })
 
 /** 입력이 왜 지금 실행될 수 없는지(없으면 null). 버튼만 막고 이유를 입력 아래에 그대로 보여 준다 */
@@ -179,7 +181,7 @@ onMounted(async () => {
         <template v-if="blocked && (runtime || serverError)">{{ blocked }}</template>
         <template v-else>Enter로 시작 · Shift+Enter 줄바꿈 · 원문은 그대로 보존되고 기획 승인 전에는 구현이 시작되지 않습니다</template>
       </p>
-      <p v-if="dataNotice" class="hint warn">{{ dataNotice }}</p>
+      <p v-if="dataNotice" class="hint warn" data-testid="data-notice">{{ dataNotice }}</p>
       <div v-if="submitError" class="error-box" role="alert">{{ submitError.message }} <p class="small">{{ errorHint(submitError) }}</p></div>
       <button type="button" class="more" @click="moreOpen = true">실행 가능성 · 실제 기록 재생 · 합성 예시</button>
     </main>
@@ -192,7 +194,7 @@ onMounted(async () => {
           <dt>모델 공급자</dt><dd>로컬 Ollama · 무료 전용 (외부 API {{ runtime.external_api_enabled ? '사용' : '사용 안 함' }})</dd>
           <dt>모델</dt><dd>{{ runtime.model ?? '미지정' }} · <strong>{{ MODEL_STATUS[runtime.model_status] }}</strong></dd>
           <dt>작업 실행기</dt><dd><strong>{{ RUNNER_STATUS[runtime.runner_status] }}</strong></dd>
-          <template v-if="runtime.template_id"><dt>템플릿</dt><dd>{{ TEMPLATE[runtime.template_id] }} <span class="muted small">(운영자 기본값)</span></dd></template>
+          <template v-if="runtime.template_id"><dt>템플릿</dt><dd><code>{{ runtime.template_id }}</code> <span class="muted small">(운영자 기본값)</span></dd></template>
           <template v-if="runtime.data_source_status"><dt>외부 데이터</dt><dd :class="{ 'tone-warn': runtime.data_source_status === 'unconfigured' }">{{ DATA_SOURCE[runtime.data_source_status] }}</dd></template>
           <dt>배포</dt><dd>{{ runtime.deployment_enabled ? '사용 가능' : '비활성 (배포 대상 미연결)' }}</dd>
           <dt>LIVE</dt><dd :class="runtime.live_available ? 'tone-ok' : 'tone-warn'">{{ runtime.live_available ? '시작 가능' : '불가' }}</dd>

@@ -52,17 +52,13 @@ export function supportVerdict(plan: PlanView): SupportVerdict {
   return { kind: support.implementation_allowed ? 'clear' : 'blocked', support }
 }
 
-export const TEMPLATE_NAME: Record<PlanSupport['template_id'], string> = {
-  'requests-v1': '작은 문의 앱(requests-v1)',
-  'cafemap-v1': '카공지도(cafemap-v1)',
-}
-
+// 템플릿은 이름을 붙이지 않고 서버 ID 그대로 보인다(과제 이름을 화면이 지어내지 않는다). TEMPLATES는 계약 enum 검사일 뿐이다.
 export const NEED_NAME: Record<Need, string> = {
   free_eligibility: '무료 자격',
   key: '키',
   quota: '쿼터',
   attribution: '출처 표시',
-  consent: '위치 동의',
+  consent: '사용자 동의',
   isolation: '격리 경로',
 }
 

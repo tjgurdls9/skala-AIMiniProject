@@ -206,27 +206,46 @@ describe('Runtime 템플릿·외부 데이터 안내', () => {
     return w
   }
 
-  test('카공지도 템플릿의 외부 데이터 미설정을 입력 아래에 알린다', async () => {
-    const w = await start(runtime({ template_id: 'cafemap-v1', data_source_status: 'unconfigured', reasons: ['외부 지도·장소 데이터는 사용자 결정으로 보류했습니다.'] }))
-    const text = w.text()
-    expect(text).toContain('카공지도(cafemap-v1)')
-    expect(text).toContain('지도·장소 데이터 미설정')
-    expect(text).toContain('LIVE 가능은 로컬 모델·실행기 준비만 뜻합니다')
+  test('외부 데이터 미설정이면 과제 이름 없이 범용 안내와 서버 사유를 그대로 보여 준다', async () => {
+    const reason = '서버 사유: 외부 데이터 연결은 사용자 결정으로 보류했습니다.'
+    const w = await start(runtime({ template_id: 'cafemap-v1', data_source_status: 'unconfigured', reasons: [reason] }))
+    const notice = w.find('[data-testid="data-notice"]').text()
+    expect(notice).toContain('외부 데이터 미설정')
+    expect(notice).toContain('LIVE 가능은 로컬 모델·실행기 준비만 뜻합니다')
+    expect(notice).toContain(reason)
+    expect(notice).not.toContain('카공지도')
+    expect(notice).not.toContain('지도')
     await w.find('button.more').trigger('click')
     await flush()
     const dialog = document.querySelector('dialog[open]')!.textContent!
     expect(dialog).toContain('템플릿')
+    expect(dialog).toContain('cafemap-v1')
+    expect(dialog).not.toContain('카공지도')
     expect(dialog).toContain('외부 데이터')
     expect(dialog).toContain('미설정')
+    expect(dialog).not.toContain('지도')
+    w.unmount()
+  })
+
+  test('LIVE 불가 이유로 이미 보인 서버 사유는 외부 데이터 안내에 다시 붙이지 않는다', async () => {
+    const first = '서버 사유 1: 실행기가 연결되지 않았습니다.'
+    const second = '서버 사유 2: 외부 데이터 연결은 보류했습니다.'
+    const w = await start(runtime({ live_available: false, runner_status: 'unavailable', data_source_status: 'unconfigured', reasons: [first, second] }))
+    expect(w.find('#prompt-hint').text()).toContain(first)
+    const notice = w.find('[data-testid="data-notice"]').text()
+    expect(notice).not.toContain(first)
+    expect(notice).toContain(second)
+    // 입력 영역 안에서는 한 번만(대화상자의 전체 사유 목록은 별도 표시)
+    expect(w.find('main.center').text().split(first).length - 1).toBe(1)
     w.unmount()
   })
 
   test('외부 데이터가 필요 없는 템플릿은 경고하지 않고, 필드가 없는 옛 서버도 그대로 동작한다', async () => {
     const w = await start(runtime({ template_id: 'requests-v1', data_source_status: 'not_required' }))
-    expect(w.text()).not.toContain('지도·장소 데이터 미설정')
+    expect(w.find('[data-testid="data-notice"]').exists()).toBe(false)
     w.unmount()
     const old = await start(runtime({}))
-    expect(old.text()).not.toContain('지도·장소 데이터 미설정')
+    expect(old.find('[data-testid="data-notice"]').exists()).toBe(false)
     old.unmount()
   })
 })
