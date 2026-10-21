@@ -242,6 +242,9 @@ describe('S12 화면', () => {
     expect(create).toHaveBeenCalledOnce()
     expect(click).toHaveBeenCalledOnce()
     expect(w.text()).toContain('내보냄 · manifest')
+    // 실제 b7f01f0 bundle에 변경 요청 원문·명세 본문이 들어 있었다. 사용자 입력이 없다고 안내하면 안 된다
+    expect(w.text()).not.toContain('원문 요청')
+    expect(w.text()).toContain('사용자 입력과 산출물이 들어 있을 수 있으니 공유 전에 내용을 확인하세요')
     const example = mount(RecordingExport, { props: { source: exampleSource(findScenario('preview')!), runId: 'r' } })
     expect(example.find('button').exists()).toBe(false)
     expect(example.text()).toContain('합성 예시는 실제 기록이 아니어서 내보내지 않습니다')
