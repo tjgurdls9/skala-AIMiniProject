@@ -91,6 +91,8 @@ class Sandbox:
         return path
 
     def freeze(self, workspace):
+        require(not any(p.is_symlink() for p in workspace.rglob("*") if ".git" not in p.parts), "FORBIDDEN",
+                "작업 공간에 심볼릭 링크가 있어 후보로 고정할 수 없습니다.", 403)
         manifest = {str(p.relative_to(workspace)): hashlib.sha256(p.read_bytes()).hexdigest()
                     for p in sorted(workspace.rglob("*")) if p.is_file() and ".git" not in p.parts}
         candidate_id = digest(manifest).split(":")[1]

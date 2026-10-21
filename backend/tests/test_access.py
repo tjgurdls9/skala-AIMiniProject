@@ -81,3 +81,39 @@ class AccessChecks(unittest.TestCase):
         (Path(self.temp) / "app_backend/link.py").symlink_to(Path(self.temp) / "state.sqlite3")
         with self.assertRaises(DomainError):
             scope.read("app_backend/link.py")
+
+    def test_real_stdio_mcp_serves_ledgered_workspace_tools_to_the_builder_only(self):
+        self.worker.finish(self.job, fixtures.PLAN)
+        snapshot = self.store.snapshot(self.run["run_id"])
+        approval = snapshot["approvals"][-1]
+        command = fixtures.RuntimeChecks.command(self, snapshot, "decide", {"approval_id": approval["id"], "target_digest": approval["target_digest"], "decision": "approve"})
+        self.store.command(snapshot["run_id"], command)
+        with patch.object(self.worker.pipeline.engine, "runtime", return_value="sha256:" + "a" * 64):
+            asyncio.run(self.worker.tick())
+        job = self.worker.claim()
+        workspace = Path(self.temp) / "ws"
+        workspace.mkdir()
+        token = issue_grant(self.store, job, workspace)
+
+        async def check():
+            env = {"PATH": os.defpath, "LIFECYCLE_DB": str(self.store.path), "LIFECYCLE_GRANT": token,
+                   "LIFECYCLE_TOOLBOX_IMAGE": "sha256:" + "a" * 64}
+            params = StdioServerParameters(command=sys.executable, args=["-m", "runner.mcp_server"], env=env)
+            async with stdio_client(params) as streams, ClientSession(*streams) as session:
+                await session.initialize()
+                names = {t.name for t in (await session.list_tools()).tools}
+                self.assertTrue({"write_file", "delete_file", "move_file", "run_command", "run_tests", "install_dependencies",
+                                 "list_files", "read_file", "search_documents"} <= names)
+                self.assertNotIn("patch_file", names)
+                written = await session.call_tool("write_file", {"path": "notes/a.txt", "content": "hello"})
+                self.assertFalse(written.isError)
+                escaped = await session.call_tool("write_file", {"path": "../escape.txt", "content": "no"})
+                self.assertTrue(escaped.isError)
+                refused = await session.call_tool("run_command", {"argv": ["sh", "-c", "id"]})
+                self.assertTrue(refused.isError)
+        asyncio.run(check())
+        self.assertEqual((workspace / "notes/a.txt").read_text(), "hello")
+        self.assertFalse((Path(self.temp) / "escape.txt").exists())
+        calls = self.store.tool_calls(self.run["run_id"])
+        self.assertEqual([(c["tool"], c["ok"]) for c in calls], [("write_file", True), ("write_file", False), ("run_command", False)])
+        self.assertTrue(all(c["role"] == "builder" and c["job_id"] == job["id"] for c in calls))

@@ -94,6 +94,12 @@ class Store:
                 CREATE TABLE IF NOT EXISTS operations (
                     id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id),
                     target_digest TEXT NOT NULL, state TEXT NOT NULL, result TEXT);
+                CREATE TABLE IF NOT EXISTS tool_calls (
+                    id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), seq INTEGER NOT NULL,
+                    job_id TEXT, attempt_id TEXT, task_id TEXT, role TEXT NOT NULL, tool TEXT NOT NULL,
+                    args TEXT NOT NULL, ok INTEGER NOT NULL, error_code TEXT, exit_code INTEGER, result_digest TEXT,
+                    stdout_digest TEXT, stderr_digest TEXT, stdout_excerpt TEXT, stderr_excerpt TEXT,
+                    started_at TEXT NOT NULL, finished_at TEXT NOT NULL, UNIQUE(run_id, seq));
                 CREATE TABLE IF NOT EXISTS reviews (
                     id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id),
                     candidate_digest TEXT NOT NULL, role TEXT NOT NULL,
@@ -109,7 +115,7 @@ class Store:
             """)
             if "attempt_id" not in {row[1] for row in db.execute("PRAGMA table_info(grants)")}:
                 db.execute("ALTER TABLE grants ADD COLUMN attempt_id TEXT REFERENCES attempts(id)")
-            for table in ("requests", "artifacts", "specs", "reviews", "events", "commands", "attempts", "attempt_results", "candidates", "task_scopes", "recording_imports", "run_templates"):
+            for table in ("requests", "artifacts", "specs", "reviews", "events", "commands", "attempts", "attempt_results", "candidates", "task_scopes", "recording_imports", "run_templates", "tool_calls"):
                 for action in ("UPDATE", "DELETE"):
                     db.execute(f"CREATE TRIGGER IF NOT EXISTS {table}_{action.lower()}_blocked BEFORE {action} ON {table} "
                                f"BEGIN SELECT RAISE(ABORT, 'immutable record'); END")
@@ -361,6 +367,27 @@ class Store:
         if public:
             snapshot["artifacts"].append(metadata)
         return metadata
+
+    TOOL_CALL_FIELDS = ("job_id", "attempt_id", "task_id", "error_code", "exit_code", "result_digest",
+                        "stdout_digest", "stderr_digest", "stdout_excerpt", "stderr_excerpt")
+
+    def record_tool_call(self, entry):
+        """Append one immutable model tool call (allowed or denied) to the per-run ledger."""
+        started = entry.get("started_at") or now()
+        with self.transaction() as db:
+            seq = db.execute("SELECT COALESCE(MAX(seq), 0) + 1 FROM tool_calls WHERE run_id=?", (entry["run_id"],)).fetchone()[0]
+            row = [uid(), entry["run_id"], seq, *(entry.get(k) for k in self.TOOL_CALL_FIELDS[:3]), entry["role"], entry["tool"],
+                   canonical(entry["args"]), int(bool(entry["ok"])), *(entry.get(k) for k in self.TOOL_CALL_FIELDS[3:]),
+                   started, entry.get("finished_at") or now()]
+            db.execute("INSERT INTO tool_calls (id, run_id, seq, job_id, attempt_id, task_id, role, tool, args, ok, error_code, exit_code,"
+                       " result_digest, stdout_digest, stderr_digest, stdout_excerpt, stderr_excerpt, started_at, finished_at)"
+                       " VALUES (" + ",".join("?" * 19) + ")", row)
+        return dict(seq=seq)
+
+    def tool_calls(self, run_id):
+        with self.transaction() as db:
+            rows = db.execute("SELECT * FROM tool_calls WHERE run_id=? ORDER BY seq", (run_id,)).fetchall()
+        return [{**dict(r), "args": json.loads(r["args"]), "ok": bool(r["ok"])} for r in rows]
 
     def read_artifact(self, artifact_id):
         with self.transaction() as db:
