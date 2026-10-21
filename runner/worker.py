@@ -14,7 +14,10 @@ from backend.templates import plan_support, template_contract
 from knowledge import Corpus
 from runner.model import ModelUnavailable, Ollama
 from runner.pipeline import Pipeline
+from runner.commands import tool_policy_digest
 from runner.context import PlanningContext
+from runner.plan_checks import unverified_acceptance
+from runner.plan_extras import PlanExtras
 
 # This product has no permission to export prompts to a tracing service.
 os.environ["LANGSMITH_TRACING"] = "false"
@@ -177,11 +180,20 @@ class Worker:
                 require(len({a["id"] for a in proposal["acceptance"]}) == len(proposal["acceptance"]),
                         "INVALID_COMMAND", "AC ID는 중복될 수 없습니다.", 422)
                 spec_id = uid()
+                extras = job.get("plan_extras")
                 package = {**proposal, "spec_version_id": spec_id, "stack": ["FastAPI", "Vue 3", "SQLite"],
                            "repository": None, "deployment": None,
                            "free_policy": POLICY, "allowed_tools": ["read_file", "patch_file", "container_checks"],
                            "contract_digests": plan_inputs(job["packet"]["template_contract"]["template"]),
                            "support": plan_support(job["packet"]["template_contract"]["template"], spec_id, job["packet"]["requests"])}
+                if extras:
+                    gaps = [dict(request_quote=f"{a['id']} {a['title']}: {a['description']}",
+                                 reason="자동 검증 점검이 없고 사람 확인으로도 표시되지 않은 AC입니다.",
+                                 requires=["점검 명세를 추가하거나 '사람이 확인함'으로 명시하도록 기획 수정을 요청하세요."])
+                            for a in proposal["acceptance"] if a["id"] in unverified_acceptance(proposal["acceptance"], extras["verification"], extras["manual_acceptance"])]
+                    package.update(extras, tool_policy_digest=tool_policy_digest(),
+                                   allowed_tools=["list_files", "read_file", "write_file", "delete_file", "move_file", "run_command", "run_tests", "install_dependencies"],
+                                   support=plan_support(job["packet"]["template_contract"]["template"], spec_id, job["packet"]["requests"], gaps))
                 validate("PlanView", package)
                 db.execute("INSERT INTO specs VALUES (?, ?, ?, ?)", (spec_id, snapshot["run_id"], canonical(package), now()))
                 specification = self.store.artifact(db, snapshot, "spec", "승인할 기획", package)
@@ -197,14 +209,23 @@ class Worker:
                                                acceptance_ids=[a["id"] for a in proposal["acceptance"]]))
                 template = job["packet"]["template_contract"]
                 boundaries = self.store.artifact(db, snapshot, "contract", "분야별 작업·쓰기 경계", dict(
-                    tasks=template["implementation_tasks"], omitted_work=template["omitted_work"], spec_version_id=spec_id))
+                    tasks=extras["work_plan"] if extras else template["implementation_tasks"],
+                    omitted_work=extras["omitted_areas"] if extras else template["omitted_work"], spec_version_id=spec_id))
                 planning_task = uid()
                 snapshot["tasks"].append(dict(id=planning_task, phase_id=phase_id, sprint_id=sprint_id, spec_version_id=spec_id,
                     role="planner", work_kind="planning", title="원문·기획·지원 공백 검토", state="succeeded", depends_on=[],
                     acceptance_ids=[a["id"] for a in proposal["acceptance"]], artifact_ids=[specification["id"]]))
                 job["packet"]["options"]["task_id"] = planning_task
                 predecessor = [planning_task]
-                for scope in template["implementation_tasks"]:
+                if extras:
+                    ids = {item["id"]: uid() for item in extras["work_plan"]}
+                    for item in extras["work_plan"]:
+                        snapshot["tasks"].append(dict(id=ids[item["id"]], phase_id=phase_id, sprint_id=sprint_id, spec_version_id=spec_id,
+                            role="builder", work_kind=item["kind"], title=item["title"], state="pending" if item["depends_on"] else "ready",
+                            depends_on=[ids[d] for d in item["depends_on"]] or [planning_task],
+                            acceptance_ids=item["acceptance_ids"], artifact_ids=[boundaries["id"]]))
+                        db.execute("INSERT INTO task_scopes VALUES (?, ?, ?)", (ids[item["id"]], "edit", canonical(item["write_scope"])))
+                for scope in ([] if extras else template["implementation_tasks"]):
                     task_id = uid()
                     snapshot["tasks"].append(dict(id=task_id, phase_id=phase_id, sprint_id=sprint_id, spec_version_id=spec_id,
                         role="builder", work_kind=scope["kind"], title=scope["title"], state="ready" if predecessor == [planning_task] else "pending",
@@ -246,13 +267,31 @@ class Worker:
                 job["retrieval_evidence"] = retrieval["evidence"]
                 require(retrieval["evidence"]["status"] != "search_error", "RUNTIME_UNAVAILABLE", "기획 검색 근거 준비에 실패했습니다. 로컬 자원을 확인하세요.")
                 job["packet"]["retrieved_documents"] = retrieval["documents"][:1]
+                authoring = job["packet"]["template_contract"].get("authoring") == "model"
+                if authoring:
+                    job["selected_alternative"] = self.selected_alternative(job)
                 proposal = await PlanningContext(self.store).plan(job, self, SCHEMAS["http.v1.schema.json"]["$defs"]["PlanDraft"])
                 validate("PlanDraft", proposal)
                 require(not SECRET.search(canonical(proposal)), "INVALID_COMMAND", "모델 출력에 비밀정보가 포함됐습니다.", 422)
+                if authoring:
+                    extras = PlanExtras(self.store)
+                    job["plan_extras"] = await extras.alternatives(job, self, proposal)
+                    job["plan_extras"].update(await extras.work_plan(job, self, proposal))
+                    job["plan_extras"].update(await extras.verification(job, self, proposal, job["plan_extras"]["work_plan"]))
             await asyncio.to_thread(self.finish, job, proposal)
         except Exception as error:
             await asyncio.to_thread(self.finish, job, failure=failure_reason(error))
         return True
+
+    @staticmethod
+    def selected_alternative(job):
+        """The alternative the user picked among those already shown, or None when this is a fresh plan."""
+        chosen = job["packet"]["options"].get("selected_alternative_id")
+        if chosen is None:
+            return None
+        found = next((a for a in (job["packet"].get("prior_draft") or {}).get("alternatives", []) if a["id"] == chosen), None)
+        require(found is not None, "INVALID_COMMAND", "선택한 대안이 직전 초안에 없습니다.", 422)
+        return found
 
     async def infer(self, job, packet, schema):
         if not await asyncio.to_thread(self.current, job):

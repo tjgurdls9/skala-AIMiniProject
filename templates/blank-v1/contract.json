@@ -1,0 +1,9 @@
+{
+  "template": "blank-v1",
+  "authoring": "model",
+  "stack": ["FastAPI", "Vue 3", "SQLite", "Docker Compose"],
+  "protected_checks": [],
+  "limitations": ["Single local operator", "Free local tools only; no paid or external model API", "No feature code is provided; every feature is authored by the local model"],
+  "implementation_tasks": [],
+  "omitted_work": {}
+}

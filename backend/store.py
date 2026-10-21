@@ -319,6 +319,11 @@ class Store:
                     options = {"writable_files": ["app_frontend/style.css"]}
                     snapshot.update(state="building", reports=[], reason="스타일 수정 Sprint입니다. 같은 명세로 후보를 다시 검사합니다.")
                 else:
+                    if "alternative_id" in payload:
+                        row = db.execute("SELECT package FROM specs WHERE id=? AND run_id=?", (snapshot["spec_version_id"], run_id)).fetchone()
+                        shown = {a["id"] for a in (json.loads(row[0]).get("alternatives", []) if row else [])}
+                        require(payload["alternative_id"] in shown, "INVALID_COMMAND", "현재 기획에 없는 대안입니다.", 422)
+                        options = {"selected_alternative_id": payload["alternative_id"]}
                     snapshot.update(state="planning", spec_version_id=None, reports=[], reason="변경 원문을 보존했습니다. 기획 재승인이 필요합니다.")
                 schedule, event_type, summary = True, "changes_requested", "변경 요청이 저장됐습니다."
             elif action == "decide":
