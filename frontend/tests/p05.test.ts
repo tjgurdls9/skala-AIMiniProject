@@ -286,6 +286,9 @@ describe('S12 화면', () => {
     await w.find('input[type=file]').trigger('change')
     await flush()
     expect(w.text()).toContain('해시가 맞지 않습니다')
+    // 통합본 실제 422 INVALID_COMMAND에 "잠시 후 다시 시도"가 붙었다. 같은 내용 재시도는 결과가 같다
+    expect(w.text()).not.toContain('잠시 후 다시 시도하세요')
+    expect(w.text()).toContain('같은 내용으로 다시 보내도 결과는 같습니다')
     w.unmount()
   })
 })
