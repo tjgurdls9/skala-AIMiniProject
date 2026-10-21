@@ -1,5 +1,99 @@
 # Codex CLI 인계 — 공통 준비·백엔드·런타임
 
+## 최우선 인계 — Claude로 이관 / 자율 개발 검증 경계 정정 (2026-10-21)
+
+**상태: HANDOFF_TO_CLAUDE. 카공지도 자율 개발·P01–P05 전체 수용은 미완료다.** 이 절은 아래 모든 이전 서비스/대기 상태보다 우선한다. 사용자가 “지금까지 정리해놔 클로드로 이어서 작업하게”라고 지시했다. Codex는 앱 기능 대행·문맥 수정·추가 모델 실행을 중단하고 여기까지의 사실만 인계한다. 이 문서는 Claude에 자동 전달되거나 세션을 자동 재개하지 않는다.
+
+### 1. 사용자가 바로잡은 핵심과 Codex의 책임
+
+사용자 원문:
+
+> 근데 너 올라마가 잘 작동하는지 테스트하는거라면서 왜 니가 작업을 도와주고 있는거야?
+> 이러면 우리 서비스의 본질이 어그러지잖아
+
+이어 “누구 잘못이니 이거”라고 물었고, Codex가 **본인의 판단 잘못**이라고 인정했다. 서비스는 사용자 요청을 받아 로컬 Ollama가 기획·구현·독립 검토·수정으로 이어가는 과정을 제공해야 한다. 상위 개발 CLI가 특정 수용 앱의 정답 코드/어댑터를 대신 채워 성공으로 이어가면 그 실행은 자율 개발 완주의 근거가 될 수 없다.
+
+- Codex가 직접 작성/수정한 cafemap 템플릿·보호 검사·지도 공급자 어댑터와 직접 실행한 API probe는 **개발자 개입**이다. Ollama가 생성한 앱 성과로 계산하지 않는다. 사무실 프론트·영속 실행기 등 서비스 개발 작업과 수용 앱의 대행 구현을 구분하지 못한 책임은 Codex에 있다.
+- 기존 파일/커밋/실패/원본 DB를 지우지 않는다. 개입을 숨기기 위해 기록을 초기화하거나 이미 성공한 것처럼 재명명하지 않는다. 아래 자체 검사 통과와 지도 연결 성공은 서비스 자율 개발 수용 통과가 아니다.
+- 실제 모델이 막힌 지점은 실패/미완료로 보존한다. 범용 런타임 결함을 수정하더라도 변경 전 실패·수정 커밋·새 실행을 구별하고, 특정 앱 정답을 주입한 결과를 독립 성공으로 보고하지 않는다. 앱 기능을 상위 CLI가 대신 완성하는 흐름은 이어가지 않는다.
+
+### 2. Git·작업 공간·소유 범위
+
+| 항목 | 현재 기준 |
+|---|---|
+| 원본 | `/Users/seohyeokin/workspace/skala-AIMiniProject`, branch `main` (`6cc9a0b` 기준; 원본의 기획/인계 변경과 초기 backend/runner 초안 보존) |
+| 런타임/최종 통합 | 원본 아래 `.worktrees/codex-runtime`, branch `work/codex-runtime`, **코드 기준 `4aeadce9d56067ddca8842a01850751fdba531d6`** |
+| 사무실 프론트 | 원본 아래 `.worktrees/claude-office`, branch `work/claude-office`, **HEAD `21492ae`**, 확인 시 clean |
+| 최신 Codex 구현 | **`d6d7c20`** — Geoapify 준비 어댑터·공통 보호·템플릿/검사 안내 변경 16파일; 생성 앱 완주 아님 |
+| 최신 통합 | **`4aeadce`** — Claude 소비자 `38aa2d8` 및 인계 `21492ae`까지 병합 |
+
+이 절 작성 전 Codex worktree도 clean이었다. 이후 변경은 이 인계 문서뿐이다. 원본 main에는 기존 사용자/관제 문서 변경과 미추적 backend/runner가 있으므로 일괄 stage/초기화하지 않는다. 원본 폴더에서 제품을 구현하지 않는다. Codex는 Claude 소유 frontend/인계 파일을 직접 수정하지 않았으며, 완료 커밋만 병합했다. Claude가 런타임까지 이어받으면 이 실제 통합 worktree/브랜치를 명시적으로 선택해 중복 구현·동시 쓰기를 피한다. 추가 에이전트/agy를 기동하지 않는다.
+
+### 3. 현재 실행 상태와 서비스 인수
+
+- 실제 run: **`846eed645f8245909d72cff799099d0b`**, project **`190f68a8719345e6aa957fd90217bea7`**. DB는 런타임 worktree **`runtime-data/s09-cafemap.sqlite3`**.
+- 현재 **`needs_input`, state_version=10, last_event_seq=18, spec_version_id=null**. 이유: “필수 목표·제약·AC 또는 한 파일 자체가 문맥 예산을 초과했습니다. 원문을 보존했으니 작업 범위를 나누어 요청하세요.”
+- 사용자 공급자 정정은 `request_changes(scope=spec)`로 전달했다. command_id **`9386c64bf81c4ef580191b29bcb18376`**, receipt `accepted`, HTTP **202**. 같은 command_id 재전송도 같은 receipt였다. 최초 확인 스크립트가 200을 기대해 실패했지만 실제 명령은 이미 접수된 상태였고, 202로 확인을 바로잡았다. 추가 승인 명령은 만들지 않았다.
+- 이전 v8/seq14 기획 **`8e303310f79542f9967a6c64e9cfb642`**는 불변 기록으로 보존돼 있다. 그 기획의 pending 승인은 **invalidated**. 새 정정 기획은 발급되지 못했다. 과거 기획을 현재 기획으로 보여 주거나 승인하지 않는다.
+- 최신 문맥 근거: source **`sha256:9932692414988b8f4a0d1ec12baa4c44742bcbc892d85035cf24858e974ccc80`**, **3조각 중 2조각 완료**, status=needs_input. 원문/체크포인트/검색 근거와 실패 사건 보존. 실제 모델은 **qwen3.5:4b**, 로컬 임베딩 **qwen3-embedding:0.6b**, 추론 슬롯 1이었다.
+- 이 실제 DB의 **grants/candidates/reviews/previews/operations 모두 0**, builder job 0이다. 사용자 기획 승인·생성 앱 후보·독립 검토·프리뷰·출시 완료는 없다. 예전 합성 개발 DB의 보고서/프리뷰를 여기에 합치지 않는다.
+
+서비스를 다음과 같이 정리했다:
+
+| 서비스 | 인계 시 상태/소유 |
+|---|---|
+| API·빌드된 사무실 | **동작 중**, `http://127.0.0.1:8000`, PID **68586**, Codex 기동 코드 **4aeadce**, PTY 73080. 조회 화면 보존. 직접 주소 `http://127.0.0.1:8000/?run=846eed645f8245909d72cff799099d0b` |
+| worker | 코드 4aeadce로 기동했던 PID **68869**, PTY 45184를 **인계 준비 중 Ctrl-C 종료**했다. 추가 자동 실행을 막았다. lease는 10초 뒤 만료된다. 재개 시 새 worker 하나만 기동한다. |
+| 기존 Ollama | PID **25744**, 그대로 둠. 다른 사용자/서비스 소유 모델을 임의 종료하지 않는다. |
+| 지도 전용 localhost:8017 | **미기동**, 예약 주소뿐이다. 실제 지도 화면은 없다. |
+
+예전 API PID 51993 / worker PTY 21788 등 아래 기록은 과거다. 새 세션은 PID/포트를 다시 확인한다. Claude가 이 인계 뒤 서비스 운용을 이어받을 수 있도록 소유를 명시했으며, 이미 종료한 worker와 실행 중 API를 혼동하지 않는다. 모델/키 검증을 이유로 사용자 승인이나 명령을 합성하지 않는다.
+
+재기동이 필요하면 **런타임 worktree 루트**에서 실행한다(키/토큰을 명령줄에 넣지 않음):
+
+```sh
+LIFECYCLE_DB=runtime-data/s09-cafemap.sqlite3 LIFECYCLE_MODEL=qwen3.5:4b LIFECYCLE_EMBEDDING=qwen3-embedding:0.6b LIFECYCLE_TEMPLATE=cafemap-v1 backend/.venv/bin/python -m runner.worker
+```
+
+API가 이미 동작 중이면 두 번째 API를 띄우지 않는다. 현재 API 재기동 명령은 다음과 같다:
+
+```sh
+LIFECYCLE_DB=runtime-data/s09-cafemap.sqlite3 LIFECYCLE_MODEL=qwen3.5:4b LIFECYCLE_EMBEDDING=qwen3-embedding:0.6b LIFECYCLE_TEMPLATE=cafemap-v1 backend/.venv/bin/python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000 --no-access-log --no-proxy-headers --timeout-graceful-shutdown 5
+```
+
+기존 API 종료 시 SSE 연결 때문에 첫 Ctrl-C 후 대기했고 두 번째 Ctrl-C로 종료했다. 새 API는 위 graceful timeout 옵션으로 기동했다. 키가 준비됐어도 현재 Runtime.external_api_enabled=false / data_source_status=unconfigured이며 실제 앱 연결 기능은 없다.
+
+### 4. Geoapify 키·직접 검사와 개입 범위
+
+- 사용자는 카카오 무료 앱 자격을 아끼기 위해 **“Geoapify로 변경”**, 이어 **“Free 플랜 확인 후 true로 저장했어”**라고 답했다. 카카오 코드/파일을 보존하되 사용하지 않는다. 공급자 선택/키 준비는 실제 기획·배포 승인이 아니다.
+- 키 파일은 **`/Users/seohyeokin/workspace/skala-AIMiniProject/.worktrees/codex-runtime/runtime-data/secrets/geoapify.json`**. 현재 사용자 소유·권한600·Git 제외. 키는 준비돼 있고 free_plan_confirmed=true다. 저장 후에도 디스크 확인값이 false여서, 사용자의 명시적인 Free 확인에 따라 **그 확인값만 true로 바꾸고 키 바이트는 보존**했다. 키 값은 출력하지 않았다. 다른 worktree로 secret을 복사/커밋하거나 모델/생성 컨테이너/공개 기록에 넣지 않는다.
+- Codex가 네트워크 권한 승인 후 공개 서울시청 지점으로 geocoding/Places 각 1회 직접 호출했다. **2026-10-21 06:20:16Z**, 지역 후보5·카페 분류20, 한글 장소명 포함. 사용자 위치는 사용하지 않았다. 이 검사는 **개발자 probe**, Ollama의 도구 사용/생성 앱 실행/실제 사용자 수용은 아니다.
+- 비공개 근거: `runtime-data/geoapify-public-probe-20261021T062016785411.json`, `runtime-data/geoapify-usage.sqlite3`, `runtime-data/geoapify-user-correction-9386c64bf81c4ef580191b29bcb18376.json`. DB/키는 Git·제출 tar에 넣지 않는다.
+- `backend/geoapify.py`는 geocoding 후보 선택·좌표 중심 카페/이름/인터넷 태그 검색, `backend/map_access.py`는 비공개 파일·고정 목적지·일200회 시도 제한·429 당일 중단·크기/오류 보호다. **API/worker/생성 앱 프리뷰·지도 타일과 미연결**이다. GPS 동의/신뢰 브로커/지도 UI는 미구현·미검증이다. cafemap 지원 판정은 아직 implementation_allowed=false다. 키만 준비됐다고 이를 true로 바꾸지 않는다.
+- 카페 분류에 들어간 실제 업종의 정확도, 한국 전역 검색 품질, 조용함·콘센트·장시간 이용 적합성은 확인하지 않았다. OSM/Geoapify 출처를 표시하고 가짜 장소/공부 적합성을 만들지 않는다. 준비 절차는 런타임 worktree `docs/setup/geoapify-local.md` 참조.
+
+### 5. 검사·계약·이전 제출물
+
+- backend **72개/45.562초 통과**, Geoapify 합성 검사3 포함. 이 결과는 d6d7c20의 코드 검사이며 실제 사용자 승인/독립 제품 검토가 아니다.
+- Claude 소비자 통합 뒤 frontend **247개/6.14초 통과**, `npm run build`의 vue-tsc/Vite 통과(JS gzip75.45KB). 로그는 `/private/tmp/skala-geoapify-frontend-tests.log`, `/private/tmp/skala-geoapify-frontend-build.log`; backend 로그 `/private/tmp/skala-geoapify-tests.log`.
+- HTTP SHA256 **`6b48afe375253346fe7defb686b599e2ecaf3dc3c23b32039f19208c2ae6b9ba`**, protocol SHA256 **`43e0f444b2f6fc408dd177d8db599a7a13f0f3e7e8f0e2993595701c89147147`**. **CR-C14=기획별 지원 공백, CR-C15=출시·복구 결과** 유지. free_policy 호환 enum 계약 fa07aec / Claude 채택075a0fa·소비38aa2d8은 통합됐다. 채택을 다시 요청할 필요 없다.
+- CT36/CT40/CT46의 기존 코드 보완과 후속 한계는 아래 기록을 보존한다. 현재 문맥 크기 실패를 CT40 정정 검증을 제거해 통과시키지 않는다. 전체 실제 사용자 수용/배포 완료로 처리하지 않는다.
+- 이전 검토 패키지 `runtime-data/submission-check/skala-lifecycle-post-integration-review.tar.gz`(기준603d02c, SHA256 **20e2de2b6ac2d84f3bd5550bc2028e043c58524fd68e8e2f2c1d3623a59922f4**)와 더 이전 tar를 보존했다. Geoapify 변경·새 계약·이번 실패가 반영된 최신 제출물은 아니다. 이번 인계에서 재패키징/외부 push/배포는 하지 않았다.
+
+### 6. Claude의 다음 착수점과 금지선
+
+1. 원본의 이 최상단 인계, POST_INTEGRATION_RESUME.md, P01–P05 보완 프롬프트/계획, 사용자 최신 지적을 먼저 읽는다. Codex는 이번 인계 후 병행 코딩하지 않는다. 서비스의 자율 개발이라는 목적과 CLI의 개발자 개입 경계를 먼저 점검한다.
+2. 현재 실패/원본 요청·불변 기획/부분 문맥·개발자 직접 작성 코드를 보존하고, 이번 S09 실행을 자율 완주 성공으로 승격하지 않는다. 특정 카공지도 정답을 CLI가 더 작성해 Ollama 성과를 대체하지 않는다. fixed template의 지원 범위와 범용 개발 주장 간 차이도 확인한다.
+3. 범용 문맥/실행기 개선이 필요한 경우 이전 실패와 분리해 다룬다. 미수정 관찰: `runner/worker.py:claim`은 최신 spec을 승인 여부 필터 없이 latest_spec으로 싣고, `runner/context.py:mandatory`는 이를 approved_spec이라고 부른다. 실제 최신 spec은 승인된 적 없고 현재 invalidated다. 이 상태 표시의 의미와 중복 입력의 문맥 비용을 **검토할 필요가 있다**. 현재 byte budget14,000 / 원문 조각2,400을 단순 확대하거나 필수 요구·정정 증거를 잘라 해결하지 않는다. 이 가설의 수정/회귀/실제 재실행은 아직 하지 않았다.
+4. 이후 검증은 기준 커밋·허용 도구/초기 scaffold·개입 여부를 먼저 고정하고, 실제 Ollama의 기획/패치/도구/검토/수정 근거를 추적한다. 엔진 보완과 수용 실행을 섞지 않는다. API 사용/출시 성공을 개발자가 대신 만들어 주지 않는다.
+5. 실제 기획/배포 결정은 사용자에게 정확한 대상을 보여 주고 따로 받는다. 키를 채팅에 요구하지 않는다. 네트워크/.git/도구 권한 거절을 우회하지 않는다. 추가 에이전트·실제 외부 push/배포는 자동 수행하지 않는다. 기존 frontend/사용자 문서/초안/비공개 키/실패 DB를 삭제·폐기하지 않는다.
+
+Claude CLI에 전달할 짧은 문구:
+
+```text
+원본 /Users/seohyeokin/workspace/skala-AIMiniProject/docs/handoffs/codex.md 최상단 ‘Claude로 이관 / 자율 개발 검증 경계 정정’을 읽고 이어받아라. 코드 기준 4aeadce, 런타임 worktree .worktrees/codex-runtime다. Codex가 수용 앱 기능을 직접 보완한 개입을 사용자가 지적했고 Codex가 책임을 인정했다. 그 코드를 Ollama 성과로 계산하지 마라. 실제 S09는 needs_input v10/seq18, 기획 문맥 2/3에서 예산 초과, 승인·생성 후보·검토·프리뷰·배포는 없다. worker는 인계를 위해 종료했고 API8000은 남아 있다. 먼저 서비스 엔진 개선과 자율 수용 실행의 경계를 바로잡고 실패/개입 근거를 보존하라. 카공지도 정답을 CLI가 대신 구현해 완주시키지 말고 실제 기획·배포 승인을 합성하지 마라. 키는 로컬 비공개 파일에 이미 준비됐다. 기존 변경을 보존하며 인계의 현재 상태·미확인·재개 조건을 따르라.
+```
+
 ## Geoapify 변경 — 사용자 선택 수신·키 확인 진행
 
 최신 선택 **“Geoapify로 변경”**을 수신했다. 아래 카카오/공급자 재검토 기록보다 우선한다. 카카오 자격을 소비하지 않으며 준비 코드·파일을 보존한다. 키 발급/저장은 기획·배포 승인이 아니다.
