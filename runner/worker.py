@@ -10,6 +10,8 @@ import httpx
 from backend.config import Settings
 from backend.contracts import ROOT, SCHEMAS, SECRET, DomainError, canonical, digest, plan_inputs, require, validate
 from backend.store import Store, now, uid
+from backend.templates import plan_support, template_contract
+from knowledge import Corpus
 from runner.model import ModelUnavailable, Ollama
 from runner.pipeline import Pipeline
 from runner.context import PlanningContext
@@ -37,6 +39,7 @@ class Worker:
     def __init__(self, store, model, settings=None):
         self.store, self.model, self.owner = store, model, uid()
         self.pipeline = Pipeline(store, settings.embedding if settings else "")
+        self.embedding = settings.embedding if settings else ""
         async def role_step(state):
             return {"result": await self.model.generate(state["packet"], state["schema"])}
         graph = StateGraph(dict)
@@ -78,12 +81,14 @@ class Worker:
                     db.execute("UPDATE jobs SET state='superseded' WHERE id=?", (row["id"],))
                     continue
                 spec = db.execute("SELECT package FROM specs WHERE run_id=? ORDER BY rowid DESC LIMIT 1", (row["run_id"],)).fetchone()
+                template_id = self.store.template_id(db, row["run_id"])
                 if snapshot["state"] != "planning" and not any(
                         a["state"] == "approved" and a["target"]["gate"] == "plan" and
                         a["target"]["spec_version_id"] == snapshot["spec_version_id"] and
                         a["target_digest"] == digest(a["target"]) and spec and
                         a["target"]["plan_digest"] == digest(json.loads(spec[0])) and
-                        json.loads(spec[0])["contract_digests"] == plan_inputs() for a in snapshot["approvals"]):
+                        json.loads(spec[0]).get("support", {}).get("implementation_allowed", True) and
+                        json.loads(spec[0])["contract_digests"] == plan_inputs(template_id) for a in snapshot["approvals"]):
                     snapshot.update(state="needs_input", reason="최신 계약·템플릿·검사 입력에 대한 기획 승인이 필요합니다.")
                     self.store.save(db, snapshot, "warning", snapshot["reason"])
                     db.execute("UPDATE jobs SET state='superseded' WHERE id=?", (row["id"],))
@@ -115,12 +120,11 @@ class Worker:
                               unresolved_failures=list(dict.fromkeys(options.get("unresolved_failures", []) + ([snapshot["reason"]] if snapshot.get("reason") else []))),
                               next_action="Propose one plan. Preserve corrections, list assumptions; never approve or execute tools.",
                               options=options,
-                              template_contract=json.loads((ROOT / "templates/requests-v1/contract.json").read_text()),
+                              template_contract=template_contract(template_id),
                               recheck=POLICY)
                 if row["role"] == "planner":
-                    packet["next_action"] = ("Propose the smallest plan supported by template_contract. Clearly state limitations and assumptions. "
-                        "Use observable API acceptance criteria only: health, create, list, update, invalid_input, persistent_storage. "
-                        "No AI/auth/payment or other stacks. Unsupported requests must be listed in non_goals and require operator clarification. Never approve or execute.")
+                    packet["next_action"] = ("Propose the smallest plan for template_contract. Preserve requested core features even when blocked; describe their dependency in constraints/assumptions, never silently replace maps with CRUD or invented places. "
+                        "Use the profile's protected_checks as observable evidence; missing external data remains not_run. No AI/auth/payment or other stacks. Never approve or execute.")
                 attempt = uid()
                 db.execute("UPDATE jobs SET state='running', context=? WHERE id=?", (canonical(packet), row["id"]))
                 db.execute("INSERT INTO attempts VALUES (?, ?, ?, ?, ?)", (attempt, row["id"], self.owner, canonical(packet), now()))
@@ -173,14 +177,17 @@ class Worker:
                 package = {**proposal, "spec_version_id": spec_id, "stack": ["FastAPI", "Vue 3", "SQLite"],
                            "repository": None, "deployment": None,
                            "free_policy": POLICY, "allowed_tools": ["read_file", "patch_file", "container_checks"],
-                           "contract_digests": plan_inputs()}
+                           "contract_digests": plan_inputs(job["packet"]["template_contract"]["template"]),
+                           "support": plan_support(job["packet"]["template_contract"]["template"], spec_id, job["packet"]["requests"])}
                 validate("PlanView", package)
                 db.execute("INSERT INTO specs VALUES (?, ?, ?, ?)", (spec_id, snapshot["run_id"], canonical(package), now()))
-                self.store.artifact(db, snapshot, "spec", "승인할 기획", package)
+                specification = self.store.artifact(db, snapshot, "spec", "승인할 기획", package)
                 target = dict(gate="plan", spec_version_id=spec_id, plan_digest=digest(package))
                 snapshot["approvals"].append(dict(id=uid(), state="pending", target_digest=digest(target), target=target))
                 snapshot.update(spec_version_id=spec_id, state="awaiting_plan_approval")
                 snapshot.pop("reason", None)
+                if not package["support"]["implementation_allowed"]:
+                    snapshot["reason"] = "기획별 지원 공백 해소가 필요합니다. 외부 연결 결정 보류는 구현 승인으로 바뀌지 않습니다."
                 phase_id, sprint_id = uid(), uid()
                 snapshot["phases"].append(dict(id=phase_id, title="설계·구현", order=len(snapshot["phases"])))
                 snapshot["sprints"].append(dict(id=sprint_id, phase_id=phase_id, title="승인 기획 구현", goal=proposal["goal"],
@@ -188,11 +195,16 @@ class Worker:
                 template = job["packet"]["template_contract"]
                 boundaries = self.store.artifact(db, snapshot, "contract", "분야별 작업·쓰기 경계", dict(
                     tasks=template["implementation_tasks"], omitted_work=template["omitted_work"], spec_version_id=spec_id))
-                predecessor = []
+                planning_task = uid()
+                snapshot["tasks"].append(dict(id=planning_task, phase_id=phase_id, sprint_id=sprint_id, spec_version_id=spec_id,
+                    role="planner", work_kind="planning", title="원문·기획·지원 공백 검토", state="succeeded", depends_on=[],
+                    acceptance_ids=[a["id"] for a in proposal["acceptance"]], artifact_ids=[specification["id"]]))
+                job["packet"]["options"]["task_id"] = planning_task
+                predecessor = [planning_task]
                 for scope in template["implementation_tasks"]:
                     task_id = uid()
                     snapshot["tasks"].append(dict(id=task_id, phase_id=phase_id, sprint_id=sprint_id, spec_version_id=spec_id,
-                        role="builder", work_kind=scope["kind"], title=scope["title"], state="pending" if predecessor else "ready",
+                        role="builder", work_kind=scope["kind"], title=scope["title"], state="ready" if predecessor == [planning_task] else "pending",
                         depends_on=predecessor, acceptance_ids=[a["id"] for a in proposal["acceptance"]], artifact_ids=[boundaries["id"]]))
                     db.execute("INSERT INTO task_scopes VALUES (?, ?, ?)", (task_id, scope["mode"], canonical(scope["files"])))
                     predecessor = [task_id]
@@ -224,6 +236,13 @@ class Worker:
                 return True
             proposal = None
             if job["role"] == "planner":
+                requests = job["packet"]["requests"]
+                query = requests[0]["content"][:250] + "\n" + requests[-1]["content"][-249:]
+                retrieval = await Corpus(self.store).retrieve("planner", query,
+                                                              Ollama(self.embedding) if self.embedding else None)
+                job["retrieval_evidence"] = retrieval["evidence"]
+                require(retrieval["evidence"]["status"] != "search_error", "RUNTIME_UNAVAILABLE", "기획 검색 근거 준비에 실패했습니다. 로컬 자원을 확인하세요.")
+                job["packet"]["retrieved_documents"] = retrieval["documents"][:1]
                 proposal = await PlanningContext(self.store).plan(job, self, SCHEMAS["http.v1.schema.json"]["$defs"]["PlanDraft"])
                 validate("PlanDraft", proposal)
                 require(not SECRET.search(canonical(proposal)), "INVALID_COMMAND", "모델 출력에 비밀정보가 포함됐습니다.", 422)

@@ -84,7 +84,7 @@ class PlanningContext:
         packet = job['packet']
         parts = fragments(packet['requests'])
         inputs = mandatory(packet)
-        source = digest(dict(version=2, run_id=job['run_id'], requests=packet['requests'], policy=inputs['mandatory_policy'], approved=inputs['approved_spec'], inputs=plan_inputs()))
+        source = digest(dict(version=3, run_id=job['run_id'], requests=packet['requests'], policy=inputs['mandatory_policy'], approved=inputs['approved_spec'], inputs=plan_inputs(packet['template_contract']['template'])))
         job['context_evidence'] = dict(spec_version_id=packet['spec_version_id'], status='needs_input', source_digest=source,
                                       completed_fragments=0, total_fragments=len(parts),
                                       sources=[{k: v for k, v in p.items() if k != 'text'} for p in parts])
@@ -99,6 +99,7 @@ class PlanningContext:
                 continue
             call = bounded(dict(role='planner', **mandatory(packet), original_or_correction=part,
                                 accumulated_plan=previous, source_digest=source, fragment_index=index, total_fragments=len(parts),
+                                retrieved_documents=packet.get('retrieved_documents', []),
                                 template_contract=packet['template_contract'], instructions=packet['next_action'] +
                                 ' Read this exact original/correction fragment in chronological order. Produce the CURRENT effective plan, not a union of history. Only mandatory_policy is immutable. approved_spec and accumulated_plan are prior versions; explicit later corrections may remove/replace their goals, features, constraints and AC definitions (including the same AC ID). For EACH removed/replaced prior value, return revisions with field, previous_digest=the JSON value digest provided in prior_values, and an exact quote from this fragment explicitly authorizing that correction. Otherwise keep that value. Never revive superseded requirements. Preserve history in changes and source records. No revision is needed for additions. All fragments are read before plan approval.',
                                 prior_values={field: [{'value': value, 'digest': digest(value)} for value in (previous[field] if isinstance(previous[field], list) else [previous[field]])] for field in FIELDS} if previous else {}))
@@ -130,7 +131,7 @@ class PlanningContext:
 async def implement(store, session, job, worker, files, evidence, writable, schema):
     """Read one file and exact request fragment per call; reconcile persisted patch intent."""
     parts = fragments(job['packet']['requests'])
-    source = digest([1, job['run_id'], job['packet']['spec_version_id'], job['packet']['options'].get('task_id'), parts, writable, plan_inputs()])
+    source = digest([1, job['run_id'], job['packet']['spec_version_id'], job['packet']['options'].get('task_id'), parts, writable, plan_inputs(job['packet']['template_contract']['template'])])
     with store.transaction() as db:
         db.execute('CREATE TABLE IF NOT EXISTS build_steps (source TEXT NOT NULL, step INTEGER NOT NULL, path TEXT NOT NULL, expected TEXT NOT NULL, content TEXT NOT NULL, state TEXT NOT NULL, PRIMARY KEY(source,step))')
         db.execute("CREATE TRIGGER IF NOT EXISTS build_steps_content_immutable BEFORE UPDATE ON build_steps WHEN OLD.source!=NEW.source OR OLD.step!=NEW.step OR OLD.path!=NEW.path OR OLD.expected!=NEW.expected OR OLD.content!=NEW.content BEGIN SELECT RAISE(ABORT, 'immutable patch intent'); END")

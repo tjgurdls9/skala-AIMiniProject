@@ -11,6 +11,7 @@ class Settings:
     model: str = ""
     ollama_url: str = "http://127.0.0.1:11434"
     embedding: str = ""
+    template_id: str = "requests-v1"
 
     @classmethod
     def from_env(cls):
@@ -20,5 +21,8 @@ class Settings:
         embedding = os.environ.get("LIFECYCLE_EMBEDDING", "")
         if embedding not in ("", "qwen3-embedding:0.6b"):
             raise ValueError("Only the approved local embedding model is enabled")
+        template_id = os.environ.get("LIFECYCLE_TEMPLATE", "requests-v1")
+        if template_id not in ("requests-v1", "cafemap-v1"):
+            raise ValueError("Select a fixed supported template")
         return cls(Path(os.environ.get("LIFECYCLE_DB", "runtime-data/lifecycle.sqlite3")), token,
-                   os.environ.get("LIFECYCLE_MODEL", ""), embedding=embedding)
+                   os.environ.get("LIFECYCLE_MODEL", ""), embedding=embedding, template_id=template_id)

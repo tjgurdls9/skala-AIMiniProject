@@ -126,11 +126,14 @@ def create_app(settings=None, store=None, model=None):
                      model=request.app.state.settings.model or None, model_status=status,
                      runner_status="ready" if ready else "unavailable", inference_slots=1,
                      external_api_enabled=False, deployment_enabled=False, reasons=[])
+        value.update(template_id=request.app.state.settings.template_id,
+                     data_source_status="unconfigured" if request.app.state.settings.template_id == "cafemap-v1" else "not_required")
         if not ready:
             value["reasons"].append("실행기 heartbeat가 없습니다.")
         if status != "ready":
             value["reasons"].append("명시적으로 설정한 로컬 Qwen/DeepSeek 모델이 필요합니다.")
-        value["reasons"].append("작은 문의 앱 템플릿만 지원합니다. 격리 이미지·취약점 DB 준비가 필요하며 실제 배포는 비활성입니다.")
+        value["reasons"].append("카공지도 프로필: 실제 지도/장소 공급자는 결정 보류입니다. 기획별 지원 공백을 확인하세요." if value["template_id"] == "cafemap-v1" else
+                                "작은 문의 앱 템플릿만 지원합니다. 격리 이미지·취약점 DB 준비가 필요하며 실제 배포는 비활성입니다.")
         validate("Runtime", value)
         return value
 
@@ -203,7 +206,7 @@ def create_app(settings=None, store=None, model=None):
         if data["mode"] == "live":
             readiness = await runtime(request)
             require(readiness["live_available"], "RUNTIME_UNAVAILABLE", "모델과 실행기를 준비한 뒤 LIVE를 생성하세요.")
-        value = await asyncio.to_thread(request.app.state.store.create_run, project_id, data)
+        value = await asyncio.to_thread(request.app.state.store.create_run, project_id, data, request.app.state.settings.template_id)
         validate("Run", value)
         return value
 
@@ -223,6 +226,12 @@ def create_app(settings=None, store=None, model=None):
     def acceptance(run_id: str, request: Request):
         value = request.app.state.store.acceptance_status(run_id)
         validate("AcceptanceStatus", value)
+        return value
+
+    @app.get("/api/runs/{run_id}/release")
+    def release_view(run_id: str, request: Request):
+        value = request.app.state.store.release_view(run_id)
+        validate("ReleaseView", value)
         return value
 
     @app.get("/api/runs/{run_id}/events")

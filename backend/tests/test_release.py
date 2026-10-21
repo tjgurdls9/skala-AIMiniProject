@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import ANY, patch
 
-from backend.contracts import ROOT, DomainError, canonical, digest, plan_inputs
+from backend.contracts import ROOT, DomainError, canonical, digest, plan_inputs, validate
 from backend.store import Store, now, uid
 from runner.model import ModelUnavailable
 from runner.release import ReleaseOperations
@@ -73,6 +73,23 @@ class ReleaseChecks(unittest.TestCase):
             self.assertEqual(self.operations.apply(self.snapshot['run_id'], self.manifest, 'push'), 'applied')
             self.assertEqual(self.operations.apply(self.snapshot['run_id'], self.manifest, 'push'), 'applied')
             push.assert_called_once()
+        view = self.store.release_view(self.snapshot['run_id'])
+        validate('ReleaseView', view)
+        self.assertFalse(view['enabled'])
+        self.assertEqual(view['target'], self.manifest['target'])
+        self.assertEqual(view['operations'][0]['state'], 'applied')
+        self.assertIsNotNone(view['operations'][0]['accepted_at'])
+        self.assertIsNotNone(view['operations'][0]['observed_at'])
+        self.assertIsNone(view['operations'][0]['volume_preserved'])
+        self.assertNotIn(self.temp, canonical(view))
+        live = self.store.snapshot(self.snapshot['run_id'])
+        artifact = next(a for a in reversed(live['artifacts']) if a['kind'] == 'deployment')
+        self.assertEqual(self.store.read_artifact(artifact['id']), view)
+        event = self.store.events(live['run_id'], 0)[-1]
+        self.assertEqual(event['operation_id'], view['operations'][0]['operation_id'])
+        self.assertEqual(event['artifact_ids'], [artifact['id']])
+        replay = self.store.create_run(live['project_id'], dict(mode='replay', source_run_id=live['run_id']))
+        self.assertEqual(self.store.release_view(replay['run_id']), dict(view, run_id=replay['run_id']))
 
     def test_unknown_external_result_is_not_automatically_retried(self):
         self.approve_fixture()

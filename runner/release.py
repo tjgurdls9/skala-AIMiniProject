@@ -7,7 +7,7 @@ import os
 import httpx
 
 from backend.contracts import ROOT, SECRET, canonical, digest, plan_inputs, require, validate
-from backend.store import artifact_content
+from backend.store import artifact_content, now
 from runner.model import ModelUnavailable
 from runner.pipeline import Pipeline
 
@@ -69,7 +69,7 @@ class DockerEnvironment:
                 volumes[0]['Type'] == 'volume' and volumes[0]['Name'] == manifest['resources']['volume'] and volumes[0]['Destination'] == '/data' and
                 proxy['Image'] == manifest['proxy_image_digest'] and proxy['Config']['User'] == '65534:65534' and
                 proxy['HostConfig']['ReadonlyRootfs'] and not proxy['HostConfig']['Privileged'] and 'ALL' in proxy['HostConfig']['CapDrop'] and
-                proxy['Config']['Cmd'] == ['python', '/checks/preview.py', name + ':8080'] and
+                proxy['Config']['Cmd'] == ['python', '/checks/preview.py', name + ':8080'] + (['cafemap-v1'] if manifest.get('template_id') == 'cafemap-v1' else []) and
                 len(proxy_mounts) == 1 and proxy_mounts[0]['Type'] == 'bind' and proxy_mounts[0]['Source'] == str(ROOT / 'infra/checks') and
                 proxy_mounts[0]['Destination'] == '/checks' and proxy_mounts[0]['RW'] is False and
                 all(m['Type'] == 'tmpfs' for m in proxy['Mounts'] if m['Destination'] == '/tmp') and
@@ -91,7 +91,7 @@ class DockerEnvironment:
         if manifest['resources']['network'] in networks:
             network = json.loads(self.engine.docker('network', 'inspect', manifest['resources']['network']))[0]
             require(network['Internal'] is True, 'FORBIDDEN', '생성 앱의 내부망 격리가 필요합니다.', 403)
-        return self.pipeline.preview_services(dict(image_digest=manifest['local_image_digest']), self.operation(manifest), current)
+        return self.pipeline.preview_services(dict(image_digest=manifest['local_image_digest'], template_id=manifest.get('template_id', 'requests-v1')), self.operation(manifest), current)
 
     def rollback(self, manifest):
         # The approved first-release rollback unpublishes this container and preserves its volume.
@@ -129,7 +129,8 @@ class ReleaseOperations:
             row = db.execute('SELECT package FROM specs WHERE id=?', (snapshot['spec_version_id'],)).fetchone()
             require(row is not None, 'INVALID_STATE', '기획 원본이 필요합니다.')
             package = json.loads(row[0])
-            require(package['contract_digests'] == plan_inputs() and package['repository'] == {k: repository[k] for k in ('url', 'branch')} and
+            require(package.get('support', {}).get('implementation_allowed', True), 'INVALID_STATE', '기획 지원 공백이 남아 출시를 준비할 수 없습니다.')
+            require(package['contract_digests'] == plan_inputs(self.store.template_id(db, run_id)) and package['repository'] == {k: repository[k] for k in ('url', 'branch')} and
                     package['deployment'] == {k: environment[k] for k in ('id', 'label', 'exposure')},
                     'STALE_APPROVAL', '저장소/환경을 포함한 새 기획 승인이 필요합니다.')
             require(any(a['state'] == 'approved' and a['target'] == dict(gate='plan', spec_version_id=snapshot['spec_version_id'], plan_digest=digest(package)) and a['target_digest'] == digest(a['target']) for a in snapshot['approvals']),
@@ -153,7 +154,8 @@ class ReleaseOperations:
                 'VERSION_CONFLICT', 'registry manifest와 검토한 로컬 이미지 결속을 확인하세요.')
         rollback = dict(action='unpublish_first_release', data_policy='preserve_volume_no_schema_migration', previous=None)
         configuration = dict(repository=repository, environment=environment, image_reference=image_reference,
-                             local_image_digest=candidate['image_digest'], proxy_image_digest=self.engine.runtime())
+                             local_image_digest=candidate['image_digest'], proxy_image_digest=self.engine.runtime(),
+                             template_id=candidate.get('template_id', 'requests-v1'))
         target = dict(gate='release', spec_version_id=snapshot['spec_version_id'], plan_digest=digest(package), commit_sha=candidate['commit_sha'],
                       image_digest=registry_digest, environment_id=environment['id'], environment_config_digest=digest(configuration),
                       rollback_manifest_digest=digest(rollback), review_report_ids=sorted(r['id'] for r in reports))
@@ -176,7 +178,7 @@ class ReleaseOperations:
         package = db.execute('SELECT package FROM specs WHERE id=?', (snapshot['spec_version_id'],)).fetchone()
         require(row is not None and json.loads(row[0]) == manifest and self.current(db) and snapshot['mode'] == 'live' and
                 snapshot['state'] == 'deploying' and snapshot['spec_version_id'] == target['spec_version_id'] and
-                package is not None and digest(json.loads(package[0])) == target['plan_digest'] and json.loads(package[0])['contract_digests'] == plan_inputs() and
+                package is not None and digest(json.loads(package[0])) == target['plan_digest'] and json.loads(package[0])['contract_digests'] == plan_inputs(self.store.template_id(db, run_id)) and
                 sorted(r['id'] for r in snapshot['reports']) == target['review_report_ids'] and
                 len(snapshot['reports']) == 2 and {r['role'] for r in snapshot['reports']} == {'validator', 'security'} and
                 all(r['verdict'] == 'pass' and r['spec_version_id'] == target['spec_version_id'] and r['commit_sha'] == target['commit_sha'] and r['image_digest'] == manifest['local_image_digest'] for r in snapshot['reports']) and
@@ -187,21 +189,45 @@ class ReleaseOperations:
             require(digest(content) == report['content_digest'], 'TEMPORARILY_UNAVAILABLE', '출시 검토 원본이 손상됐습니다.', 503)
         return snapshot
 
+    def record_state(self, db, run_id, manifest, action, state, observed_at=None):
+        operation_id = digest([run_id, digest(manifest['target']), action])
+        previous = db.execute('SELECT result FROM operations WHERE id=?', (operation_id,)).fetchone()
+        old = json.loads(previous[0]) if previous else None
+        reason = ('실행 의도를 기록했습니다. 실제 적용 완료가 아닙니다.' if state == 'pending' else
+                  '정확한 외부 대상 조회로 적용을 확인했습니다. 볼륨 내용/DB 복원 검증은 별도입니다.' if state == 'applied' else
+                  '외부 적용 여부를 확인할 수 없습니다. 응답 유실/불명 결과는 자동 재실행하지 않습니다.')
+        evidence = dict(kind='deployment', action=action, accepted_at=old.get('accepted_at') if old else now(),
+                        observed_at=observed_at if observed_at else old.get('observed_at') if old else None,
+                        reason=reason, volume_preserved=None)
+        db.execute('INSERT INTO operations VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET state=excluded.state,result=excluded.result',
+                   (operation_id, run_id, digest(manifest['target']), state, canonical(evidence)))
+        snapshot = self.store.load(db, run_id)
+        if not self.current(db) or snapshot['mode'] != 'live' or snapshot['spec_version_id'] != manifest['target']['spec_version_id']:
+            return
+        body = self.store.release_view(run_id, db)
+        artifact = self.store.artifact(db, snapshot, 'deployment', '출시·복구 원장 근거', body)
+        event = 'deployment_started' if state == 'pending' else 'operation_uncertain' if state == 'uncertain' else 'tool_finished' if action == 'push' else 'deployment_finished'
+        self.store.save(db, snapshot, event, reason, bump=False, operation_id=operation_id, artifact_ids=[artifact['id']])
+
+    def observed(self, manifest, action):
+        try:
+            return self.observe(manifest, action), now()
+        except (ModelUnavailable, OSError, ValueError, KeyError, TypeError):
+            return 'uncertain', None
+
     def reconcile(self, run_id, manifest, action):
-        """Read back a previously issued operation even after its execution authority expires."""
+        """Read a previously issued operation after execution authority expires."""
         require(action in ('push', 'deploy', 'rollback'), 'INVALID_COMMAND', '알려진 출시 동작이 필요합니다.', 422)
         operation_id = digest([run_id, digest(manifest['target']), action])
         with self.store.transaction() as db:
             saved = db.execute('SELECT body FROM release_manifests WHERE digest=? AND run_id=?', (digest(manifest['target']), run_id)).fetchone()
             operation = db.execute('SELECT id FROM operations WHERE id=? AND run_id=?', (operation_id, run_id)).fetchone()
             require(saved is not None and json.loads(saved[0]) == manifest and operation is not None, 'NOT_FOUND', '기존 출시 operation이 필요합니다.', 404)
-        try:
-            state = 'applied' if self.observe(manifest, action) == 'applied' else 'uncertain'
-        except (ModelUnavailable, OSError, ValueError, KeyError, TypeError):
-            state = 'uncertain'
+        state, observed_at = self.observed(manifest, action)
+        result = 'applied' if state == 'applied' else 'uncertain'
         with self.store.transaction() as db:
-            db.execute('UPDATE operations SET state=? WHERE id=?', (state, operation_id))
-        return state
+            self.record_state(db, run_id, manifest, action, result, observed_at)
+        return result
 
     def observe(self, manifest, action):
         if action == 'push':
@@ -216,20 +242,16 @@ class ReleaseOperations:
         with self.store.transaction() as db:
             self.authorize(db, run_id, manifest)
             old = db.execute('SELECT state FROM operations WHERE id=?', (operation_id,)).fetchone()
-        try:
-            state = self.observe(manifest, action)
-        except (ModelUnavailable, OSError, ValueError, KeyError, TypeError):
-            state = 'uncertain'
+        state, observed_at = self.observed(manifest, action)
         if old or state in ('applied', 'uncertain'):
             result = 'applied' if state == 'applied' else 'uncertain'
             with self.store.transaction() as db:
                 self.authorize(db, run_id, manifest)
-                db.execute('INSERT INTO operations VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET state=excluded.state',
-                           (operation_id, run_id, digest(manifest['target']), result, canonical(dict(kind='deployment', action=action))))
+                self.record_state(db, run_id, manifest, action, result, observed_at)
             return result
         with self.store.transaction() as db:
             self.authorize(db, run_id, manifest)
-            db.execute('INSERT INTO operations VALUES (?, ?, ?, ?, ?)', (operation_id, run_id, digest(manifest['target']), 'pending', canonical(dict(kind='deployment', action=action))))
+            self.record_state(db, run_id, manifest, action, 'pending')
         try:
             with self.store.transaction() as db:
                 self.authorize(db, run_id, manifest)
@@ -243,14 +265,10 @@ class ReleaseOperations:
                 self.environment.deploy(manifest, current)
             else:
                 self.environment.rollback(manifest)
-            state = self.observe(manifest, action)
         except (ModelUnavailable, OSError, ValueError, KeyError, TypeError):
-            try:
-                state = self.observe(manifest, action)
-            except (ModelUnavailable, OSError, ValueError, KeyError, TypeError):
-                state = 'uncertain'
+            pass  # Acknowledgement loss is resolved only by observing the exact external target.
+        state, observed_at = self.observed(manifest, action)
         result = 'applied' if state == 'applied' else 'uncertain'
         with self.store.transaction() as db:
-            # Keep external outcome even when the current lease/approval is gone; never publish run success here.
-            db.execute('UPDATE operations SET state=? WHERE id=?', (result, operation_id))
+            self.record_state(db, run_id, manifest, action, result, observed_at)
         return result

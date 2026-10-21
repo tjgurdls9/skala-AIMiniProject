@@ -1,10 +1,12 @@
 """Trusted preview proxy applies headers the generated app cannot remove."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
 import sys
 from urllib.error import HTTPError
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 target = "http://" + sys.argv[1]
+template_id = sys.argv[2] if len(sys.argv) > 2 else "requests-v1"
 
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
@@ -19,6 +21,7 @@ class Proxy(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "null")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Permissions-Policy", "geolocation=(), camera=(), microphone=()")
         super().end_headers()
 
     def do_OPTIONS(self):
@@ -41,6 +44,18 @@ class Proxy(BaseHTTPRequestHandler):
             self.send_error(413)
             return
         body = self.rfile.read(length) if length else None
+        if template_id == "cafemap-v1" and self.path.split('?', 1)[0].startswith('/api/map/'):
+            source = self.command == "GET" and self.path == "/api/map/source"
+            payload = json.dumps(dict(status="unconfigured", provider=None, external_requests=False,
+                                      message="외부 지도·장소 연결은 결정 보류입니다.") if source else
+                                 dict(error=dict(code="PROVIDER_UNCONFIGURED", message="지도·장소 공급자가 미설정입니다. 외부 전송하지 않았습니다."))).encode()
+            self.send_response(200 if source else 503)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(payload)
+            return
         request = Request(target + self.path, data=body, method=self.command,
                           headers={"Content-Type": self.headers.get("Content-Type", "application/json")})
         try:

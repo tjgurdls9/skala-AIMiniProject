@@ -12,6 +12,7 @@ import tempfile
 
 from backend.contracts import ROOT, SECRET, digest, require
 from backend.store import uid
+from backend.templates import template_path
 from runner.access import WRITABLE_FILES
 from runner.model import ModelUnavailable
 
@@ -75,14 +76,16 @@ class Sandbox:
                 "RUNTIME_UNAVAILABLE", "실행 이미지 참조가 일치하지 않습니다.")
         return reference
 
-    def workspace(self, run_id, spec_id):
+    def workspace(self, run_id, spec_id, template_id="requests-v1"):
         require(all(re.fullmatch(r"[a-f0-9]{32}", part) for part in (run_id, spec_id)), "INVALID_COMMAND", "서버 발급 작업 ID가 필요합니다.", 422)
         path = self.root / "workspaces" / run_id / spec_id
         if not path.exists():
             path.mkdir(parents=True)
-            source = ROOT / "templates/requests-v1"
+            source = template_path(template_id)
             for directory in ("app_backend", "app_frontend"):
                 shutil.copytree(source / directory, path / directory)
+            if template_id == "cafemap-v1":
+                shutil.copytree(ROOT / "templates/requests-v1/app_frontend/vendor", path / "app_frontend/vendor")
             (path / ".dockerignore").write_text("*\n!app_backend/\n!app_backend/**\n!app_frontend/\n!app_frontend/**\n")
         require(not any(p.is_symlink() for p in path.rglob("*")), "FORBIDDEN", "작업 공간에 심볼릭 링크가 있습니다.", 403)
         return path

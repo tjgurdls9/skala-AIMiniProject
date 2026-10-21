@@ -1,5 +1,17 @@
 # Codex CLI 인계 — 공통 준비·백엔드·런타임
 
+## POST-INTEGRATION 재개 — 실제 수신·착수
+
+원본 POST_INTEGRATION_RESUME.md의 Codex 절을 사용자에게 실제 수신했다. 관제 대기는 해제됐으며 P01–P05의 남은 구현/수용을 계속한다. 실제 기획/배포 승인은 별도다. 사용자 선택 **“외부 연결은 나중에 결정”**을 보존한다. 공급자/키/실제 위치 전송은 하지 않으며 로컬 프로필·검토 경계와 LIVE 근거를 먼저 준비한다. 과거 제출 후보는 이전 확인 범위다.
+
+- **계약 번호 정정(사용자 지적 반영)**: Claude 원래 요청을 유지한다. **CR-C14=기획별 지원 공백**, **CR-C15=출시·복구 결과**. 8ff4ca1의 번호/Runtime 대체 설명은 폐기한다. 계약 전용 **8ff4ca1 → a6eb8a4**를 순서대로 채택한다(이미 8ff를 채택했다면 a6eb8a4만 추가). HTTP SHA256 **f35c48532161dbc2adb6ff3c4538c8563541e8c9d05687a351ed2b96dda61c81**, protocol **43e0f444b2f6fc408dd177d8db599a7a13f0f3e7e8f0e2993595701c89147147**.
+- CR-C14는 각 PlanView.support에 template/spec/request digest·요청 인용과 미지원 이유/필요 입력·공급자/무료·키/쿼터/attribution/동의/격리 의존·구현 승인 가능 여부를 동결한다. Runtime 템플릿 상태는 보조 정보이며 기획별 공백을 대신하지 않는다. support 미제공/다른 spec은 지원 완료로 추정하지 않는다. implementation_allowed=false는 UI/서버 모두 approve를 거절하며 reject/수정 요청은 유지한다. 실제 공급자 결정 보류는 deferred다.
+- CR-C15 ReleaseView는 정확한 target/details와 operation별 accepted/applied/uncertain/failed/rolled_back·의도 기록 시각/실제 조회 시각/안전한 이유/볼륨 보존 조회 여부를 제공한다. 없는 과거 조회 근거는 null이며 GET 시각으로 만들지 않는다. 현재 enabled=false, rolled_back은 첫 출시 공개 중단/볼륨 보존이고 이전 버전 복원이 아니다.
+- Claude 요청: 위 정정 계약을 채택해 타입/hash를 생성하고 **기획 승인 화면의 별도 지원 공백**과 **출시/복구 결과**를 각각 원래 ID로 구현·인계한다. 현재 계약 제공 단계이며 새 LIVE 서버 주소/제공자 구현은 준비 뒤 이 절에 확정한다.
+- 제공자 구현 점검: 새 고정 cafemap-v1 프로필/run별 불변 선택·기획별 support/approve 차단·planner 실제 코퍼스 검색/공개 문맥을 planner 작업에 연결·출시 원장 GET/operation별 실제 조회 시각과 사건/artifact 연결을 구현했다. 공급자 미설정은 독립 검토 not_run·신뢰 프록시 차단이며 가짜 장소/실제 앱 완료로 취급하지 않는다. backend 자체 검사 **61개/43.281초** 통과(합성 결정/도구 fixture 포함, 실제 사용자 승인 아님). 실제 모델 새 실행/서버 연결은 다음 단계다.
+- 기동 준비: API 8000/프론트 5173 listener가 없음을 확인했다. 기존 Ollama PID 25744는 재사용하며 임의 종료하지 않는다. qwen3.5:4b / qwen3-embedding:0.6b 설치 및 /api/ps의 models=[] 확인. Docker 29.6.2·기존 고정 runtime image 준비 확인. 실제 API/worker는 아직 기동 전이다. Codex가 기동/종료를 소유하며 다른 세션은 임의 종료하지 않는다.
+
+
 ## P01–P05 보완 배정 — 현재 작업 목록
 
 배정: 사용자 요청으로 원본 `CODEX_PHASE_COMPLETION.md`를 실제 수신했다. 기준 `c3e11c1`, `work/codex-runtime`. 원본 main의 초기 초안·다른 변경은 보존한다. frontend·Claude 인계·관제탑 인계를 수정하지 않는다. DEV-P/DEV-S는 개발 계획이며 생성 앱의 런타임 Phase/Sprint와 구분한다. 이 목록이 이번 보완 작업 상태의 단일 원본이다. 아래 이전 기록은 당시 근거다.

@@ -39,6 +39,7 @@ class Reviewer:
     def validation(self, candidate):
         network, app, checker = ("lifecycle-" + uid() for _ in range(3))
         checks = ROOT / "infra/checks"
+        script = "validate_cafemap.py" if candidate.get("template_id") == "cafemap-v1" else "validate.py"
         try:
             self.check_current()
             self.engine.docker("network", "create", "--internal", network)
@@ -47,13 +48,16 @@ class Reviewer:
                 self.check_current()
                 return json.loads(self.engine.docker("run", "--rm", *self.engine.limits(checker, network),
                     "--mount", f"type=bind,src={checks},dst=/checks,readonly", self.engine.runtime(),
-                    "python", "/checks/validate.py", "http://" + app + ":8080", mode, *args))
+                    "python", "/checks/" + script, "http://" + app + ":8080", mode, *args))
             exercise = check("exercise")
             self.check_current()
             self.engine.docker("restart", app)
             persistence = check("persist", str(exercise.get("item_id")))
-            return dict(checks={**exercise["checks"], **persistence["checks"]}, exercise=exercise, persistence=persistence,
-                        verifier_digest=digest((checks / "validate.py").read_text()))
+            result = dict(checks={**exercise["checks"], **persistence["checks"]}, exercise=exercise, persistence=persistence,
+                          verifier_digest=digest((checks / script).read_text()))
+            if exercise.get("not_run"):
+                result.update(not_run=exercise["not_run"], reason=exercise["reason"])
+            return result
         finally:
             self.engine.cleanup(app)
             self.engine.cleanup(checker)

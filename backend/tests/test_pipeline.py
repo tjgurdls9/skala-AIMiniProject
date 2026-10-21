@@ -78,9 +78,10 @@ class PipelineChecks(unittest.TestCase):
 
     def test_implementation_dag_enforces_task_file_boundaries(self):
         snapshot = self.approved()
-        builders = snapshot["tasks"]
+        builders = [t for t in snapshot["tasks"] if t["role"] == "builder"]
+        planner = next(t for t in snapshot["tasks"] if t["role"] == "planner")
         self.assertEqual([t["work_kind"] for t in builders], ["infra", "backend", "frontend", "integration"])
-        self.assertEqual([t["depends_on"] for t in builders], [[], [builders[0]["id"]], [builders[1]["id"]], [builders[2]["id"]]])
+        self.assertEqual([t["depends_on"] for t in builders], [[planner["id"]], [builders[0]["id"]], [builders[1]["id"]], [builders[2]["id"]]])
         with patch.object(self.worker.pipeline.engine, "runtime", return_value="sha256:" + "a" * 64):
             asyncio.run(self.worker.tick())
         job = self.worker.claim()
@@ -92,7 +93,7 @@ class PipelineChecks(unittest.TestCase):
         with self.assertRaises(DomainError):
             scope.patch(other["path"], other["content"], other["content_digest"])
         with self.store.transaction() as db:
-            task = self.store.load(db, snapshot["run_id"])["tasks"][0]
+            task = next(t for t in self.store.load(db, snapshot["run_id"])["tasks"] if t["id"] == builders[0]["id"])
             self.assertEqual(task["state"], "succeeded")
             self.assertEqual(len(db.execute("SELECT * FROM candidates").fetchall()), 0)
 

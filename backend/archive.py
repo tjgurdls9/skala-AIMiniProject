@@ -44,13 +44,16 @@ def check(bundle):
         require(entry['metadata'] == metadata and digest(entry['content']) == metadata['content_digest'], 'INVALID_COMMAND', '아티팩트 해시/metadata가 일치하지 않습니다.', 422)
         if metadata['kind'] == 'spec':
             validate('PlanView', entry['content'])
+            support = entry['content'].get('support')
+            require(support is None or support['spec_version_id'] == entry['content']['spec_version_id'],
+                    'INVALID_COMMAND', '지원 공백이 다른 명세에 연결됐습니다.', 422)
             repository = entry['content']['repository']
             if repository:
                 parsed = urlsplit(repository['url'])
                 require(parsed.scheme == 'https' and parsed.hostname is not None and parsed.username is None and parsed.password is None,
                         'FORBIDDEN', '기록의 저장소 URL 형식을 확인하세요.', 403)
-        elif metadata['kind'] in ('preview', 'retrieval', 'context'):
-            name = {'preview': 'Preview', 'retrieval': 'RetrievalEvidence', 'context': 'ContextEvidence'}[metadata['kind']]
+        elif metadata['kind'] in ('preview', 'retrieval', 'context', 'deployment'):
+            name = {'preview': 'Preview', 'retrieval': 'RetrievalEvidence', 'context': 'ContextEvidence', 'deployment': 'ReleaseView'}[metadata['kind']]
             validate(name, entry['content'])
             if name == 'ContextEvidence':
                 require(entry['content']['completed_fragments'] <= entry['content']['total_fragments'],

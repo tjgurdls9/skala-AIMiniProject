@@ -70,7 +70,8 @@ class Pipeline:
 
     async def build(self, job, worker):
         runtime_image = await asyncio.to_thread(self.engine.runtime)
-        workspace = await asyncio.to_thread(self.engine.workspace, job["run_id"], job["packet"]["spec_version_id"])
+        template_id = job["packet"]["template_contract"]["template"]
+        workspace = await asyncio.to_thread(self.engine.workspace, job["run_id"], job["packet"]["spec_version_id"], template_id)
         mode = job["packet"]["options"].get("task_mode", "edit")
         writable = job["packet"]["options"].get("writable_files", WRITABLE_FILES)
         before = {path: (workspace / path).read_text() for path in writable}
@@ -107,6 +108,7 @@ class Pipeline:
         if not await asyncio.to_thread(worker.current, job):
             return
         candidate = await asyncio.to_thread(self.engine.freeze, workspace)
+        candidate["template_id"] = template_id
         with self.store.transaction() as db:
             snapshot = self.valid(db, job, worker)
             if snapshot is None:
@@ -186,7 +188,7 @@ class Pipeline:
                 actual = judgement["acceptance"]
                 covered = (len(actual) == len(expected) and {a["id"] for a in actual} == expected and
                            all(a["status"] == "met" and a["evidence"] and set(a["evidence"]).issubset(tools["checks"]) for a in actual))
-                body = dict(verdict="pass" if covered and all(tools["checks"].values()) else "fail", tools=tools, judgement=judgement)
+                body = dict(verdict="fail" if not all(tools["checks"].values()) else "not_run" if tools.get("not_run") else "pass" if covered else "fail", tools=tools, judgement=judgement)
             else:
                 body = await asyncio.to_thread(reviewer.security, candidate)
         except Exception as error:
@@ -335,7 +337,8 @@ class Pipeline:
             self.engine.docker("run", "-d", *self.engine.limits(operation["proxy"], operation["network"]),
                 "--network", ingress,
                 "--mount", f"type=bind,src={ROOT / 'infra/checks'},dst=/checks,readonly",
-                "-p", f"127.0.0.1:{operation['port']}:8081", self.engine.runtime(), "python", "/checks/preview.py", operation["app"] + ":8080")
+                "-p", f"127.0.0.1:{operation['port']}:8081", self.engine.runtime(), "python", "/checks/preview.py", operation["app"] + ":8080",
+                *(["cafemap-v1"] if candidate.get("template_id") == "cafemap-v1" else []))
 
     def cleanup_preview(self, operation):
         stopped = self.engine.cleanup(operation["proxy"])

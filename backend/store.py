@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from backend.contracts import DomainError, canonical, digest, plan_inputs, require, validate
+from backend.contracts import SECRET, DomainError, canonical, digest, plan_inputs, require, validate
 
 
 def now():
@@ -50,6 +50,8 @@ class Store:
                 CREATE TABLE IF NOT EXISTS runs (
                     id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
                     snapshot TEXT NOT NULL, resume_state TEXT, source_run_id TEXT);
+                CREATE TABLE IF NOT EXISTS run_templates (
+                    run_id TEXT PRIMARY KEY REFERENCES runs(id), template_id TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS recording_imports (
                     digest TEXT PRIMARY KEY, run_id TEXT UNIQUE NOT NULL REFERENCES runs(id));
                 CREATE TABLE IF NOT EXISTS events (
@@ -107,7 +109,7 @@ class Store:
             """)
             if "attempt_id" not in {row[1] for row in db.execute("PRAGMA table_info(grants)")}:
                 db.execute("ALTER TABLE grants ADD COLUMN attempt_id TEXT REFERENCES attempts(id)")
-            for table in ("requests", "artifacts", "specs", "reviews", "events", "commands", "attempts", "attempt_results", "candidates", "task_scopes", "recording_imports"):
+            for table in ("requests", "artifacts", "specs", "reviews", "events", "commands", "attempts", "attempt_results", "candidates", "task_scopes", "recording_imports", "run_templates"):
                 for action in ("UPDATE", "DELETE"):
                     db.execute(f"CREATE TRIGGER IF NOT EXISTS {table}_{action.lower()}_blocked BEFORE {action} ON {table} "
                                f"BEGIN SELECT RAISE(ABORT, 'immutable record'); END")
@@ -188,7 +190,14 @@ class Store:
         db.execute("INSERT INTO jobs VALUES (?, ?, ?, ?, 'pending', ?, ?)",
                    (uid(), snapshot["run_id"], snapshot["state_version"], role, canonical({"options": options or {}}), now()))
 
-    def create_run(self, project_id, data):
+    @staticmethod
+    def template_id(db, run_id):
+        row = db.execute("SELECT template_id FROM run_templates WHERE run_id=?", (run_id,)).fetchone()
+        return row[0] if row else "requests-v1"
+
+    def create_run(self, project_id, data, template_id="requests-v1"):
+        from backend.templates import template_path
+        template_path(template_id)
         validate("RunCreate", data)
         with self.transaction() as db:
             project = db.execute("SELECT id FROM projects WHERE id=?", (project_id,)).fetchone()
@@ -208,6 +217,7 @@ class Store:
                 snapshot.update(run_id=run_id, mode="replay", replay_source=copy.deepcopy(provenance))
                 db.execute("INSERT INTO runs VALUES (?, ?, ?, NULL, ?)",
                            (run_id, project_id, canonical(snapshot), source["run_id"]))
+                db.execute("INSERT INTO run_templates VALUES (?, ?)", (run_id, self.template_id(db, source["run_id"])))
                 # Artifact records are immutable; replay resolves IDs through its frozen source snapshot.
                 for row in rows:
                     event = json.loads(row[0])
@@ -218,6 +228,7 @@ class Store:
                                 mode="live", state="planning", state_version=0, last_event_seq=0,
                                 spec_version_id=None, phases=[], sprints=[], tasks=[], approvals=[], reports=[], artifacts=[])
                 db.execute("INSERT INTO runs VALUES (?, ?, ?, NULL, NULL)", (run_id, project_id, canonical(snapshot)))
+                db.execute("INSERT INTO run_templates VALUES (?, ?)", (run_id, template_id))
                 self.save(db, snapshot, "run_state_changed", "기획 작업이 접수됐습니다.")
                 self.schedule(db, snapshot)
             validate("Snapshot", snapshot)
@@ -318,7 +329,10 @@ class Store:
                                   (snapshot["spec_version_id"], run_id)).fetchone()
                 require(spec is not None and approval["target"]["plan_digest"] == digest(json.loads(spec[0])),
                         "STALE_APPROVAL", "저장된 기획과 승인 대상이 일치하지 않습니다.")
-                require(json.loads(spec[0])["contract_digests"] == plan_inputs(),
+                package = json.loads(spec[0])
+                require(package.get("support", {}).get("implementation_allowed", True) or payload["decision"] == "reject",
+                        "INVALID_STATE", "기획의 지원 공백을 먼저 해소하세요. 외부 연결 결정 보류는 구현 승인이 아닙니다.")
+                require(package["contract_digests"] == plan_inputs(self.template_id(db, run_id)),
                         "STALE_APPROVAL", "계약·템플릿·검사 입력이 바뀌었습니다. 재기획 후 승인하세요.")
                 approval.update(state="approved" if payload["decision"] == "approve" else "rejected",
                                 decided_by="local-operator", decided_at=now())
@@ -370,3 +384,48 @@ class Store:
                                    manifest_digest=frozen.get("manifest_digest", digest({"snapshot": snapshot, "events": events})),
                                    provenance="imported_unsigned" if imported else "local_ledger"))
             return result
+
+    def release_view(self, run_id, db=None):
+        if db is None:
+            with self.transaction() as connection:
+                return self.release_view(run_id, connection)
+        snapshot = self.load(db, run_id)
+        empty = dict(run_id=run_id, enabled=False, state="unconfigured", target=None, details=None, operations=[],
+                     reason="실제 출시 대상·무료 자격/권한·정확한 사용자 승인이 미설정입니다. 출시 실행은 비활성입니다.")
+        if snapshot["mode"] == "replay":
+            for metadata in reversed(snapshot["artifacts"]):
+                if metadata["kind"] == "deployment":
+                    row = db.execute("SELECT content,metadata FROM artifacts WHERE id=? AND public=1", (metadata["id"],)).fetchone()
+                    body = artifact_content(row)
+                    validate("ReleaseView", body)
+                    return dict(body, run_id=run_id, enabled=False)
+            return empty
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='release_manifests'").fetchone():
+            return empty
+        row = db.execute("SELECT body FROM release_manifests WHERE run_id=? ORDER BY rowid DESC LIMIT 1", (run_id,)).fetchone()
+        if row is None:
+            return empty
+        manifest = json.loads(row[0])
+        target = manifest["target"]
+        details = dict(repository=manifest["repository"], environment={k: manifest["environment"][k] for k in ("id", "label", "exposure")},
+                       image_reference=manifest["image_reference"], free_policy=manifest["environment"]["free_evidence"],
+                       rollback={k: manifest["rollback"][k] for k in ("action", "data_policy")})
+        require(not SECRET.search(canonical(details)) and not re.search(r"/(?:Users|home|private|tmp)/", canonical(details)),
+                "TEMPORARILY_UNAVAILABLE", "출시 공개 설정에서 개인 호스트 경로를 제거하세요.", 503)
+        operations = []
+        for operation in db.execute("SELECT id,state,result FROM operations WHERE run_id=? AND target_digest=? ORDER BY rowid", (run_id, digest(target))):
+            evidence = json.loads(operation["result"])
+            if evidence.get("kind") != "deployment":
+                continue
+            action = evidence["action"]
+            state = "accepted" if operation["state"] == "pending" else "rolled_back" if operation["state"] == "applied" and action == "rollback" else operation["state"]
+            operations.append(dict(operation_id=operation["id"], action=action, state=state,
+                                   accepted_at=evidence.get("accepted_at"), observed_at=evidence.get("observed_at"),
+                                   reason=evidence.get("reason", "이전 원장에 상세 조회 근거가 없습니다."), volume_preserved=evidence.get("volume_preserved")))
+        state = operations[-1]["state"] if operations else "prepared"
+        if target["spec_version_id"] != snapshot["spec_version_id"]:
+            state = "superseded"
+        value = dict(run_id=run_id, enabled=False, state=state, target=target, details=details, operations=operations,
+                     reason="저장된 출시/복구 원장입니다. 실제 출시 API/승인은 아직 비활성입니다. 불명 결과는 성공이나 자동 재실행으로 바꾸지 않습니다.")
+        validate("ReleaseView", value)
+        return value

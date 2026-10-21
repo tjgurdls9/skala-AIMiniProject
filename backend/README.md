@@ -56,3 +56,14 @@ backend/.venv/bin/python -m backend.archive import --database runtime-data/keyle
 ```
 
 출시 어댑터 `runner/release.py`는 고정 Git/registry 조회·보호 프록시가 있는 로컬 Docker 환경·첫 출시 unpublish/볼륨 보존에 한정한 내부 구현이다. 실제 대상/무료 자격·권한과 정확한 사용자 승인 연결 전이므로 제품의 배포 API/worker는 비활성이다. cloud 배포·이미지 registry upload·이전 버전 복원/명세 간 데이터 이전은 제공하지 않는다.
+
+
+## POST-INTEGRATION / 카공지도 프로필
+
+`LIFECYCLE_TEMPLATE=cafemap-v1`을 API에 설정하면 새 LIVE run의 기본 프로필을 카공지도로 기록한다. 프로필은 run별 불변이며 기존 문의 run/재생을 바꾸지 않는다. worker는 저장된 프로필을 사용하고 실행 이미지/고정 의존성·MCP 쓰기 경계는 재사용한다. 설정하지 않으면 requests-v1이다.
+
+이 확장은 요청 검증·외부 연결 대기·좌표 없는 검색 설정 저장과 해당 모델/작업·독립 검토 경로를 준비한 것이다. 사용자가 외부 연결을 나중에 결정했으므로 공급자·키·지도/실제 카페 데이터는 없다. PlanView.support는 실제 요청/정정·명세에 결속된 공백을 표시하고 implementation_allowed=false인 기획의 approve는 서버도 거절한다. 모델은 요청한 지도/주변 추천을 CRUD·가짜 장소로 바꾸지 않아야 한다.
+
+실제 지도/장소 검색·위치 동의·추천은 보호된 validator에서 not_run으로 남고 프리뷰/출시를 통과하지 못한다. 신뢰 프록시도 /api/map/*의 실제 검색을 차단하며 geolocation 권한을 열지 않는다. 공급자 선택 후 무료 자격/키/쿼터·출처 표시, 위치 사용과 외부 전송 동의, 격리된 경로를 확인하고 새 기획 승인을 받아야 한다. 소스 템플릿의 준비 코드는 제품 런타임이 생성한 완성 앱 증거가 아니다.
+
+CR-C14는 각 PlanView.support의 지원 공백, CR-C15는 GET /api/runs/{id}/release의 읽기 전용 출시/복구 원장이다. Runtime.template_id/data_source_status는 보조 안내다. release 조회는 공급자 재조회/실행을 하지 않으며 과거 조회 시각/볼륨 보존의 근거가 없으면 null을 반환한다. 실제 출시 API/승인은 계속 비활성이다.
