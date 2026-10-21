@@ -152,3 +152,20 @@
 Bundle은 동결 snapshot/events와 거기에 참조된 **공개** artifact 원본만 포함한다. jobs/attempt prompts/requests 원문/토큰/grants/환경변수/DB 파일·모델 가중치는 포함하지 않는다. `manifest_digest`는 이 필드를 제외한 bundle의 canonical digest다. metadata/report hash·명세/후보 결속·이벤트 순서와 계약을 검증하며 비밀 형식/개인 호스트 경로가 검출되면 내보내기를 거부한다. 원본 증거를 몰래 수정해 해시만 바꾸지 않는다. `exporter`는 내보내기 코드/계약/Python 버전이며 과거 원장 생성 당시 버전이라는 뜻이 아니다. 원본 계획의 contract_digests는 그대로 남는다.
 
 `ReplayRecording.provenance`, `ReplaySource.provenance`는 선택적 추가 필드다. 없으면 기존 local_ledger 기록이다. import 결과와 재생에는 `imported_unsigned`를 보존한다. UI는 **가져온 기록(서명 없음)**을 로컬 원장/새 LIVE와 구분하고 프리뷰 iframe·승인·실행을 금지한다. 해시는 훼손 검출이며 원장 출처의 서명/검토 진위 보증이 아니다. import된 승인/보고서를 LIVE 출시 권한으로 재사용하지 않는다.
+
+
+### POST-INTEGRATION / CR-C14 출시·복구 공개 근거
+
+`GET /api/runs/{id}/release` → `http.ReleaseView`를 추가한다(기존 세션/읽기 전용). 현재 `enabled=false`이며 승인·push·배포·복구 실행 엔드포인트를 뜻하지 않는다. 실제 대상/기획·출시 승인 전 외부 작업은 비활성이다. 202 접수나 예시를 실제 완료로 바꾸지 않는다.
+
+- `unconfigured`는 등록된 manifest가 없음, target/details는 null·operations는 빈 목록이다. reason으로 준비 조건을 설명한다.
+- manifest가 있으면 `target`은 저장된 정확한 ReleaseTarget이며 details는 저장소/branch·push 자동 배포 여부, 환경, registry 참조, 확인한 무료 정책, 첫 출시 공개 중단/볼륨 보존 계획이다. candidate 호스트 경로·키·내부 쓰기 권한은 제공하지 않는다.
+- operations는 서버 원장에 보존한 operation_id/action(push/deploy/rollback)/state다. 단순 GET으로 공급자 재조회나 재실행을 하지 않는다. pending은 실행 의도 기록, applied는 어댑터가 실제 조회로 확인했던 결과, uncertain은 불명이며 자동 재실행/성공으로 바꾸지 않는다. not_applied/superseded도 성공이 아니다.
+- state는 마지막 공개 원장 결과를 요약한다. rollback applied의 rolled_back은 이 어댑터에서 **첫 출시 서비스 공개 중단과 볼륨 보존**이며 이전 버전/DB 복원을 뜻하지 않는다. 실패·응답 유실은 reason/원장 상태 그대로 보여준다.
+- 재생은 동결된 공개 deployment artifact가 있으면 그 기록만 표시하고 실행은 계속 불가다. 기록이 없으면 unconfigured다. GET 결과를 새 LIVE 승인 권한으로 재사용하지 않는다.
+
+### CR-C15 로컬 템플릿 가용 조건
+
+`Runtime.template_id`와 `data_source_status`를 선택적 추가한다. 기존 소비자는 무시할 수 있다. template_id는 운영자가 선택한 고정 requests-v1/cafemap-v1 기본값이며 각 실제 run의 프로필은 생성 시 서버가 불변으로 기록한다. requests-v1은 data_source_status=not_required, cafemap-v1은 현재 unconfigured다. `live_available=true`는 로컬 모델/worker가 준비됐다는 뜻이며 외부 지도 검색·추천/프리뷰 수용 성공이 아니다. 외부 데이터는 사용자 결정으로 보류했고 `external_api_enabled=false`, 공급자/키/좌표 전송은 없다. reason에 지원 공백과 실제 승인 전 확인할 조건을 제공한다.
+
+카공지도 앱은 기존 opaque sandbox를 풀어 위치 권한을 우회하지 않는다. 위치는 명시 동의와 secure origin 경로를 별도로 준비해야 하며 거절/미지원 시 수동 위치 입력을 유지한다. 실제 지도/장소 데이터가 없는 상태에서 가짜 장소·CRUD를 수용으로 제시하지 않는다.
