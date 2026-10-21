@@ -113,8 +113,9 @@ class Worker:
                         continue
                     scope = db.execute("SELECT mode,files FROM task_scopes WHERE task_id=?", (task["id"],)).fetchone()
                     options["task_id"] = task["id"]
+                    options.update(task_kind=task["work_kind"], task_title=task["title"], acceptance_ids=task["acceptance_ids"])
                     if scope:
-                        options.update(task_mode=scope["mode"], writable_files=json.loads(scope["files"]))
+                        options.update(task_mode=scope["mode"], writable_files=json.loads(scope["files"]), write_scope=json.loads(scope["files"]))
                     task["state"] = "running"
                     task.pop("reason", None)
                     self.store.save(db, snapshot, "task_started", task["title"], bump=False, task_id=task["id"])

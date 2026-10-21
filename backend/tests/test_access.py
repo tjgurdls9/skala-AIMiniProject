@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 from pathlib import Path
 import sys
@@ -93,6 +94,10 @@ class AccessChecks(unittest.TestCase):
         job = self.worker.claim()
         workspace = Path(self.temp) / "ws"
         workspace.mkdir()
+        # The claimed legacy task owns no model write scope and is a TDD kind; give this job an explicit scope and a kind without a test phase.
+        with self.store.transaction() as db:
+            options = json.loads(db.execute("SELECT context FROM jobs WHERE id=?", (job["id"],)).fetchone()[0])["options"]
+            db.execute("UPDATE jobs SET context=? WHERE id=?", (json.dumps({"options": dict(options, write_scope=["notes/**"], task_kind="contract")}), job["id"]))
         token = issue_grant(self.store, job, workspace)
 
         async def check():

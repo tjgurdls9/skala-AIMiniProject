@@ -18,7 +18,10 @@ from mcp.client.stdio import stdio_client
 
 from backend.contracts import ROOT, SECRET, canonical, digest, require
 from backend.store import now, uid
-from runner.access import WRITABLE_FILES, issue_grant
+from runner.access import WRITABLE_FILES, RoleScope, issue_grant
+from runner.builder_loop import BuilderLoop
+from runner.commands import DockerExecutor
+from runner.tools import ToolBox
 from runner.context import implement
 from runner.model import ModelUnavailable
 from runner.sandbox import PATCH_SCHEMA, Sandbox
@@ -31,6 +34,7 @@ class Pipeline:
         self.store, self.embedding = store, embedding
         self.engine = Sandbox(store.path.parent)
         self.recovery_after = {}
+        self.executor = None   # model tool executor: digest-pinned python/node images; injected in tests, built from env otherwise
 
     def reconcile_cancelled(self, worker):
         with self.store.transaction() as db:
@@ -68,24 +72,51 @@ class Pipeline:
         db.execute("UPDATE jobs SET state='finished' WHERE id=?", (job["id"],))
         db.execute("INSERT INTO attempt_results VALUES (?, 'finished', ?)", (job["attempt_id"], now()))
 
+    def tool_executor(self):
+        if self.executor is None:
+            python, node = os.environ.get("LIFECYCLE_PYTHON_IMAGE"), os.environ.get("LIFECYCLE_NODE_IMAGE")
+            require(bool(python and node), "RUNTIME_UNAVAILABLE", "격리 실행 이미지(LIFECYCLE_PYTHON_IMAGE, LIFECYCLE_NODE_IMAGE)가 구성되지 않았습니다.", 503)
+            self.executor = DockerExecutor(dict(python=python, node=node))
+        return self.executor
+
+    @staticmethod
+    def read_tree(workspace):
+        """Text files of the workspace by relative path (the model can only write text), for before/after diffs."""
+        tree = {}
+        for path in sorted(workspace.rglob("*")):
+            if path.is_file() and not path.is_symlink() and ".git" not in path.relative_to(workspace).parts:
+                try:
+                    tree[path.relative_to(workspace).as_posix()] = path.read_text()
+                except UnicodeDecodeError:
+                    continue
+        return tree
+
+    async def model_edit(self, job, worker, workspace):
+        scope = RoleScope(self.store, await asyncio.to_thread(issue_grant, self.store, job, workspace))
+        toolbox = ToolBox.from_scope(self.store, scope, self.tool_executor(), os.environ.get("LIFECYCLE_REGISTRY_NETWORK"),
+                                     {"HTTPS_PROXY": os.environ["LIFECYCLE_REGISTRY_PROXY"]} if os.environ.get("LIFECYCLE_REGISTRY_PROXY") else None)
+        await BuilderLoop(self.store).run(job, worker, toolbox)
+
     async def build(self, job, worker):
-        runtime_image = await asyncio.to_thread(self.engine.runtime)
+        authoring = job["packet"]["template_contract"].get("authoring") == "model"
+        runtime_image = digest(self.tool_executor().images) if authoring else await asyncio.to_thread(self.engine.runtime)
         template_id = job["packet"]["template_contract"]["template"]
         workspace = await asyncio.to_thread(self.engine.workspace, job["run_id"], job["packet"]["spec_version_id"], template_id)
         mode = job["packet"]["options"].get("task_mode", "edit")
         writable = job["packet"]["options"].get("writable_files", WRITABLE_FILES)
-        before = {path: (workspace / path).read_text() for path in writable}
+        before = self.read_tree(workspace) if authoring else {path: (workspace / path).read_text() for path in writable}
         if mode == "edit":
-            await self.edit(job, worker, workspace)
+            await (self.model_edit(job, worker, workspace) if authoring else self.edit(job, worker, workspace))
+        after = self.read_tree(workspace) if authoring else {path: (workspace / path).read_text() for path in writable}
         with self.store.transaction() as db:
             snapshot = self.valid(db, job, worker)
             if snapshot is None:
                 return
             task = next(t for t in snapshot["tasks"] if t["id"] == job["packet"]["options"]["task_id"])
             if mode != "freeze":
-                changes = [{"path": path, "before_digest": digest(content), "after_digest": digest((workspace / path).read_text()),
-                            "diff": "".join(difflib.unified_diff(content.splitlines(True), (workspace / path).read_text().splitlines(True), fromfile=path, tofile=path))}
-                           for path, content in before.items() if content != (workspace / path).read_text()]
+                changes = [{"path": path, "before_digest": digest(before.get(path, "")), "after_digest": digest(after.get(path, "")),
+                            "diff": "".join(difflib.unified_diff(before.get(path, "").splitlines(True), after.get(path, "").splitlines(True), fromfile=path, tofile=path))}
+                           for path in sorted(set(before) | set(after)) if before.get(path) != after.get(path)]
                 body = dict(spec_version_id=snapshot["spec_version_id"], task_id=task["id"], mode=mode,
                             writable_files=list(writable), changes=changes, runtime_image=runtime_image)
                 artifact = self.store.artifact(db, snapshot, "contract" if mode == "prepare" else "code_diff", task["title"] + " 결과", body)

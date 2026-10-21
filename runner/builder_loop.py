@@ -23,6 +23,7 @@ INSTRUCTIONS = (
     "install_dependencies(manager, packages). argv is a list, never a shell string. Pass expected_digest (from read_file/list_files) when "
     "changing an existing file. Write only inside write_scope. Follow gate.next: write failing tests first, run them, then implement until they pass. "
     "The server decides RED, GREEN and completion from recorded exit codes; stating that something passed has no effect. "
+    "Test files must also live inside write_scope and use conventional names (test_*.py, *_test.py, *.test.js, tests/). "
     "Implement only the acceptance criteria shown. Do not add dependencies outside the approved list.")
 
 
