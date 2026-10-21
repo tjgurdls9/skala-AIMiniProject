@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { EXTERNAL_STATUS, NEED_NAME, TEMPLATE_NAME, type PlanSupport, type SupportVerdict } from '../model/planSupport'
+import { EXTERNAL_STATUS, NEED_NAME, type PlanSupport, type SupportVerdict } from '../model/planSupport'
 import { shortDigest } from '../model/labels'
 
 /**
@@ -24,7 +24,7 @@ const needNames = (needs: PlanSupport['external'][number]['needs']) => needs.map
     </div>
     <template v-else>
       <p class="small">
-        템플릿 <strong>{{ TEMPLATE_NAME[verdict.support.template_id] }}</strong>
+        템플릿 <code>{{ verdict.support.template_id }}</code>
         · 요청 묶음 <code>{{ shortDigest(verdict.support.request_digest) }}</code>
       </p>
       <p v-if="verdict.kind === 'blocked' && readOnly" class="info-box small">
