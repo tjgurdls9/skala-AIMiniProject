@@ -82,6 +82,30 @@ describe('PlanView.support 계약', () => {
   })
 })
 
+describe('PlanView.free_policy 계약(fa07aec 카카오 선택 후속)', () => {
+  const OLD = 'Local Ollama Qwen/DeepSeek only; no paid fallback or external API.'
+  const NEW = 'Inference: local Ollama Qwen/DeepSeek only; no paid fallback or external model API. External data: verified free terms, explicit consent, fixed isolated access, no paid overage.'
+
+  test('기존 문구(과거 기록)와 새 문구 두 값만 허용하고 그 밖의 정책 문자열은 형식 오류로 본다', () => {
+    for (const free_policy of [OLD, NEW]) {
+      expect(validPlan({ ...PLAN_VIEW, free_policy })).toBe(true)
+      expect(isPlanView({ ...PLAN_VIEW, free_policy })).toBe(true)
+    }
+    for (const free_policy of ['Paid OpenAI fallback allowed.', `${NEW} `, '']) {
+      expect(validPlan({ ...PLAN_VIEW, free_policy })).toBe(false)
+      expect(isPlanView({ ...PLAN_VIEW, free_policy })).toBe(false)
+    }
+  })
+
+  test('서버 문구를 바꾸거나 줄이지 않고 그대로 표시한다', () => {
+    for (const free_policy of [OLD, NEW] as const) {
+      const w = mount(PlanViewBody, { props: { plan: { ...PLAN_VIEW, free_policy } } })
+      const dd = w.findAll('dt').find((d) => d.text() === '무료 정책')!.element.nextElementSibling!
+      expect(dd.textContent).toBe(free_policy)
+    }
+  })
+})
+
 describe('기획 승인 화면의 지원 공백 구역', () => {
   test('공백이 있으면 요청 인용·이유·필요 입력·외부 의존을 따로 보여 주고 승인을 막는다(거절은 유지)', async () => {
     const { w, send } = dialog({ ...PLAN_VIEW, support: CAFEMAP })
