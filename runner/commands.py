@@ -5,6 +5,7 @@ import subprocess
 
 from backend.contracts import SECRET, DomainError, digest, require
 from backend.store import uid
+from runner.registry_hosts import REGISTRY_HOSTS
 from runner.sandbox import Sandbox
 from runner.workspace import relative_parts
 
@@ -12,7 +13,7 @@ EXECUTABLES = ("node", "npm", "python", "python3")
 TOOL_POLICY = dict(
     executables=list(EXECUTABLES), timeout_default=60, timeout_max=300, output_bytes=65536, max_args=32, arg_bytes=500,
     network="none", install_managers=["npm", "pip"], max_packages=20,
-    registry_hosts=["files.pythonhosted.org", "pypi.org", "registry.npmjs.org"],
+    registry_hosts=list(REGISTRY_HOSTS),
     limits=dict(pids=64, memory="512m", cpus="1", user="65534:65534"))
 DENIED_NPM = frozenset({"install", "i", "add", "ci", "update", "exec", "x", "publish", "link", "init", "create"})
 DENIED_MODULES = frozenset({"pip", "ensurepip"})
@@ -80,9 +81,19 @@ def validate_install(manager, packages):
 class DockerExecutor:
     """Runs one argv in a fresh locked-down container; `runner` is injectable so tests never start Docker."""
 
-    def __init__(self, image, runner=subprocess.run):
-        require(isinstance(image, str) and IMAGE.fullmatch(image), "RUNTIME_UNAVAILABLE", "digest로 고정한 실행 이미지가 필요합니다.")
-        self.image, self.runner = image, runner
+    LANGUAGES = dict(python="python", python3="python", node="node", npm="node")
+
+    def __init__(self, images, runner=subprocess.run):
+        """`images` is one digest-pinned reference for every program, or {"python": ref, "node": ref} per language."""
+        mapping = dict(python=images, node=images) if isinstance(images, str) else dict(images or {})
+        require(bool(mapping) and set(mapping) <= {"python", "node"} and all(isinstance(v, str) and IMAGE.fullmatch(v) for v in mapping.values()),
+                "RUNTIME_UNAVAILABLE", "digest로 고정한 실행 이미지가 필요합니다.")
+        self.images, self.runner = mapping, runner
+
+    def image_for(self, program):
+        image = self.images.get(self.LANGUAGES.get(program))
+        require(image is not None, "RUNTIME_UNAVAILABLE", "이 프로그램을 실행할 고정 이미지가 없습니다.")
+        return image
 
     def build_args(self, name, workspace, argv, cwd, network, env, deps, deps_writable):
         container_env = {"HOME": "/tmp", **(env or {})}
@@ -94,7 +105,7 @@ class DockerExecutor:
                                  PATH=f"{CONTAINER_DEPS}/node_modules/.bin:/usr/local/bin:/usr/bin:/bin")
         for key, value in sorted(container_env.items()):
             args += ["--env", f"{key}={value}"]
-        return ["docker", *args, self.image, *argv]
+        return ["docker", *args, self.image_for(argv[0]), *argv]
 
     def run(self, workspace, argv, cwd, timeout, network="none", env=None, deps=None, deps_writable=False):
         name = "lifecycle-" + uid()

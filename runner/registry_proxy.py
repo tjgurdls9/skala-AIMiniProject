@@ -1,9 +1,10 @@
 """Allow-list CONNECT proxy for dependency installs: public PyPI/npm hosts on 443 only; everything else is refused."""
 import asyncio
 import json
+import os
 import sys
 
-from runner.commands import TOOL_POLICY
+from runner.registry_hosts import REGISTRY_HOSTS
 
 REGISTRY_PORT = 443
 BUFFER = 65536
@@ -19,7 +20,7 @@ def parse_connect(line):
 
 
 def target_allowed(target):
-    return target is not None and target[0] in TOOL_POLICY["registry_hosts"] and target[1] == REGISTRY_PORT
+    return target is not None and target[0] in REGISTRY_HOSTS and target[1] == REGISTRY_PORT
 
 
 def log(**fields):
@@ -65,4 +66,4 @@ async def main(host="127.0.0.1", port=3128):  # bind address is an operator choi
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main(os.environ.get("PROXY_BIND", "127.0.0.1"), int(os.environ.get("PROXY_PORT", "3128"))))

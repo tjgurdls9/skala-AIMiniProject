@@ -176,7 +176,7 @@ class DockerExecutorChecks(unittest.TestCase):
         args, kwargs = self.calls[0]
         text = ' '.join(args)
         for needle in ('--network none', '--read-only', '--cap-drop ALL', '--user 65534:65534', '--security-opt no-new-privileges',
-                       '--pids-limit', '--memory', '--workdir /work/sub'):
+                       '--pids-limit', '--memory 512m', '--memory-swap 512m', '--workdir /work/sub'):
             self.assertIn(needle, text)
         for forbidden in ('--privileged', 'docker.sock', '--volume', ' -v ', '--env-file', '--pid host', '--net host'):
             self.assertNotIn(forbidden, text)
@@ -218,6 +218,49 @@ class DockerExecutorChecks(unittest.TestCase):
         for image in ('python:latest', 'python', 'python@sha256:short'):
             with self.assertRaises(DomainError):
                 DockerExecutor(image)
+
+
+class ImageSelectionChecks(unittest.TestCase):
+    PY = 'python@sha256:' + 'a' * 64
+    NODE = 'node@sha256:' + 'b' * 64
+
+    def run_with(self, argv, images):
+        calls = []
+
+        def runner(args, **kwargs):
+            calls.append(args)
+            return FakeProcess()
+        DockerExecutor(images, runner=runner).run(Path('/tmp'), argv, '.', 30)
+        return calls[0]
+
+    def test_each_program_runs_in_the_image_of_its_language(self):
+        images = dict(python=self.PY, node=self.NODE)
+        for argv, expected in ((['python', '-c', 'x'], self.PY), (['python3', '-m', 'pytest'], self.PY),
+                               (['node', '-e', 'x'], self.NODE), (['npm', 'test'], self.NODE)):
+            args = self.run_with(argv, images)
+            self.assertIn(expected, args)
+            self.assertEqual(args.index(expected), len(args) - len(argv) - 1, argv)
+
+    def test_an_unmapped_program_or_a_bad_image_map_is_refused(self):
+        with self.assertRaises(DomainError):
+            self.run_with(['npm', 'test'], dict(python=self.PY))
+        with self.assertRaises(DomainError):
+            DockerExecutor(dict(python='python:latest'))
+        with self.assertRaises(DomainError):
+            DockerExecutor({})
+
+
+class RegistryProxyIsolationChecks(unittest.TestCase):
+    def test_proxy_runs_with_the_standard_library_only(self):
+        import subprocess
+        import sys
+        code = "import sys, runner.registry_proxy; assert not {'runner.commands', 'backend.contracts', 'jsonschema'} & set(sys.modules)"
+        done = subprocess.run([sys.executable, '-c', code], cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+
+    def test_policy_and_proxy_share_one_host_list(self):
+        from runner.registry_hosts import REGISTRY_HOSTS
+        self.assertEqual(list(REGISTRY_HOSTS), TOOL_POLICY['registry_hosts'])
 
 
 class RecordingExecutor:

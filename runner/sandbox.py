@@ -122,9 +122,9 @@ class Sandbox:
         return dict(candidate_id=candidate_id, commit_sha=commit, image_digest=image, manifest=manifest, path=str(candidate))
 
     @staticmethod
-    def limits(name, network="none", tmp_megabytes=32):
+    def limits(name, network="none", tmp_megabytes=32, memory="512m"):
         return ["--name", name, "--network", network, "--user", "65534:65534", "--read-only", "--cap-drop", "ALL",
-                "--security-opt", "no-new-privileges", "--pids-limit", "64", "--memory", "512m", "--cpus", "1",
+                "--security-opt", "no-new-privileges", "--pids-limit", "64", "--memory", memory, "--memory-swap", memory, "--cpus", "1",
                 "--tmpfs", f"/tmp:rw,noexec,nosuid,nodev,size={tmp_megabytes}m,mode=1777", "--log-driver", "none"]
 
     def start_candidate(self, candidate, network, name, data_volume=None):

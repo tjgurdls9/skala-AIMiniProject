@@ -71,7 +71,7 @@ class Reviewer:
         cache = self.engine.root / "grype-db"
         cache.mkdir(mode=0o700, exist_ok=True)
         name = "lifecycle-" + uid()
-        args = ["run", "--rm", *self.engine.limits(name, "bridge", 512), "--memory", "1g", "--user", f"{os.getuid()}:{os.getgid()}",
+        args = ["run", "--rm", *self.engine.limits(name, "bridge", 512, "1g"), "--user", f"{os.getuid()}:{os.getgid()}",
                 "--mount", f"type=bind,src={cache},dst=/db", "-e", "GRYPE_DB_CACHE_DIR=/db", "-e", "HOME=/tmp"]
         self.engine.docker(*args, image, "db", "update", timeout=600)
         status = json.loads(self.engine.docker(*args, image, "db", "status", "-o", "json"))
@@ -103,7 +103,7 @@ class Reviewer:
                 self.engine.docker("save", "--output", image_tar, candidate["image_digest"], timeout=120)
                 image_tar.chmod(0o644)
                 self.check_current()
-                raw = self.engine.docker("run", "--rm", *self.engine.limits("lifecycle-" + uid(), "none", 512), "--memory", "1536m",
+                raw = self.engine.docker("run", "--rm", *self.engine.limits("lifecycle-" + uid(), "none", 512, "1536m"),
                     "--user", f"{os.getuid()}:{os.getgid()}",
                     "--mount", f"type=bind,src={image_tar},dst=/scan/candidate.tar,readonly",
                     "--mount", f"type=bind,src={self.engine.root / 'grype-db'},dst=/db,readonly",
