@@ -6,12 +6,35 @@
 
 이 절은 아래의 이전 기록보다 우선한다. 지시는 원본의 `docs/prompts/CLAUDE_PHASE_COMPLETION.md`와 `docs/planning/phase-completion.md`를 따른다. 기준은 Claude `b3a52bc`, Codex `c3e11c1`이다.
 
-**현재 상태: `WAITING_FOR_RUNTIME_INTEGRATION`** (관제 지시 2 완료. 통합 담당은 런타임 세션 f3이다. 이전의 "Codex 통합 대기"는 Codex가 멈춰 무효다)
+**현재 상태: `WAITING_FOR_RUNTIME_INTEGRATION`** (관제 지시 5 완료. 이전: 관제 지시 2·4 완료. 통합 담당은 런타임 세션 f3이다. 이전의 "Codex 통합 대기"는 Codex가 멈춰 무효다)
 - 관제가 Claude 세션(skala-aiminiproject-61)으로 옮겨졌다. 기준 문서는 원본 `docs/planning/execution-boundary.md`다. 카공지도는 검증 과제이고 기존 실행 `846eed64…`는 작업 세션 개입이 있어 **로컬 모델 자율 수용 미검증**이다.
-- 프론트 최신 완료 커밋: **`cabe631`**(아래 "재개 9", CR-C16·C17 소비). 계약 채택 `b412161`(=76147c6). 그 전 `d68a4da`(재개 8)·`4fc4084`(재개 7). 통합 대상은 관제가 정한다(`4fc4084`·`5addfd2`·`d68a4da`·`e5016e5`는 이전 요청에 포함, 새로 `b412161`·`cabe631`과 인계 커밋).
+- 프론트 최신 완료 커밋: 아래 "재개 10"(CR-C18 소비, 계약 채택 `6ecfb65`=db1300f). 그 전 `cabe631`(재개 9, CR-C16·C17), 계약 채택 `b412161`(=76147c6). 그 전 `d68a4da`(재개 8)·`4fc4084`(재개 7). 통합 대상은 관제가 정한다(`4fc4084`·`5addfd2`·`d68a4da`·`e5016e5`는 이전 요청에 포함, 새로 `b412161`·`cabe631`과 인계 커밋).
 - 대기 이유(구체): 런타임 세션이 위 커밋과 인계 커밋을 통합해야 한다. 이후 작업은 관제 지시를 받는다. 계약 없이 미리 구현하지 않는다.
 - Claude 측 서버 없음. 8000의 LIVE API 소유는 런타임 쪽이며 Claude가 띄우거나 종료하지 않는다.
 - 사용자 직접 디자인 지시(건물형 사무실)를 Artifact 시안에서 제품 코드로 반영했다(`4fc4084`, 아래 "재개 7").
+
+### 재개 10 — 계약 db1300f 소비: CR-C18 사람 확인 AC의 승인 (2026-10-22, 관제 지시 5)
+
+**계약 채택**: `db1300f`를 cherry-pick했다(`6ecfb65`). 변경은 `docs/planning/{protocol.v1.schema.json, contracts.md}` 2파일뿐이다. protocol SHA256 `8dc0d7eb71d1f9c36342526d36f17c3083cdde7346c8e2e00bd7025cd0e9d8f3`, http `c30058eaf8ca863820dd431c240494fef8e204af3a853a3ef38151292af2fd47`(변경 없음)이 기대값과 같다. 타입은 `npm run gen:types`로 재생성했다.
+
+**연결한 것** (런타임·계약·템플릿 변경 없음)
+- 모델 `model/acceptanceApproval.ts`: 사람 확인 승인 선택(대기 우선, 없으면 마지막 결정, 무효 제외), 현재 후보와 대상 비교(`acceptanceMismatch`: 커밋·이미지·명세·검증 보고서 id·해시, 두 보고서 부재), AC별 사람 확인 상태(`manualAcStates`), 보고서 본문 `manual_pending` 해석, 배포 결속(`releaseAcceptanceGate`).
+- 프리뷰(`AcceptanceApprovalSection`, `PreviewDialog` 안): "사람 확인 필요" 구역. 승인 대상 요약(후보 커밋·이미지 digest·확인할 AC id·검증 보고서 id/해시·대상 해시)과 승인·거절. 기존 `decide` 명령(approval_id, target_digest, decision)을 쓴다. 대상이 현재 후보와 다르면 승인을 막고 이유를 보인다. 거절은 의견 필수이며 의견은 원문 그대로 보낸다. 재생(읽기 전용)에는 버튼이 없다. 이미 결정된 승인은 결과와 의견만 보인다. 무효화된 이전 승인은 건수만 알리고 쓰지 않는다. 사람 확인 승인이 하나도 없으면(옛 기록) 구역을 그리지 않는다.
+- 검증 보고서 안내: '통과'는 사람 확인을 제외한 AC가 승인된 점검으로 충족됐다는 뜻이라고 적는다. 보고서 본문의 `manual_pending`을 읽을 수 있으면 "보고서가 사람 확인 대기로 표시한 AC"로 보이고, 승인 대상 AC와 다르면 알린다(차단하지 않음). 본문을 읽지 못해도 승인은 대상의 AC 목록으로 결정한다.
+- AC 목록(`AcceptanceList`): 사람 확인 AC는 서버 판정(미실행)을 그대로 두고 옆에 "사람 확인 대기/승인됨/거절됨"을 따로 붙인다. 승인돼도 충족으로 바꾸지 않고 충족 수에도 넣지 않는다. 후보가 다른 승인과 무효 승인은 AC에 붙이지 않는다.
+- 알림: 사람 확인 승인이 대기 중이면 프리뷰 알림이 "사람 확인 AC를 승인·거절하거나 수정을 요청하세요"로 바뀐다.
+- 배포 승인(`ReleaseApprovalDialog`): 사람 확인 승인이 있으면 "사람 확인 승인" 구역에 연결된 승인(id·상태·확인한 AC·연결 여부)을 보인다. 대기·거절·무효·찾을 수 없음·후보 불일치·연결 누락이면 사유를 안내하고 배포 승인을 비활성으로 한다. 사람 확인 기록이 없으면(옛 기록·사람 확인 AC 없음) 표시하지 않고 막지도 않는다. 최종 판단은 서버다(현재 화면은 `releaseEnabled=false`라 배포 버튼 자체가 숨겨져 있다).
+- 합성 예시: 일반 요청(할 일 앱)의 AC-4(화면)를 사람 확인 AC로 둔다. preview 예시는 대기 승인, release-approval·succeeded 예시는 승인된 사람 확인 승인과 이에 연결된 배포 대상이다. AC-4 판정은 모두 미실행이고 검증 보고서 본문(`manual_pending`)은 합성이다. 검증 과제·문의 앱 소재는 쓰지 않았고 합성 표시는 그대로다.
+
+**근거**
+- TDD: `tests/acceptance-approval.test.ts` 44개를 먼저 쓰고 실패를 확인했다. RED: `Failed to resolve import "../src/components/AcceptanceApprovalSection.vue"`로 스위트가 로드되지 않았다.
+- GREEN: 전체 338개 통과(21개 파일), `vue-tsc` 0, 빌드 통과(JS gzip 78.82KB). 커버리지 구문 93.62%·분기 90.02%·함수 90.25%.
+- 실제 화면(로컬 Vite, 합성 예시): preview 예시에서 알림 문구, 프리뷰 대화상자의 사람 확인 구역(대상 요약·보고서 안내·manual_pending·의견·거절/승인), Sprint 4의 AC-4가 "– 미실행 ⚑ 사람 확인 대기"로 보이는 것을 확인했다. release-approval 예시에서 배포 승인 화면에 "사람 확인 승인됨 · ap-acceptance-1 · AC-4 · 배포 대상이 이 승인에 연결됨"이 보이는 것을 확인했다.
+
+**확인하지 못한 것**
+- 실제 서버가 만든 acceptance 승인과 `decide` 처리(승인·거절 뒤 상태 전이, 거절 시 `needs_input`), 무효화(새 후보·명세 변경), `manual_pending`이 실린 실제 검증 보고서 본문. 서버 동작은 합성 테스트로만 확인했다.
+- 배포 승인 버튼은 현재 `releaseEnabled=false`로 숨겨져 있어 비활성 사유 경로는 대화상자 단위 테스트로만 확인했다.
+- 사용자 시각 수용, 실기기·다른 브라우저.
 
 ### 재개 9 — 계약 76147c6 소비: CR-C16 일반 템플릿 ID, CR-C17 대안·작업 분해·점검 (2026-10-21, 관제 지시 4)
 
