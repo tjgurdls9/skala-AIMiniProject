@@ -192,3 +192,27 @@ CR-C15 operations는 accepted/applied/uncertain/failed/rolled_back/not_applied/s
 PlanView.free_policy가 기존에는 모든 외부 API를 금지하는 단일 상수였다. 외부 모델 API 금지와 검증된 무료 지도 데이터 사용을 구분하도록 **기존 문구와 새 문구 두 값만 허용하는 enum**으로 확장한다. 새 문구는 `Inference: local Ollama Qwen/DeepSeek only; no paid fallback or external model API. External data: verified free terms, explicit consent, fixed isolated access, no paid overage.`다. 과거 기록의 문구는 수정하지 않는다. 임의의 정책 문자열·유료 모델·유료 초과 사용을 허용하지 않는다.
 
 소비자는 기존처럼 서버의 free_policy를 그대로 표시하고 타입/hash를 재생성한다. 다른 필드/경로 변경은 없다. 새 기획 공개는 소비자 채택 뒤 진행한다. 공급자 선택이나 키 준비를 사람의 기획/배포 승인으로 사용하지 않는다. 키와 계정 확인은 로컬 비공개 설정이며 모델 입력/공개 계약/기록으로 전달하지 않는다.
+
+### CR-C16·CR-C17 일반 시작 프로젝트 ID와 계획 확장 (아이디어 대안·작업 분해·검증 명세)
+
+모두 **선택적 추가**이며 기존 기록과 소비자는 깨지지 않는다. 필드가 없으면 "미제공/미확인"이고 지원·검증이 있다고 추정하지 않는다.
+
+**CR-C16** `Runtime.template_id`, `PlanSupport.template_id`는 고정 enum이 아니라 패턴 `^[a-z0-9][a-z0-9-]{0,62}$` 문자열이다. 서버가 시작 프로젝트 ID를 데이터로 읽고, 특정 과제 이름은 계약에 들어가지 않는다. 옛 기록의 `requests-v1`·`cafemap-v1`은 패턴을 만족한다.
+
+**CR-C17** `PlanView`에 다음 선택 필드를 추가한다.
+
+| 필드 | 뜻 |
+|---|---|
+| `alternatives` (1–3) | 아이디어 대안 `{id, summary, differences, risks}`. 기획 승인 화면에서 차이·위험을 보여 준다 |
+| `selected_alternative_id` | 이 기획이 구현하는 대안. 승인 대상(`plan_digest`)에 포함되므로 선택이 승인에 결속된다 |
+| `single_alternative_reason` | 대안이 하나뿐일 때 그 이유(서버 규칙: 대안이 1개면 필수) |
+| `work_plan` | 작업 분해 `{id, kind, title, depends_on, acceptance_ids, write_scope}`. 서버 Supervisor가 순환·없는 ID·겹친 쓰기 범위·AC 미연결을 검사한다 |
+| `omitted_areas` | 필요하지 않아 생략한 영역과 이유(예: AI/Data) |
+| `verification` | 선언형 점검 명세 `CheckSpec`: `http`(요청/기대 상태·JSON 일부), `command`(argv/기대 종료·출력), `file`(존재·내용). 코드가 아니라 데이터다. AC는 `ac_ids`로 연결한다 |
+| `manual_acceptance` | 자동 검증 없이 사람이 확인하기로 명시한 AC `{ac_id, reason}` |
+| `dependencies` | 승인된 의존성 범위 `{pip:[], npm:[]}`. 범위 밖 설치는 자동 허용되지 않고 사용자 입력이 필요하다 |
+| `tool_policy_digest` | 서버가 계산한 도구 정책 digest. 모델이 채우지 않는다 |
+
+의미 규칙(서버가 강제): 점검도 `manual_acceptance`도 없는 AC가 있으면 `PlanSupport.implementation_allowed=false`이며 승인 버튼은 막힌다. 다른 대안을 고르려면 `ChangePayload.alternative_id`를 담은 `request_changes`(scope=spec)를 보내고, 서버는 직전 초안을 `prior_draft`로 유지한 채 그 대안으로 다시 기획한다. 새 승인은 새 `plan_digest`를 만든다. 점검 명세·작업 분해·의존성은 승인된 `plan_digest`에 포함되므로 승인 후 변경은 재기획이다.
+
+`ChangePayload.alternative_id`(protocol)는 선택적 추가다.
