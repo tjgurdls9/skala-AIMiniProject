@@ -91,7 +91,7 @@ class DockerEnvironment:
         if manifest['resources']['network'] in networks:
             network = json.loads(self.engine.docker('network', 'inspect', manifest['resources']['network']))[0]
             require(network['Internal'] is True, 'FORBIDDEN', '생성 앱의 내부망 격리가 필요합니다.', 403)
-        return self.pipeline.preview_services(dict(image_digest=manifest['local_image_digest'], template_id=manifest.get('template_id', 'requests-v1')), self.operation(manifest), current)
+        return self.pipeline.preview_services(dict(image_digest=manifest['local_image_digest']), self.operation(manifest), current)
 
     def rollback(self, manifest):
         # The approved first-release rollback unpublishes this container and preserves its volume.
@@ -154,8 +154,7 @@ class ReleaseOperations:
                 'VERSION_CONFLICT', 'registry manifest와 검토한 로컬 이미지 결속을 확인하세요.')
         rollback = dict(action='unpublish_first_release', data_policy='preserve_volume_no_schema_migration', previous=None)
         configuration = dict(repository=repository, environment=environment, image_reference=image_reference,
-                             local_image_digest=candidate['image_digest'], proxy_image_digest=self.engine.runtime(),
-                             template_id=candidate.get('template_id', 'requests-v1'))
+                             local_image_digest=candidate['image_digest'], proxy_image_digest=self.engine.runtime())
         target = dict(gate='release', spec_version_id=snapshot['spec_version_id'], plan_digest=digest(package), commit_sha=candidate['commit_sha'],
                       image_digest=registry_digest, environment_id=environment['id'], environment_config_digest=digest(configuration),
                       rollback_manifest_digest=digest(rollback), review_report_ids=sorted(r['id'] for r in reports))

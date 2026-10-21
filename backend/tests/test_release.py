@@ -28,7 +28,7 @@ class ReleaseChecks(unittest.TestCase):
         spec_id = uid()
         package = dict(copy.deepcopy(test_runtime.PLAN), spec_version_id=spec_id, stack=['FastAPI', 'Vue 3', 'SQLite'],
                        repository={k: self.repository[k] for k in ('url', 'branch')}, deployment={k: self.environment[k] for k in ('id', 'label', 'exposure')},
-                       free_policy=POLICY, allowed_tools=['read_file'], contract_digests=plan_inputs())
+                       free_policy=POLICY, allowed_tools=['read_file'], contract_digests=plan_inputs('blank-v1'))
         candidate = dict(commit_sha='a' * 40, image_digest=self.local, path=str(Path(self.temp) / 'candidate'), manifest={})
         Path(candidate['path']).mkdir()
         with self.store.transaction() as db:

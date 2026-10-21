@@ -31,6 +31,7 @@ def http_check(ac):
 
 class Scripted(fixtures.FakeModel):
     """Answers each planning step; `overrides` lets a test replace one step's answer."""
+    answers_planning_extras = True
     def __init__(self, **overrides):
         self.calls, self.overrides = [], overrides
 

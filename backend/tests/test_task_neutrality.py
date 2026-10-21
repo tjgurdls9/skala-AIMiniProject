@@ -5,7 +5,7 @@ from pathlib import Path
 
 from backend.contracts import ROOT
 
-FORBIDDEN = re.compile(r'cafemap|kakao|geoapify|map_access|validate_cafemap|카공', re.I)
+FORBIDDEN = re.compile(r'cafemap|kakao|geoapify|map_access|validate_cafemap|카공|requests-v1|WRITABLE_FILES|PATCH_SCHEMA|patch_file|app_backend|app_frontend', re.I)
 SCANNED = ('runner', 'backend', 'infra', 'templates')
 SUFFIXES = {'.py', '.json', '.sh', '.js', '.html', '.css'}
 SKIPPED_PARTS = {'.venv', '__pycache__', 'node_modules'}
@@ -20,7 +20,7 @@ def scanned_files():
 
 class TaskNeutrality(unittest.TestCase):
     def test_the_pattern_catches_the_names_it_is_meant_to_forbid(self):
-        for name in ('cafemap-v1', 'backend/kakao.py', 'Geoapify', 'map_access', '카공지도'):
+        for name in ('cafemap-v1', 'backend/kakao.py', 'Geoapify', 'map_access', '카공지도', 'requests-v1', 'WRITABLE_FILES', 'patch_file', 'app_backend'):
             self.assertTrue(FORBIDDEN.search(name), name)
 
     def test_common_code_names_no_template_or_provider(self):

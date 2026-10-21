@@ -24,6 +24,7 @@ os.environ["LANGSMITH_TRACING"] = "false"
 os.environ["LANGCHAIN_TRACING_V2"] = "false"
 from langgraph.graph import END, START, StateGraph
 
+TOOLBOX_TOOLS = ["list_files", "read_file", "write_file", "delete_file", "move_file", "run_command", "run_tests", "install_dependencies"]
 POLICY = "Inference: local Ollama Qwen/DeepSeek only; no paid fallback or external model API. External data: verified free terms, explicit consent, fixed isolated access, no paid overage."
 
 
@@ -112,13 +113,13 @@ class Worker:
                         self.store.save(db, snapshot, "warning", snapshot["reason"])
                         db.execute("UPDATE jobs SET state='superseded' WHERE id=?", (row["id"],))
                         continue
-                    scope = db.execute("SELECT mode,files FROM task_scopes WHERE task_id=?", (task["id"],)).fetchone()
+                    scope = db.execute("SELECT files FROM task_scopes WHERE task_id=?", (task["id"],)).fetchone()
                     options["task_id"] = task["id"]
                     options.update(task_kind=task["work_kind"], task_title=task["title"], acceptance_ids=task["acceptance_ids"])
                     if package is not None and "dependencies" in package:   # the approved range; anything else escalates to the user
                         options["allowed_dependencies"] = {m: sorted({package_name(m, n) for n in package["dependencies"].get(m, [])}) for m in ("pip", "npm")}
                     if scope:
-                        options.update(task_mode=scope["mode"], writable_files=json.loads(scope["files"]), write_scope=json.loads(scope["files"]))
+                        options.update(write_scope=json.loads(scope["files"]))
                     task["state"] = "running"
                     task.pop("reason", None)
                     self.store.save(db, snapshot, "task_started", task["title"], bump=False, task_id=task["id"])
@@ -133,8 +134,9 @@ class Worker:
                               template_contract=template_contract(template_id),
                               recheck=POLICY)
                 if row["role"] == "planner":
-                    packet["next_action"] = ("Propose the smallest plan for template_contract. Preserve requested core features even when blocked; describe their dependency in constraints/assumptions, never silently replace maps with CRUD or invented places. "
-                        "Use the profile's protected_checks as observable evidence; missing external data remains not_run. No AI/auth/payment or other stacks. Never approve or execute.")
+                    packet["next_action"] = ("Propose the smallest plan that satisfies the request within template_contract. Preserve every requested core feature; "
+                        "record what it depends on in constraints/assumptions and never silently replace a requested capability with a different one. "
+                        "Missing external data or access stays unverified. Never approve or execute.")
                 attempt = uid()
                 db.execute("UPDATE jobs SET state='running', context=? WHERE id=?", (canonical(packet), row["id"]))
                 db.execute("INSERT INTO attempts VALUES (?, ?, ?, ?, ?)", (attempt, row["id"], self.owner, canonical(packet), now()))
@@ -185,9 +187,9 @@ class Worker:
                         "INVALID_COMMAND", "AC ID는 중복될 수 없습니다.", 422)
                 spec_id = uid()
                 extras = job.get("plan_extras")
-                package = {**proposal, "spec_version_id": spec_id, "stack": ["FastAPI", "Vue 3", "SQLite"],
+                package = {**proposal, "spec_version_id": spec_id, "stack": job["packet"]["template_contract"].get("stack", []),
                            "repository": None, "deployment": None,
-                           "free_policy": POLICY, "allowed_tools": ["read_file", "patch_file", "container_checks"],
+                           "free_policy": POLICY, "allowed_tools": TOOLBOX_TOOLS,
                            "contract_digests": plan_inputs(job["packet"]["template_contract"]["template"]),
                            "support": plan_support(job["packet"]["template_contract"]["template"], spec_id, job["packet"]["requests"])}
                 if extras:
@@ -196,7 +198,6 @@ class Worker:
                                  requires=["점검 명세를 추가하거나 '사람이 확인함'으로 명시하도록 기획 수정을 요청하세요."])
                             for a in proposal["acceptance"] if a["id"] in unverified_acceptance(proposal["acceptance"], extras["verification"], extras["manual_acceptance"])]
                     package.update(extras, tool_policy_digest=tool_policy_digest(),
-                                   allowed_tools=["list_files", "read_file", "write_file", "delete_file", "move_file", "run_command", "run_tests", "install_dependencies"],
                                    support=plan_support(job["packet"]["template_contract"]["template"], spec_id, job["packet"]["requests"], gaps))
                 validate("PlanView", package)
                 db.execute("INSERT INTO specs VALUES (?, ?, ?, ?)", (spec_id, snapshot["run_id"], canonical(package), now()))
@@ -211,16 +212,13 @@ class Worker:
                 snapshot["phases"].append(dict(id=phase_id, title="설계·구현", order=len(snapshot["phases"])))
                 snapshot["sprints"].append(dict(id=sprint_id, phase_id=phase_id, title="승인 기획 구현", goal=proposal["goal"],
                                                acceptance_ids=[a["id"] for a in proposal["acceptance"]]))
-                template = job["packet"]["template_contract"]
                 boundaries = self.store.artifact(db, snapshot, "contract", "분야별 작업·쓰기 경계", dict(
-                    tasks=extras["work_plan"] if extras else template["implementation_tasks"],
-                    omitted_work=extras["omitted_areas"] if extras else template["omitted_work"], spec_version_id=spec_id))
+                    tasks=extras["work_plan"] if extras else [], omitted_work=extras["omitted_areas"] if extras else [], spec_version_id=spec_id))
                 planning_task = uid()
                 snapshot["tasks"].append(dict(id=planning_task, phase_id=phase_id, sprint_id=sprint_id, spec_version_id=spec_id,
                     role="planner", work_kind="planning", title="원문·기획·지원 공백 검토", state="succeeded", depends_on=[],
                     acceptance_ids=[a["id"] for a in proposal["acceptance"]], artifact_ids=[specification["id"]]))
                 job["packet"]["options"]["task_id"] = planning_task
-                predecessor = [planning_task]
                 if extras:
                     ids = {item["id"]: uid() for item in extras["work_plan"]}
                     for item in extras["work_plan"]:
@@ -229,13 +227,6 @@ class Worker:
                             depends_on=[ids[d] for d in item["depends_on"]] or [planning_task],
                             acceptance_ids=item["acceptance_ids"], artifact_ids=[boundaries["id"]]))
                         db.execute("INSERT INTO task_scopes VALUES (?, ?, ?)", (ids[item["id"]], "edit", canonical(item["write_scope"])))
-                for scope in ([] if extras else template["implementation_tasks"]):
-                    task_id = uid()
-                    snapshot["tasks"].append(dict(id=task_id, phase_id=phase_id, sprint_id=sprint_id, spec_version_id=spec_id,
-                        role="builder", work_kind=scope["kind"], title=scope["title"], state="ready" if predecessor == [planning_task] else "pending",
-                        depends_on=predecessor, acceptance_ids=[a["id"] for a in proposal["acceptance"]], artifact_ids=[boundaries["id"]]))
-                    db.execute("INSERT INTO task_scopes VALUES (?, ?, ?)", (task_id, scope["mode"], canonical(scope["files"])))
-                    predecessor = [task_id]
                 if job.get("context_evidence"):
                     job["context_evidence"]["spec_version_id"] = spec_id
                 self.publish_evidence(db, snapshot, job)
@@ -271,17 +262,14 @@ class Worker:
                 job["retrieval_evidence"] = retrieval["evidence"]
                 require(retrieval["evidence"]["status"] != "search_error", "RUNTIME_UNAVAILABLE", "기획 검색 근거 준비에 실패했습니다. 로컬 자원을 확인하세요.")
                 job["packet"]["retrieved_documents"] = retrieval["documents"][:1]
-                authoring = job["packet"]["template_contract"].get("authoring") == "model"
-                if authoring:
-                    job["selected_alternative"] = self.selected_alternative(job)
+                job["selected_alternative"] = self.selected_alternative(job)
                 proposal = await PlanningContext(self.store).plan(job, self, SCHEMAS["http.v1.schema.json"]["$defs"]["PlanDraft"])
                 validate("PlanDraft", proposal)
                 require(not SECRET.search(canonical(proposal)), "INVALID_COMMAND", "모델 출력에 비밀정보가 포함됐습니다.", 422)
-                if authoring:
-                    extras = PlanExtras(self.store)
-                    job["plan_extras"] = await extras.alternatives(job, self, proposal)
-                    job["plan_extras"].update(await extras.work_plan(job, self, proposal))
-                    job["plan_extras"].update(await extras.verification(job, self, proposal, job["plan_extras"]["work_plan"]))
+                extras = PlanExtras(self.store)
+                job["plan_extras"] = await extras.alternatives(job, self, proposal)
+                job["plan_extras"].update(await extras.work_plan(job, self, proposal))
+                job["plan_extras"].update(await extras.verification(job, self, proposal, job["plan_extras"]["work_plan"]))
             await asyncio.to_thread(self.finish, job, proposal)
         except Exception as error:
             await asyncio.to_thread(self.finish, job, failure=failure_reason(error))

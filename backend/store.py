@@ -28,14 +28,6 @@ def artifact_content(row):
     return content
 
 
-def style_change(payload):
-    text = payload["feedback"].casefold()
-    # shortcut: only explicit CSS feedback reuses approval; ambiguous changes replan.
-    return (payload["scope"] == "implementation" and
-            bool(re.search(r"색|간격|여백|글꼴|폰트|레이아웃|배치|테두리|크기|색상|color|spacing|layout|font|css", text)) and
-            not re.search(r"기능|추가|삭제|인증|권한|결제|데이터|저장|api|stack|deploy|배포|new|add|remove|auth|data|storage|script", text))
-
-
 class Store:
     def __init__(self, path):
         self.path = path
@@ -199,9 +191,10 @@ class Store:
     @staticmethod
     def template_id(db, run_id):
         row = db.execute("SELECT template_id FROM run_templates WHERE run_id=?", (run_id,)).fetchone()
-        return row[0] if row else "requests-v1"
+        require(row is not None, "INVALID_STATE", "시작 프로젝트가 기록되지 않은 이전 실행은 계속할 수 없습니다. 기록은 읽기 전용입니다.")
+        return row[0]
 
-    def create_run(self, project_id, data, template_id="requests-v1"):
+    def create_run(self, project_id, data, template_id="blank-v1"):
         from backend.templates import template_path
         template_path(template_id)
         validate("RunCreate", data)
@@ -223,7 +216,9 @@ class Store:
                 snapshot.update(run_id=run_id, mode="replay", replay_source=copy.deepcopy(provenance))
                 db.execute("INSERT INTO runs VALUES (?, ?, ?, NULL, ?)",
                            (run_id, project_id, canonical(snapshot), source["run_id"]))
-                db.execute("INSERT INTO run_templates VALUES (?, ?)", (run_id, self.template_id(db, source["run_id"])))
+                recorded = db.execute("SELECT template_id FROM run_templates WHERE run_id=?", (source["run_id"],)).fetchone()
+                if recorded:   # recordings imported from an older ledger may not carry one; a replay never runs work
+                    db.execute("INSERT INTO run_templates VALUES (?, ?)", (run_id, recorded[0]))
                 # Artifact records are immutable; replay resolves IDs through its frozen source snapshot.
                 for row in rows:
                     event = json.loads(row[0])
@@ -303,28 +298,16 @@ class Store:
                 require(set(payload.get("artifact_ids", [])).issubset(known), "INVALID_COMMAND", "연결된 아티팩트가 필요합니다.", 422)
                 db.execute("INSERT INTO requests VALUES (?, ?, ?, ?, ?)",
                            (uid(), snapshot["project_id"], run_id, payload["feedback"], now()))
-                implementation = snapshot["state"] == "preview_ready" and style_change(payload)
                 for approval in snapshot["approvals"]:
-                    if not implementation or approval["target"]["gate"] != "plan":
-                        approval["state"] = "invalidated"
+                    approval["state"] = "invalidated"
                 for task in snapshot["tasks"]:
                     task["state"] = "superseded"
-                if implementation:
-                    phase_id, sprint_id = snapshot["phases"][-1]["id"], uid()
-                    previous = snapshot["sprints"][-1]
-                    snapshot["sprints"].append(dict(id=sprint_id, phase_id=phase_id, title="프리뷰 스타일 수정", goal=payload["feedback"], acceptance_ids=previous["acceptance_ids"]))
-                    snapshot["tasks"].append(dict(id=uid(), phase_id=phase_id, sprint_id=sprint_id,
-                        spec_version_id=snapshot["spec_version_id"], role="builder", work_kind="frontend", title="스타일 수정", state="pending",
-                        depends_on=[], acceptance_ids=previous["acceptance_ids"], artifact_ids=[]))
-                    options = {"writable_files": ["app_frontend/style.css"]}
-                    snapshot.update(state="building", reports=[], reason="스타일 수정 Sprint입니다. 같은 명세로 후보를 다시 검사합니다.")
-                else:
-                    if "alternative_id" in payload:
-                        row = db.execute("SELECT package FROM specs WHERE id=? AND run_id=?", (snapshot["spec_version_id"], run_id)).fetchone()
-                        shown = {a["id"] for a in (json.loads(row[0]).get("alternatives", []) if row else [])}
-                        require(payload["alternative_id"] in shown, "INVALID_COMMAND", "현재 기획에 없는 대안입니다.", 422)
-                        options = {"selected_alternative_id": payload["alternative_id"]}
-                    snapshot.update(state="planning", spec_version_id=None, reports=[], reason="변경 원문을 보존했습니다. 기획 재승인이 필요합니다.")
+                if "alternative_id" in payload:
+                    row = db.execute("SELECT package FROM specs WHERE id=? AND run_id=?", (snapshot["spec_version_id"], run_id)).fetchone()
+                    shown = {a["id"] for a in (json.loads(row[0]).get("alternatives", []) if row else [])}
+                    require(payload["alternative_id"] in shown, "INVALID_COMMAND", "현재 기획에 없는 대안입니다.", 422)
+                    options = {"selected_alternative_id": payload["alternative_id"]}
+                snapshot.update(state="planning", spec_version_id=None, reports=[], reason="변경 원문을 보존했습니다. 기획 재승인이 필요합니다.")
                 schedule, event_type, summary = True, "changes_requested", "변경 요청이 저장됐습니다."
             elif action == "decide":
                 approval = next((a for a in snapshot["approvals"] if a["id"] == payload["approval_id"]), None)

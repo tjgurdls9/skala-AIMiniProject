@@ -4,16 +4,11 @@ import copy
 import json
 import unittest
 import unittest.mock
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from backend.contracts import DomainError, canonical, digest, validate
 from knowledge import Corpus
-from runner.access import RoleScope, issue_grant
-from runner.context import implement
 from runner.model import ModelUnavailable, inference_slot
-from runner.sandbox import PATCH_SCHEMA
-import test_pipeline
 import test_runtime
 
 
@@ -75,46 +70,6 @@ class ThinkFlagChecks(unittest.IsolatedAsyncioTestCase):
         self.assertIs((await self.sent())['think'], False)
         self.assertIs((await self.sent(think=True))['think'], True)
         self.assertEqual((await self.sent(think=True))['options']['temperature'], 0)
-
-
-class ContextChecks(unittest.TestCase):
-    setUp = test_pipeline.PipelineChecks.setUp
-    live = test_pipeline.PipelineChecks.live
-    planned = test_pipeline.PipelineChecks.planned
-    command = test_pipeline.PipelineChecks.command
-    post_command = test_pipeline.PipelineChecks.post_command
-    approved = test_pipeline.PipelineChecks.approved
-    def test_patch_response_loss_is_reconciled_without_regeneration(self):
-        snapshot = self.approved()
-        with patch.object(self.worker.pipeline.engine, 'runtime', return_value='sha256:' + 'a' * 64):
-            asyncio.run(self.worker.tick())
-        job = self.worker.claim()
-        path = 'app_backend/main.py'
-        workspace = self.worker.pipeline.engine.workspace(job['run_id'], snapshot['spec_version_id'])
-        scope = RoleScope(self.store, issue_grant(self.store, job, workspace))
-        original = scope.read(path)
-        content = original['content'] + '\n/* synthetic recovery */'
-        calls = []
-        class Session:
-            lost = True
-            async def call_tool(self, name, args):
-                result = scope.patch(args['path'], args['content'], args['expected_digest'])
-                if self.lost:
-                    self.lost = False
-                    raise ModelUnavailable('synthetic lost acknowledgement')
-                return SimpleNamespace(isError=False, content=[SimpleNamespace(text=json.dumps(result))])
-        session = Session()
-        async def output(job, packet, schema):
-            calls.append(packet)
-            return dict(summary='synthetic', files=[dict(path=path, content=content)])
-        with patch.object(self.worker, 'infer', side_effect=output):
-            with self.assertRaises(ModelUnavailable):
-                asyncio.run(implement(self.store, session, job, self.worker, [original], [], [path], PATCH_SCHEMA))
-            self.assertEqual(scope.read(path)['content'], content)
-            asyncio.run(implement(self.store, session, job, self.worker, [scope.read(path)], [], [path], PATCH_SCHEMA))
-        self.assertEqual(len(calls), 1)
-        self.assertEqual(scope.read(path)['content'].count('synthetic recovery'), 1)
-        self.assertEqual(calls[0]['approved_spec']['acceptance'], test_runtime.PLAN['acceptance'])
 
 
 class KnowledgeChecks(unittest.TestCase):

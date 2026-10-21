@@ -44,18 +44,6 @@ def create_server(scope, corpus, embedding="", toolbox=None):
 
     if toolbox is not None and role in READ_ROLES:
         register_workspace_tools(server, toolbox, role)
-    elif role in READ_ROLES:
-        @server.tool()
-        def read_file(path: str) -> dict:
-            """Read an allowed candidate file; host paths and review files are forbidden."""
-            return scope.read(path)
-
-    if role == "builder" and toolbox is None:
-        @server.tool()
-        def patch_file(path: str, content: str, expected_digest: str | None = None) -> dict:
-            """Atomically replace one assigned file after checking its last digest."""
-            return scope.patch(path, content, expected_digest)
-
     return server
 
 

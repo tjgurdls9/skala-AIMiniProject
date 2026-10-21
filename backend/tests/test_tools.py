@@ -569,9 +569,8 @@ class McpWiringChecks(unittest.TestCase):
             self.assertTrue({'list_files', 'read_file'} <= self.names(role))
         self.assertEqual(self.names('planner') & (mutating | {'list_files', 'read_file'}), set())
 
-    def test_without_a_toolbox_the_legacy_patch_tool_is_unchanged(self):
-        self.assertIn('patch_file', self.names('builder', with_toolbox=False))
-        self.assertNotIn('write_file', self.names('builder', with_toolbox=False))
+    def test_without_a_toolbox_no_workspace_tool_exists(self):
+        self.assertEqual(self.names('builder', with_toolbox=False), {'search_documents'})
 
     def test_tool_call_through_mcp_writes_inside_scope_and_is_ledgered(self):
         run, server = self.server('builder', options=dict(task_id='t1', write_scope=['app/**']))
@@ -674,19 +673,6 @@ class RegistryProxyNetworkChecks(unittest.IsolatedAsyncioTestCase):
             await self.send(writer, 'CONNECT pypi.org:443 HTTP/1.1\r\n\r\n')
             self.assertIn(b'502', await reader.readline())
         writer.close()
-
-
-class FreezeGuardChecks(unittest.TestCase):
-    def test_a_workspace_with_a_symlink_is_never_frozen_into_a_candidate(self):
-        from runner.sandbox import Sandbox
-        temp = Path(self.enterContext(tempfile.TemporaryDirectory()))
-        workspace = temp / 'ws'
-        workspace.mkdir()
-        os.symlink(temp, workspace / 'link')
-        with self.assertRaises(DomainError) as caught:
-            Sandbox(temp / 'root').freeze(workspace)
-        self.assertEqual(caught.exception.code, 'FORBIDDEN')
-        self.assertFalse((temp / 'root' / 'candidates').exists() and any((temp / 'root' / 'candidates').iterdir()))
 
 
 class LedgerChecks(unittest.TestCase):

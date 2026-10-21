@@ -1,26 +1,16 @@
 """Fixed Docker operations. Model output never becomes a shell command or mount."""
 
 import argparse
-import hashlib
 import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import tempfile
 
 from backend.contracts import ROOT, SECRET, digest, require
-from backend.store import uid
 from backend.templates import template_path
-from runner.access import WRITABLE_FILES
 from runner.model import ModelUnavailable
-
-PATCH_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["summary", "files"], "properties": {
-    "summary": {"type": "string", "maxLength": 2000},
-    "files": {"type": "array", "maxItems": 4, "items": {"type": "object", "additionalProperties": False,
-        "required": ["path", "content"], "properties": {"path": {"enum": list(WRITABLE_FILES)},
-        "content": {"type": "string", "maxLength": 65536}}}}}}
 
 
 class Sandbox:
@@ -46,8 +36,7 @@ class Sandbox:
         try:
             value = json.loads((self.root / "runtime-image.json").read_text())
             require(bool(re.fullmatch(r"sha256:[a-f0-9]{64}", value["image_id"])), "RUNTIME_UNAVAILABLE", "고정 실행 이미지가 필요합니다.")
-            require(value.get("lock_digest") == digest((ROOT / "templates/requests-v1/requirements.lock").read_text()) and
-                    value.get("dockerfile_digest") == digest((ROOT / "infra/Dockerfile.runtime").read_text()),
+            require(value.get("dockerfile_digest") == digest((ROOT / "infra/Dockerfile.runtime").read_text()),
                     "RUNTIME_UNAVAILABLE", "실행 이미지 입력이 바뀌었습니다. 다시 준비하세요.")
             self.docker("image", "inspect", value["image_id"])
             return value["image_id"]
@@ -63,63 +52,18 @@ class Sandbox:
                         "-f", ROOT / "infra/Dockerfile.runtime", ROOT, timeout=600)
             image = iid.read_text().strip()
         value = {"image_id": image, "base_digest": base,
-                 "lock_digest": digest((ROOT / "templates/requests-v1/requirements.lock").read_text()),
                  "dockerfile_digest": digest((ROOT / "infra/Dockerfile.runtime").read_text())}
         (self.root / "runtime-image.json").write_text(json.dumps(value, indent=2) + "\n")
         return value
 
-    def runtime_reference(self):
-        image = self.runtime()
-        reference = "lifecycle-runtime:" + image.split(":")[1]
-        self.docker("tag", image, reference)
-        require(self.docker("image", "inspect", reference, "--format", "{{.Id}}").strip() == image,
-                "RUNTIME_UNAVAILABLE", "실행 이미지 참조가 일치하지 않습니다.")
-        return reference
-
-    def workspace(self, run_id, spec_id, template_id="requests-v1"):
+    def workspace(self, run_id, spec_id, template_id):
         require(all(re.fullmatch(r"[a-f0-9]{32}", part) for part in (run_id, spec_id)), "INVALID_COMMAND", "서버 발급 작업 ID가 필요합니다.", 422)
         path = self.root / "workspaces" / run_id / spec_id
         if not path.exists():
+            template_path(template_id)   # a starter ships no feature code: the workspace begins empty and the model authors everything
             path.mkdir(parents=True)
-            source = template_path(template_id)
-            legacy = [d for d in ("app_backend", "app_frontend") if (source / d).is_dir()]   # fixed starters ship app code; a blank one ships none
-            for directory in legacy:
-                shutil.copytree(source / directory, path / directory)
-            if legacy:
-                (path / ".dockerignore").write_text("*\n!app_backend/\n!app_backend/**\n!app_frontend/\n!app_frontend/**\n")
         require(not any(p.is_symlink() for p in path.rglob("*")), "FORBIDDEN", "작업 공간에 심볼릭 링크가 있습니다.", 403)
         return path
-
-    def freeze(self, workspace):
-        require(not any(p.is_symlink() for p in workspace.rglob("*") if ".git" not in p.parts), "FORBIDDEN",
-                "작업 공간에 심볼릭 링크가 있어 후보로 고정할 수 없습니다.", 403)
-        manifest = {str(p.relative_to(workspace)): hashlib.sha256(p.read_bytes()).hexdigest()
-                    for p in sorted(workspace.rglob("*")) if p.is_file() and ".git" not in p.parts}
-        candidate_id = digest(manifest).split(":")[1]
-        candidate = self.root / "candidates" / candidate_id
-        if not candidate.exists():
-            shutil.copytree(workspace, candidate)
-        for name, expected in manifest.items():
-            require(hashlib.sha256((candidate / name).read_bytes()).hexdigest() == expected,
-                    "TEMPORARILY_UNAVAILABLE", "후보 파일 무결성 실패입니다.", 503)
-        env = {"PATH": os.environ.get("PATH", os.defpath), "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull}
-        def git(*args):
-            return subprocess.check_output(["git", "-C", str(candidate), *args], env=env, stderr=subprocess.PIPE).decode().strip()
-        if not (candidate / ".git").exists():
-            git("init", "-b", "candidate")
-        try:
-            commit = git("rev-parse", "--verify", "HEAD")
-        except subprocess.CalledProcessError:
-            git("add", "app_backend", "app_frontend", ".dockerignore")
-            git("-c", "user.name=Lifecycle", "-c", "user.email=lifecycle@localhost", "-c", "commit.gpgsign=false", "commit", "-m", "Frozen generated candidate")
-            commit = git("rev-parse", "HEAD")
-        require(not git("status", "--porcelain"), "TEMPORARILY_UNAVAILABLE", "고정 후보의 Git 상태가 변경됐습니다.", 503)
-        with tempfile.TemporaryDirectory(dir=self.root) as temp:
-            iid = Path(temp) / "image-id"
-            self.docker("build", "--network=none", "--build-arg", "RUNTIME_IMAGE=" + self.runtime_reference(),
-                        "--iidfile", iid, "-f", ROOT / "infra/Dockerfile.candidate", candidate, timeout=120)
-            image = iid.read_text().strip()
-        return dict(candidate_id=candidate_id, commit_sha=commit, image_digest=image, manifest=manifest, path=str(candidate))
 
     @staticmethod
     def limits(name, network="none", tmp_megabytes=32, memory="512m"):

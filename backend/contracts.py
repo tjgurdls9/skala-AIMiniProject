@@ -37,12 +37,12 @@ def digest(value: object) -> str:
     return "sha256:" + hashlib.sha256(canonical(value).encode()).hexdigest()
 
 
-def plan_inputs(template_id="requests-v1"):
+def plan_inputs(template_id):
     from backend.templates import template_path
     template_path(template_id)
     files = ["docs/planning/" + name for name in SCHEMAS] + [
-        "templates/" + template_id + "/contract.json", "templates/requests-v1/requirements.lock",
-        "infra/Dockerfile.runtime", "infra/Dockerfile.candidate", "infra/checks/validate.py", "infra/checks/security.py", "infra/checks/preview.py", "runner/worker.py"]
+        "templates/" + template_id + "/contract.json", "infra/Dockerfile.runtime", "infra/checks/http_probe.py", "infra/checks/security.py",
+        "infra/checks/preview.py", "runner/worker.py"]
     return {name: "sha256:" + hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in files}
 
 

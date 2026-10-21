@@ -242,29 +242,6 @@ class SecurityArguments(unittest.TestCase):
         self.assertEqual(run[run.index('--unverified') + 1], 'ghost-package')    # a dependency that could not be resolved is flagged
         self.assertEqual(run[run.index('/checks/security.py') - 1], 'python')
 
-    def test_without_a_checker_image_the_fixed_stack_scan_is_unchanged(self):
-        calls = []
-        temp = Path(self.enterContext(tempfile.TemporaryDirectory()))
-
-        class Engine(FakeEngine):
-            root = temp
-
-            def runtime(self):
-                return 'sha256:' + 'd' * 64
-
-            def docker(self, *args, timeout=120):
-                calls.append([str(a) for a in args])
-                if args[0] == 'run':
-                    return json.dumps(dict(checks=dict(static=True, secrets=True), findings=[]))
-                if args[0] == 'inspect':
-                    return json.dumps([dict(HostConfig=dict(ReadonlyRootfs=True, Privileged=False, NetworkMode='none', CapDrop=['ALL']),
-                                            Config=dict(User='65534:65534'), Mounts=[dict(Destination='/checks', RW=False), dict(Destination='/candidate', RW=False)])])
-                return ''
-        Reviewer(Engine(lambda *a: {})).security(dict(path=str(temp), image_digest=IMAGE))
-        run = next(c for c in calls if c[0] == 'run')
-        self.assertNotIn('--model-authored', run)
-
-
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass

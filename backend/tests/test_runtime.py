@@ -25,12 +25,54 @@ PLAN = dict(goal="작은 문의 앱", features=["문의 목록"], non_goals=["�
             assumptions=["합성 데이터"], changes=[], acceptance=[dict(id="APP01", title="목록", description="문의 목록이 보인다")])
 
 
+def planning_extras(packet):
+    """Neutral answers for the planning steps after the plan itself (alternatives, work plan, per-AC check); None for any other call."""
+    step = packet.get("step")
+    if step == "alternatives":
+        return dict(alternatives=[dict(id="A", summary="현재 기획", differences="기준안", risks="범위가 넓음")], single_reason="요청이 한 가지 방식만 허용함")
+    if step == "work_plan":
+        ids = [a["id"] for a in packet["plan"]["acceptance"]]
+        return dict(work_plan=[dict(id="b1", kind="backend", title="서버", depends_on=[], acceptance_ids=ids, write_scope=["server/**"]),
+                               dict(id="f1", kind="frontend", title="화면", depends_on=["b1"], acceptance_ids=ids, write_scope=["web/**"])],
+                    omitted_areas=[dict(kind="infra", reason="추가 인프라 없음"), dict(kind="ai_data", reason="모델이 필요하지 않음")], dependencies=dict(pip=[], npm=[]))
+    if step == "verification":
+        ac = packet["acceptance_criterion"]["id"]
+        return dict(checks=[dict(id="x", ac_ids=[ac], kind="http", steps=[dict(method="GET", path="/health", expect=dict(status=200))])], manual_reason=None)
+    return None
+
+
+def extras_for(plan):
+    """The combined planning extras (as PlanExtras returns them) for `plan`, for tests that call Worker.finish directly."""
+    alternatives = planning_extras(dict(step="alternatives"))
+    work = planning_extras(dict(step="work_plan", plan=plan))
+    checks = [dict(planning_extras(dict(step="verification", acceptance_criterion=a))["checks"][0], id=a["id"] + "-1", ac_ids=[a["id"]]) for a in plan["acceptance"]]
+    return dict(alternatives=alternatives["alternatives"], selected_alternative_id="A", single_alternative_reason=alternatives["single_reason"],
+                work_plan=work["work_plan"], omitted_areas=work["omitted_areas"], dependencies=work["dependencies"],
+                verification=checks, manual_acceptance=[])
+
+
 class FakeModel:
+    """Answers the planning steps after the plan itself neutrally; a subclass's own `generate` only sees plan calls
+    unless it sets `answers_planning_extras = True` and scripts those steps itself."""
+    answers_planning_extras = False
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        own = cls.__dict__.get("generate")
+        if own is None:
+            return
+
+        async def generate(self, packet, schema, own=own):
+            extras = None if self.answers_planning_extras else planning_extras(packet)
+            return extras if extras is not None else await own(self, packet, schema)
+        cls.generate = generate
+
     async def status(self):
         return "ready"
 
     async def generate(self, packet, schema):
-        return copy.deepcopy(PLAN)
+        extras = planning_extras(packet)
+        return copy.deepcopy(PLAN) if extras is None else extras
 
 
 class RuntimeChecks(unittest.TestCase):

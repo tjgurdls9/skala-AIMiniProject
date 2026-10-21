@@ -45,11 +45,24 @@ class PostIntegrationChecks(unittest.TestCase):
         self.assertEqual(calls[1]['prior_values']['goal'], [digest(plan['goal'])])
         self.assertTrue(all(len(canonical(call).encode()) <= BUDGET for call in calls))
 
+    def test_support_is_per_plan_frozen_and_replay_keeps_it(self):
+        self.worker.heartbeat()
+        project = self.store.project(dict(title='synthetic', request='합성 개발 요청'))
+        source = self.store.create_run(project['project_id'], dict(mode='live'))
+        asyncio.run(self.worker.tick())
+        snapshot = self.store.snapshot(source['run_id'])
+        support = self.store.read_artifact(next(a for a in snapshot['artifacts'] if a['kind'] == 'spec')['id'])['support']
+        validate('PlanSupport', support)
+        self.assertEqual(support['spec_version_id'], snapshot['spec_version_id'])
+        self.assertTrue(support['implementation_allowed'])
+        replay = self.store.create_run(project['project_id'], dict(mode='replay', source_run_id=source['run_id']))
+        self.assertEqual(self.store.read_artifact(next(a['id'] for a in replay['artifacts'] if a['kind'] == 'spec'))['support'], support)
+
     def test_a_run_keeps_its_template_and_unknown_templates_are_refused(self):
         project = self.store.project(dict(title='synthetic', request='합성 개발 요청'))
         run = self.store.create_run(project['project_id'], dict(mode='live'), 'blank-v1')
         with self.assertRaises(sqlite3.IntegrityError), self.store.transaction() as db:
-            db.execute("UPDATE run_templates SET template_id='requests-v1' WHERE run_id=?", (run['run_id'],))
+            db.execute("UPDATE run_templates SET template_id='other-starter-v1' WHERE run_id=?", (run['run_id'],))
         with self.assertRaises(DomainError):
             self.store.create_run(project['project_id'], dict(mode='live'), '../escape')
 

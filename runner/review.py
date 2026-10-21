@@ -10,20 +10,13 @@ import subprocess
 import tempfile
 import time
 
-from backend.contracts import ROOT, DomainError, digest, require
+from backend.contracts import ROOT, DomainError, digest
 from backend.store import uid
 from runner.check_runner import CheckOutcome, acceptance_verdicts, evaluate
 from runner.commands import CommandResult, redact
 from runner.model import ModelUnavailable
 from runner.sandbox import Sandbox
 from runner.workspace import Workspace
-
-REVIEW_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["summary", "acceptance"], "properties": {
-    "summary": {"type": "string", "maxLength": 2000},
-    "acceptance": {"type": "array", "items": {"type": "object", "additionalProperties": False,
-        "required": ["id", "status", "evidence"], "properties": {"id": {"type": "string"},
-        "status": {"enum": ["met", "failed", "not_run"]}, "evidence": {"type": "array", "items": {"type": "string"}}}}}}}
-
 
 def scan_covered(report, scanner):
     descriptor = report["descriptor"]
@@ -103,36 +96,6 @@ class Reviewer:
         if not self.current():
             raise ModelUnavailable("Attempt superseded")
 
-    def validation(self, candidate):
-        network, app, checker = ("lifecycle-" + uid() for _ in range(3))
-        checks = ROOT / "infra/checks"
-        script = "validate.py"
-        try:
-            self.check_current()
-            self.engine.docker("network", "create", "--internal", network)
-            self.engine.start_candidate(candidate, network, app)
-            def check(mode, *args):
-                self.check_current()
-                return json.loads(self.engine.docker("run", "--rm", *self.engine.limits(checker, network),
-                    "--mount", f"type=bind,src={checks},dst=/checks,readonly", self.engine.runtime(),
-                    "python", "/checks/" + script, "http://" + app + ":8080", mode, *args))
-            exercise = check("exercise")
-            self.check_current()
-            self.engine.docker("restart", app)
-            persistence = check("persist", str(exercise.get("item_id")))
-            result = dict(checks={**exercise["checks"], **persistence["checks"]}, exercise=exercise, persistence=persistence,
-                          verifier_digest=digest((checks / script).read_text()))
-            if exercise.get("not_run"):
-                result.update(not_run=exercise["not_run"], reason=exercise["reason"])
-            return result
-        finally:
-            self.engine.cleanup(app)
-            self.engine.cleanup(checker)
-            try:
-                self.engine.docker("network", "rm", network)
-            except ModelUnavailable:
-                pass
-
     def model_validation(self, candidate, specs, checker_image):
         """Run the approved check specs against the frozen image; returns (outcomes, {"healthy": bool}). No model is involved."""
         network, app = "lifecycle-" + uid(), "lifecycle-" + uid()
@@ -184,20 +147,19 @@ class Reviewer:
         (self.engine.root / "scanner.json").write_text(json.dumps(result, indent=2) + "\n")
         return result
 
-    def security(self, candidate, checker_image=None, approved_dependencies=None):
+    def security(self, candidate, checker_image, approved_dependencies=None):
         name = "lifecycle-" + uid()
         checks = ROOT / "infra/checks"
-        command = ["python", "/checks/security.py"]
-        if checker_image is not None:   # model-authored candidate: allow only what the approved dependencies provide, resolved from the installed distributions
-            known = candidate.get("dependency_modules", {})
-            approved = [re.sub(r"[-_.]+", "-", d.split("==")[0]).lower() for d in (approved_dependencies or {}).get("pip", [])]
-            command += ["--model-authored", ",".join(sorted({m for d in approved for m in known.get(d, [])})),
-                        "--unverified", ",".join(d for d in approved if d not in known)]
+        # allow only what the approved dependencies provide, resolved from the installed distributions
+        known = candidate.get("dependency_modules", {})
+        approved = [re.sub(r"[-_.]+", "-", d.split("==")[0]).lower() for d in (approved_dependencies or {}).get("pip", [])]
+        command = ["python", "/checks/security.py", "--model-authored", ",".join(sorted({m for d in approved for m in known.get(d, [])})),
+                   "--unverified", ",".join(d for d in approved if d not in known)]
         try:
             self.check_current()
             value = json.loads(self.engine.docker("run", *self.engine.limits(name),
                 "--mount", f"type=bind,src={checks},dst=/checks,readonly",
-                "--mount", f"type=bind,src={candidate['path']},dst=/candidate,readonly", checker_image or self.engine.runtime(), *command))
+                "--mount", f"type=bind,src={candidate['path']},dst=/candidate,readonly", checker_image, *command))
             inspect = json.loads(self.engine.docker("inspect", name))[0]
             host = inspect["HostConfig"]
             value["checks"]["isolation"] = (host["ReadonlyRootfs"] and not host["Privileged"] and

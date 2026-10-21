@@ -2,20 +2,29 @@
 import asyncio
 import json
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import httpx
 
 from backend.contracts import DomainError, canonical, digest
 from runner.access import RoleScope, issue_grant
+from runner.check_runner import CheckOutcome
+from runner.pipeline import Pipeline
 from runner.review import Reviewer, scan_covered
 from runner.worker import Worker, failure_reason
 from runner.model import ModelUnavailable, sampling_schema
 import test_runtime as fixtures
 
 
+IMAGES = dict(python="python@sha256:" + "a" * 64, node="node@sha256:" + "b" * 64)
+
+
 class PipelineChecks(unittest.TestCase):
-    setUp = fixtures.RuntimeChecks.setUp
+    def setUp(self):
+        fixtures.RuntimeChecks.setUp(self)
+        self.worker.pipeline.executor = SimpleNamespace(images=IMAGES)   # the digest-pinned tool images; Docker is never started here
+
     live = fixtures.RuntimeChecks.live
     planned = fixtures.RuntimeChecks.planned
     command = fixtures.RuntimeChecks.command
@@ -31,13 +40,10 @@ class PipelineChecks(unittest.TestCase):
     def built(self, snapshot=None):
         snapshot = snapshot or self.approved()
         job = self.worker.claim()
-        workspace = self.worker.pipeline.engine.workspace(job["run_id"], snapshot["spec_version_id"])
-        candidate = dict(commit_sha="a" * 40, image_digest="sha256:" + "b" * 64, manifest={}, path=str(workspace))
-        async def output(packet, schema):
-            return dict(summary="synthetic unchanged template", files=[])
-        with patch.object(self.worker.pipeline.engine, "runtime", return_value=candidate["image_digest"]), \
-             patch.object(self.worker.pipeline.engine, "freeze", return_value=candidate), \
-             patch.object(self.worker.model, "generate", side_effect=output):
+        workspace = self.worker.pipeline.engine.workspace(job["run_id"], snapshot["spec_version_id"], "blank-v1")
+        candidate = dict(commit_sha="a" * 40, image_digest="sha256:" + "b" * 64, manifest={}, path=str(workspace), app=dict(runtime="python"))
+        with patch.object(Pipeline, "model_edit", new=AsyncMock()), patch("runner.pipeline.commit_task", return_value="a" * 40), \
+             patch("runner.pipeline.freeze_model", return_value=candidate):
             while job is not None:
                 asyncio.run(self.worker.pipeline.build(job, self.worker))
                 if self.store.snapshot(snapshot["run_id"])["state"] != "building":
@@ -46,12 +52,8 @@ class PipelineChecks(unittest.TestCase):
         return self.store.snapshot(snapshot["run_id"])
 
     def validator(self):
-        async def output(packet, schema):
-            self.assertNotIn("reports", packet)
-            self.assertNotIn("security_report", packet)
-            return dict(summary="synthetic", acceptance=[dict(id="APP01", status="met", evidence=["list"])])
-        with patch.object(Reviewer, "validation", return_value={"checks": {"list": True}}), \
-             patch.object(self.worker.model, "generate", side_effect=output):
+        """The approved checks decide; the planned check for APP01 is reported as passed."""
+        with patch.object(Reviewer, "model_validation", return_value=([CheckOutcome("APP01-1", "passed", "", {})], dict(healthy=True))):
             asyncio.run(self.worker.tick())
 
     def test_pending_review_hidden_and_not_run_blocks_preview(self):
@@ -76,28 +78,23 @@ class PipelineChecks(unittest.TestCase):
         replay = self.store.create_run(before["project_id"], {"mode": "replay", "source_run_id": before["run_id"]})
         self.assertEqual(self.store.acceptance_status(replay["run_id"]), published)
 
-    def test_implementation_dag_enforces_task_file_boundaries(self):
+    def test_implementation_dag_follows_the_approved_work_plan(self):
         snapshot = self.approved()
         builders = [t for t in snapshot["tasks"] if t["role"] == "builder"]
         planner = next(t for t in snapshot["tasks"] if t["role"] == "planner")
-        self.assertEqual([t["work_kind"] for t in builders], ["infra", "backend", "frontend", "integration"])
-        self.assertEqual([t["depends_on"] for t in builders], [[planner["id"]], [builders[0]["id"]], [builders[1]["id"]], [builders[2]["id"]]])
-        with patch.object(self.worker.pipeline.engine, "runtime", return_value="sha256:" + "a" * 64):
+        self.assertEqual([t["work_kind"] for t in builders], ["backend", "frontend"])
+        self.assertEqual([t["depends_on"] for t in builders], [[planner["id"]], [builders[0]["id"]]])
+        with patch.object(Pipeline, "model_edit", new=AsyncMock()), patch("runner.pipeline.commit_task", return_value="a" * 40):
             asyncio.run(self.worker.tick())
         job = self.worker.claim()
         self.assertEqual(job["packet"]["options"]["task_id"], builders[1]["id"])
-        self.assertEqual(job["packet"]["options"]["writable_files"], ["app_backend/main.py"])
-        workspace = self.worker.pipeline.engine.workspace(job["run_id"], snapshot["spec_version_id"])
-        scope = RoleScope(self.store, issue_grant(self.store, job, workspace))
-        other = scope.read("app_frontend/app.js")
-        with self.assertRaises(DomainError):
-            scope.patch(other["path"], other["content"], other["content_digest"])
+        self.assertEqual(job["packet"]["options"]["write_scope"], ["web/**"])
         with self.store.transaction() as db:
             task = next(t for t in self.store.load(db, snapshot["run_id"])["tasks"] if t["id"] == builders[0]["id"])
             self.assertEqual(task["state"], "succeeded")
             self.assertEqual(len(db.execute("SELECT * FROM candidates").fetchall()), 0)
 
-    def test_review_same_candidate_gate_and_style_write_boundary(self):
+    def test_review_same_candidate_gate_and_every_change_request_replans(self):
         before = self.built()
         self.validator()
         with patch.object(Reviewer, "security", return_value={"verdict": "pass", "checks": {"synthetic": True}}):
@@ -114,28 +111,13 @@ class PipelineChecks(unittest.TestCase):
         with self.store.transaction() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM operations").fetchone()[0], 0)
             db.execute("UPDATE runs SET snapshot=? WHERE id=?", (canonical(ready), ready["run_id"]))
-        response = self.post_command(self.command(ready, "request_changes", {"scope": "implementation", "feedback": "배경색과 여백을 바꿔 주세요"}))
+        response = self.post_command(self.command(ready, "request_changes", {"scope": "implementation", "feedback": "화면 배치를 바꿔 주세요"}))
         self.assertEqual(response.status_code, 202, response.text)
-        changed = self.store.snapshot(ready["run_id"])
-        self.assertEqual(changed["state"], "building")
-        self.assertEqual(changed["spec_version_id"], ready["spec_version_id"])
-        self.assertFalse(changed["reports"])
-        current_ac = self.client.get(f"/api/runs/{changed['run_id']}/acceptance").json()
-        self.assertEqual(current_ac["items"], [{"id": "APP01", "status": "unmet"}])
-        self.assertTrue(self.store.read_artifact(ready["reports"][0]["artifact_id"]))  # Old evidence remains historical.
-        builder = self.worker.claim()
-        workspace = self.worker.pipeline.engine.workspace(builder["run_id"], changed["spec_version_id"])
-        scope = RoleScope(self.store, issue_grant(self.store, builder, workspace))
-        with self.assertRaises(DomainError):
-            scope.patch("app_backend/main.py", "changed", digest((workspace / "app_backend/main.py").read_text()))
-        old = scope.read("app_frontend/style.css")
-        scope.patch(old["path"], old["content"] + "\n/* synthetic */", old["content_digest"])
-        feature = self.post_command(self.command(changed, "request_changes", {"scope": "implementation", "feedback": "색 변경과 결제 기능 추가"}))
-        self.assertEqual(feature.status_code, 202)
-        replanned = self.store.snapshot(changed["run_id"])
-        self.assertEqual(replanned["state"], "planning")
+        replanned = self.store.snapshot(ready["run_id"])
+        self.assertEqual(replanned["state"], "planning")      # no wording is treated as a small change that may reuse the old approval
         self.assertIsNone(replanned["spec_version_id"])
         self.assertTrue(all(a["state"] == "invalidated" for a in replanned["approvals"]))
+        self.assertTrue(self.store.read_artifact(ready["reports"][0]["artifact_id"]))  # Old evidence remains historical.
 
     def test_old_mcp_grant_denied_after_lease_takeover(self):
         snapshot = self.approved()
@@ -149,21 +131,19 @@ class PipelineChecks(unittest.TestCase):
         with self.assertRaises(DomainError):
             RoleScope(self.store, token).resource("spec")
 
-    def test_sampling_keeps_server_schema_and_path_enum(self):
-        from runner.sandbox import PATCH_SCHEMA
-        sampled = sampling_schema(PATCH_SCHEMA)
+    def test_sampling_keeps_server_schema_and_enums(self):
+        schema = {"type": "object", "properties": {"path": {"enum": ["a", "b"]}, "content": {"type": "string", "maxLength": 65536}}}
+        sampled = sampling_schema(schema)
         self.assertNotIn("maxLength", canonical(sampled))
-        self.assertEqual(PATCH_SCHEMA["properties"]["files"]["items"]["properties"]["content"]["maxLength"], 65536)
-        self.assertEqual(sampled["properties"]["files"]["items"]["properties"]["path"], PATCH_SCHEMA["properties"]["files"]["items"]["properties"]["path"])
+        self.assertEqual(schema["properties"]["content"]["maxLength"], 65536)
+        self.assertEqual(sampled["properties"]["path"], schema["properties"]["path"])
         self.assertEqual(failure_reason(ExceptionGroup("stdio", [ModelUnavailable()]))[0], "waiting_resource")
 
     def test_stale_review_cannot_publish(self):
         before = self.built()
         job = self.worker.claim()
         self.post_command(self.command(before, "pause"))
-        async def output(packet, schema):
-            return dict(summary="late", acceptance=[])
-        with patch.object(Reviewer, "validation", return_value={"checks": {}}), patch.object(self.worker, "infer", side_effect=output):
+        with patch.object(Reviewer, "model_validation", return_value=([CheckOutcome("APP01-1", "passed", "", {})], dict(healthy=True))):
             asyncio.run(self.worker.pipeline.review(job, self.worker))
         self.assertEqual(self.store.snapshot(before["run_id"])["state"], "paused")
         with self.store.transaction() as db:
