@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import type { PlanView } from '../api/types'
 import { shortDigest } from '../model/labels'
+import { supportVerdict } from '../model/planSupport'
+import PlanSupportBody from './PlanSupportBody.vue'
 
-/** 기획 패키지(http.PlanView) 읽기 전용 표시. 저장소·배포 대상 null은 미설정이며 외부 부작용을 허용하지 않는다. */
-defineProps<{ plan: PlanView }>()
+/**
+ * 기획 패키지(http.PlanView) 읽기 전용 표시. 저장소·배포 대상 null은 미설정이며 외부 부작용을 허용하지 않는다.
+ * CR-C14 지원 공백도 함께 읽기 전용으로 보여 준다. 승인 화면은 결정용 지원 구역을 따로 그리므로 showSupport=false로 끈다.
+ */
+withDefaults(defineProps<{ plan: PlanView; showSupport?: boolean }>(), { showSupport: true })
 </script>
 
 <template>
   <div class="plan">
+    <PlanSupportBody v-if="showSupport" :verdict="supportVerdict(plan)" read-only />
     <section>
       <h3>목표</h3>
       <p>{{ plan.goal }}</p>

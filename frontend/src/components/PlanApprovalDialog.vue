@@ -105,7 +105,7 @@ async function decide(decision: 'approve' | 'reject'): Promise<void> {
           표시 중인 기획({{ plan.spec_version_id }})과 승인 대상({{ approval.target.spec_version_id }})의 버전이 다릅니다. 최신 대상을 다시 여세요.
         </p>
         <PlanSupportBody v-if="support" :verdict="support" @reload="loadPlan(specArtifactId)" />
-        <PlanViewBody :plan="plan" />
+        <PlanViewBody :plan="plan" :show-support="false" />
       </template>
       <label class="field">
         의견
