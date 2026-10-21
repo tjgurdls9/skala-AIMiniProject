@@ -24,6 +24,9 @@
 - 현재 추가 대기 조건: 사용자의 **외부 연결 보류를 유지**하므로 공급자/키/위치 권한·무료 자격과 실제 사람 기획 승인 없이는 카공지도 구현/후보·두 검토·프리뷰 수정으로 진입하지 않는다. 실제 출시 대상/승인도 없으므로 출시 API는 비활성이다. 이 조건을 해제하거나 사람의 거절·수정을 임의 생성하지 않는다. 상대 완료 커밋은 통합됐으며 별도 관제 대기를 새로 만들지 않았다.
 - 준비된 후속 검토 패키지는 과거 제출 후보를 덮어쓰지 않고 `runtime-data/submission-check/skala-lifecycle-post-integration-review.tar.gz`로 새로 만든다. 실제 기획 대기와 과거 합성 개발 검토 기록을 구분하고 코드/lock·빌드·보고서·hash·검토용 공개 기록만 포함한다. 패키지 자체 import/보존 검사와 digest는 생성 후 이 절에 기록한다.
 - 최종 보존 대조: 원본 backend/runner 초기 8개는 049ed58과 바이트 동일. root main은 6cc9a0b, 두 작업 브랜치/경로 유지. 원본의 다른 기획·Claude 인계·untracked 초안 변경은 보존했다. 제공자/소비자 protocol·HTTP hash가 동일함을 확인했다.
+- **후속 검토 패키지 생성/검증 완료**: 코드 **603d02c350f2565275a44cbcf6c2be7760d59d3e**, `runtime-data/submission-check/skala-lifecycle-post-integration-review.tar.gz`와 `.sha256`, **189파일/601,791bytes**, tar SHA256 **20e2de2b6ac2d84f3bd5550bc2028e043c58524fd68e8e2f2c1d3623a59922f4**. 과거 1dd51e3 패키지는 보존했다. 동봉 actual-cafemap-pending의 manifest **sha256:b117a336056ae7cac2ef9d4a1ce74b29bdb1a153fb07c7a970f8dd7461695c3d**, synthetic-development-reviewed는 **sha256:078e45a146684dee6c7601c4edc2a51d33cc91114990b1c46863d35d5db14e2d**다. exporter 버전 갱신으로 앞선 2dcbd46 capsule digest와 다르며 원래 사건/명세는 보존된다.
+- 패키지 자체 모듈+기존 격리 locked venv에서 두 기록을 새 별도 DB로 import/re-export해 exporter revision=null·replay·권한 원장 4종 0건을 확인했다. 이번에 새 venv/의존성을 다시 설치한 것은 아니다. 검증 스크립트가 열어 둔 SQLite cursor 때문에 최초 확인은 lock으로 실패했고 cursor를 닫은 뒤 통과했다(제품 변경 없음, KEYLESS_CHECK에 명시). tar 목록/각 파일 SHA256와 DB/키·가중치·venv/node_modules/cache 제외도 검사했다. 실제 배포/전체 수용 제출본이 아니다.
+- **최종 서비스/대기**: 실제 API **51993/PTY58209**와 worker **PTY21788**은 사용자 검토를 위해 유지한다(소유자 Codex). 별도 재생 API **52005/PTY51654, 8016**은 확인 뒤 정상 종료했다. 사용자 검토 탭은 실제 LIVE 주소에 유지한다. 최종 GET에서 ready/단일 슬롯·v8/seq14·승인 결정/구현 jobs/grants/operations 0건을 확인했다. 외부 연결 결정 보류와 미승인 조건 때문에 S09 실제 앱·후보/수정 수용, S10/S11 실제 출시/복구는 미완료다. Claude 추가 요청 없이 완료 인계 1f1953a까지 통합했다. 자동 세션 전달/추가 agent/외부 push·배포는 하지 않았다.
 
 
 
@@ -34,7 +37,7 @@
 | DEV-P/S | 현재 구현·근거·다음 입력 |
 |---|---|
 | P01/S01 | 원본의 검토한 계획/진입점/프롬프트 10개를 명시 반영. Git/worktree·무료 모델/실행기·소유 경계의 기존 근거 유지. 원본 제품 초안은 가져오지 않음 |
-| P01/S02 | CR-C14/15 원래 번호로 계약·소비자·실제 기획 공백/출시 미설정 연결. Claude 78acde0까지 통합, 프론트 245개·타입/빌드 통과. 기획 아티팩트 공백 표시 c892a7f까지 통합·재생 확인, 최신 후보 수정·재검토 수용은 별도 |
+| P01/S02 | CR-C14/15 원래 번호로 계약·소비자·실제 기획 공백/출시 미설정 연결. Claude 1f1953a까지 통합, 프론트 245개·타입/빌드 통과. 기획 아티팩트 공백 표시 c892a7f까지 통합·재생 확인, 최신 후보 수정·재검토 수용은 별도 |
 | P02/S03 | lease/시도/버전 fence·실제 자식 프로세스 인계 검사·손상 artifact 503·attempt별 프리뷰·취소 자원 조정 구현. 실제 모델/Docker 프로세스 강제 종료·응답 유실의 종합 수용은 미확인 |
 | P02/S04 | 원문 조각/정정 증거·최신 AC·영속 checkpoint/패치 의도·유실 조정 구현/검사. CT40은 c8bbdd7에서 철회/대체를 활성 조건 합집합으로 남기지 않도록 보완. 실제 모델 정정 품질과 필수 집합/한 파일 초과 needs_input 경계는 별도 |
 | P02/S05 | 로컬 Qwen3-Embedding/ACL·버전 cache·단일 추론 lock/순차 unload 및 공개 근거 연결 구현. 실제 의미 검색 6.6초(키워드 0→semantic found), 역할/오류 경계 검사. 일반 검색 품질·장비 전체 경합은 보증하지 않음 |

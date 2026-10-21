@@ -57,6 +57,8 @@ Claude 최종 인계의 임시 파일 서버 접근 제한 우회 정정은 기�
 
 이전 후보 `runtime-data/submission-check/skala-lifecycle-review.tar.gz`는 1dd51e3의 당시 확인 범위로 보존한다. 후속 후보는 `runtime-data/submission-check/skala-lifecycle-post-integration-review.tar.gz`와 `.sha256`이며 생성/검증 결과는 최신 Codex 인계가 기준이다. 포함한 코드의 revision, public recording manifest, 파일별 hash는 `CHECKSUMS.json`, 실제 분리 환경 확인은 `KEYLESS_CHECK.json`을 따른다. 키·원본 DB·가중치·venv·node_modules/cache는 제외한다. 실제 배포/전체 사용자 수용의 증거로 취급하지 않는다.
 
+후속 패키지: 코드 `603d02c350f2565275a44cbcf6c2be7760d59d3e`, 189파일/601,791bytes, tar SHA256 `20e2de2b6ac2d84f3bd5550bc2028e043c58524fd68e8e2f2c1d3623a59922f4`. CHECKSUMS/KEYLESS_CHECK/REVIEW와 두 공개 기록을 포함한다. 실제 카공지도는 기획 대기(14사건/8artifact/보고서0), 과거 합성 문의 검토는 11사건/9artifact/보고서2로 구분했다. 패키지 자체 코드와 기존 locked venv로 새 DB import/re-export·상위 Git 오인 없음·권한 원장0·파일별 hash를 확인했다. 새 설치 검사와 실제 배포/수용은 아니다.
+
 ## 열람 재현
 
 [backend README](../../backend/README.md)의 키·모델 없는 기록 열람 절을 따른다. API만 실행해 사무실에서 기록을 연다. CLI export/import, 최대 16 MiB, 서명 없는 출처/해시·개인 로컬 모드 경계를 확인한다. LIVE는 별도로 로컬 Qwen/DeepSeek·Ollama/단일 슬롯, 격리 이미지·scanner DB와 worker가 필요하다. 배포가 자동 활성화되지는 않는다.
