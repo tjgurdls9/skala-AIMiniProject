@@ -2,7 +2,7 @@ import { computed, ref, shallowRef } from 'vue'
 import { ApiError } from '../api/errors'
 import type { RunSource } from '../api/source'
 import type { AcceptanceStatus, ChangePayload, Command, CommandReceipt, DecisionPayload, RunEvent, Snapshot } from '../api/types'
-import { classifyEvent, needsSnapshot } from '../model/eventStream'
+import { classifyEvent, isOlderSnapshot, needsSnapshot } from '../model/eventStream'
 
 /** 실행 상태와 별개의 연결 상태. 연결 끊김을 실행 실패로 표시하지 않는다. */
 export type ConnectionState = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'resyncing' | 'closed'
@@ -81,7 +81,7 @@ export function useRun(source: RunSource) {
 
   function applySnapshot(next: Snapshot): void {
     const current = snapshot.value
-    if (current && next.state_version < current.state_version) return // 늦게 도착한 이전 버전은 무시
+    if (current && isOlderSnapshot(next, current)) return // 늦게 도착한 옛 스냅샷은 무시
     // 버전 증가만으로는 내 명령의 반영인지 알 수 없다(다른 작업도 버전을 올린다). 확인 표시는 건드리지 않는다.
     snapshot.value = next
     // 업무 상태나 명세가 바뀌었으면 AC 판정도 다시 읽는다

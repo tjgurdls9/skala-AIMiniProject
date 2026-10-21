@@ -28,9 +28,9 @@ describe('사건 수신 판정', () => {
     expect(classifyEvent(5, { seq: 9 })).toEqual({ kind: 'gap', expected: 6, got: 9 })
   })
   test('더 새 상태 버전 사건이면 스냅샷을 다시 읽는다', () => {
-    expect(needsSnapshot({ state_version: 3 }, { state_version: 4 })).toBe(true)
-    expect(needsSnapshot({ state_version: 3 }, { state_version: 3 })).toBe(false)
-    expect(needsSnapshot(null, { state_version: 0 })).toBe(true)
+    expect(needsSnapshot({ last_event_seq: 10 }, { seq: 11 })).toBe(true)
+    expect(needsSnapshot({ last_event_seq: 10 }, { seq: 10 })).toBe(false) // 스냅샷에 이미 반영된 사건
+    expect(needsSnapshot(null, { seq: 1 })).toBe(true)
   })
   test('SSE data는 같은 실행의 protocol.Event 형태만 받는다', () => {
     const [event] = buildEvents([['warning', '경고', {}]])
