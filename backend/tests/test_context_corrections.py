@@ -102,6 +102,8 @@ class CorrectionChecks(unittest.TestCase):
         asyncio.run(self.worker.tick())
         self.assertTrue(seen)
         self.assertTrue(all(p['approved_spec'] is None for p in seen))
+        # The unapproved draft still reaches the planner, in its own clearly labelled slot.
+        self.assertTrue(all(p['prior_draft']['goal'] == OLD['goal'] and '범위 아님' in p['prior_draft']['note'] for p in seen))
 
     def test_unexplained_model_omission_does_not_create_current_plan(self):
         class Forgetting(Correcting):

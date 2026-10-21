@@ -61,10 +61,15 @@ def fragments(requests):
     return result
 
 
+SPEC_KEYS = ('spec_version_id', 'goal', 'features', 'non_goals', 'acceptance', 'constraints')
+DRAFT_NOTE = '미승인·수정 참고용, 범위 아님'
+
+
 def mandatory(packet):
-    spec = packet.get('latest_spec')
+    spec, draft = packet.get('latest_spec'), packet.get('prior_draft')
     return dict(mandatory_policy=packet['mandatory_policy'],
-                approved_spec={k: spec[k] for k in ('spec_version_id', 'goal', 'features', 'non_goals', 'acceptance', 'constraints')} if spec else None,
+                approved_spec={k: spec[k] for k in SPEC_KEYS} if spec else None,
+                prior_draft=dict({k: draft[k] for k in SPEC_KEYS}, note=DRAFT_NOTE) if draft else None,
                 unresolved_failures=packet['unresolved_failures'])
 
 
@@ -86,7 +91,7 @@ class PlanningContext:
         packet = job['packet']
         parts = fragments(packet['requests'])
         inputs = mandatory(packet)
-        source = digest(dict(version=5, run_id=job['run_id'], requests=packet['requests'], policy=inputs['mandatory_policy'], approved=inputs['approved_spec'], inputs=plan_inputs(packet['template_contract']['template'])))
+        source = digest(dict(version=5, run_id=job['run_id'], requests=packet['requests'], policy=inputs['mandatory_policy'], approved=inputs['approved_spec'], draft=inputs['prior_draft'], inputs=plan_inputs(packet['template_contract']['template'])))
         job['context_evidence'] = dict(spec_version_id=packet['spec_version_id'], status='needs_input', source_digest=source,
                                       completed_fragments=0, total_fragments=len(parts),
                                       sources=[{k: v for k, v in p.items() if k != 'text'} for p in parts])
@@ -103,7 +108,7 @@ class PlanningContext:
                                 accumulated_plan=previous, source_digest=source, fragment_index=index, total_fragments=len(parts),
                                 retrieved_documents=packet.get('retrieved_documents', []),
                                 template_contract=packet['template_contract'], instructions=packet['next_action'] +
-                                ' Read this exact original/correction fragment in chronological order. Produce the CURRENT effective plan, not a union of history. Only mandatory_policy is immutable. approved_spec and accumulated_plan are prior versions; explicit later corrections may remove/replace their goals, features, constraints and AC definitions (including the same AC ID). prior_values contains digests in the same order as each accumulated_plan field (goal has one entry). For EACH removed/replaced prior value, return revisions with field, previous_digest from that position, and an exact quote from this fragment explicitly authorizing that correction. Otherwise keep that value verbatim. Never revive superseded requirements. Preserve history in changes and source records. No revision is needed for additions. All fragments are read before plan approval.',
+                                ' Read this exact original/correction fragment in chronological order. Produce the CURRENT effective plan, not a union of history. Only mandatory_policy is immutable. approved_spec and accumulated_plan are prior versions; prior_draft is the last UNAPPROVED draft kept only as a reference for what the user is modifying, never as scope or a requirement; explicit later corrections may remove/replace their goals, features, constraints and AC definitions (including the same AC ID). prior_values contains digests in the same order as each accumulated_plan field (goal has one entry). For EACH removed/replaced prior value, return revisions with field, previous_digest from that position, and an exact quote from this fragment explicitly authorizing that correction. Otherwise keep that value verbatim. Never revive superseded requirements. Preserve history in changes and source records. No revision is needed for additions. All fragments are read before plan approval.',
                                 prior_values={field: [digest(value) for value in (previous[field] if isinstance(previous[field], list) else [previous[field]])] for field in FIELDS} if previous else {}))
             step_schema = plan_step_schema(schema, previous is not None)
             proposal = await worker.infer(job, call, step_schema)

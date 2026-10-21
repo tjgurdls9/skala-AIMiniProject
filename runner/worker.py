@@ -117,7 +117,8 @@ class Worker:
                     self.store.save(db, snapshot, "task_started", task["title"], bump=False, task_id=task["id"])
                 packet = dict(role=row["role"], run_id=row["run_id"], state_version=row["version"],
                               spec_version_id=snapshot["spec_version_id"], requests=requests,
-                              latest_spec=package if approved else None,  # an unapproved draft is history, never the approved scope
+                              latest_spec=package if approved else None,
+                              prior_draft=package if package and not approved else None,  # unapproved: modification reference, never scope
                               mandatory_policy=POLICY, permissions=["propose_plan"] if row["role"] == "planner" else [],
                               unresolved_failures=list(dict.fromkeys(options.get("unresolved_failures", []) + ([snapshot["reason"]] if snapshot.get("reason") else []))),
                               next_action="Propose one plan. Preserve corrections, list assumptions; never approve or execute tools.",
