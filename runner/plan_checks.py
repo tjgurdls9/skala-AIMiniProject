@@ -55,6 +55,10 @@ def check_work_plan(work_plan, omitted_areas, acceptance):
     errors += [f"작업 ID가 중복됐습니다: {name}" for name in sorted({n for n in ids if ids.count(n) > 1})]
     known, ac_ids = set(ids), [a["id"] for a in acceptance]
     for entry in work_plan:
+        for scope in entry["write_scope"]:
+            parts = scope.split("/")
+            if scope.startswith("/") or ".." in parts or ".git" in parts:
+                errors.append(f"{entry['id']}: write_scope는 작업 공간 기준 상대 경로 glob이어야 합니다(앞에 /를 붙이지 않고 dir/** 또는 dir/file.ext 형식, '..'과 .git 불가): {scope[:200]}")
         errors += [f"{entry['id']}: 없는 작업에 의존합니다: {d}" for d in entry["depends_on"] if d not in known]
         errors += [f"{entry['id']}: 알 수 없는 AC {a}" for a in entry["acceptance_ids"] if a not in ac_ids]
     closure = _reachable(work_plan)

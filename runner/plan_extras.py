@@ -55,6 +55,17 @@ def sampling_verification_schema():
     return schema
 
 
+SCOPE_PATTERN = "^[^/ ][^ ]*$"   # a write scope is a workspace-relative glob: no leading slash; no backslash, which Ollama's grammar rejects
+
+
+def sampling_work_plan_schema():
+    """The work-plan answer shape the model is sampled with; the server still validates the contract schema and check_work_plan."""
+    schema = copy.deepcopy(WORK_PLAN_SCHEMA)
+    scope = schema["properties"]["work_plan"]["items"]["properties"]["write_scope"]
+    scope["items"] = dict(scope["items"], pattern=SCOPE_PATTERN)
+    return schema
+
+
 def summary(plan):
     return {k: plan[k] for k in ("goal", "features", "non_goals", "constraints")} | dict(
         acceptance=[dict(id=a["id"], title=a["title"], description=a["description"]) for a in plan["acceptance"]])
@@ -134,7 +145,7 @@ class PlanExtras:
                          "write_scope (glob paths this item alone writes). Items that are not ordered by depends_on must not share paths. "
                          "Every AC must be linked to an item. An area judged needed must have at least one work item of that kind; an area judged "
                          "not needed must have none. Put the packages the work needs in dependencies.pip / dependencies.npm."),
-            WORK_PLAN_SCHEMA, check)
+            WORK_PLAN_SCHEMA, check, sampling_work_plan_schema())
         return dict(work_plan=value["work_plan"], omitted_areas=omitted_areas(value["areas"]), dependencies=value.get("dependencies", {}))
 
     async def verification(self, job, worker, plan, work_plan):

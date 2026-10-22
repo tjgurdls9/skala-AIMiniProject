@@ -207,6 +207,36 @@ class ConstrainedVerificationSchema(unittest.TestCase):
         self.assertIn('node', errors[0])
 
 
+class ConstrainedWorkPlanSchema(unittest.TestCase):
+    setUp = extras.PlanExtrasChecks.setUp
+    command = extras.PlanExtrasChecks.command
+    post_command = extras.PlanExtrasChecks.post_command
+    start = extras.PlanExtrasChecks.start
+
+    def test_a_write_scope_cannot_start_with_a_slash_in_the_format_the_model_is_sampled_with(self):
+        import re
+        from runner.plan_extras import sampling_work_plan_schema
+        scope = sampling_work_plan_schema()['properties']['work_plan']['items']['properties']['write_scope']['items']
+        self.assertNotIn('\\', scope['pattern'])
+        for good in ('app/**', 'web/*.js', '**/tests/**', 'lifecycle.app.json'):
+            self.assertTrue(re.search(scope['pattern'], good), good)
+        for bad in ('/app/**', '/docker-compose.yml', ' x'):
+            self.assertIsNone(re.search(scope['pattern'], bad), bad)
+
+    def test_the_work_plan_is_sampled_with_the_constrained_schema(self):
+        seen = []
+
+        class Recording(extras.Scripted):
+            async def generate(inner, packet, schema):
+                if packet.get('step') == 'work_plan':
+                    seen.append(schema)
+                return await super().generate(packet, schema)
+        run_id = self.start(Recording())
+        asyncio.run(self.worker.tick())
+        self.assertEqual(self.store.snapshot(run_id)['state'], 'awaiting_plan_approval')
+        self.assertTrue(seen and 'pattern' in json.dumps(seen[0]['properties']['work_plan']['items']['properties']['write_scope']))
+
+
 class AlternatingMistakes(unittest.TestCase):
     """Live run b7630a: the model alternated between two wrong answers, so "the same error twice in a row" never happened."""
     setUp = extras.PlanExtrasChecks.setUp

@@ -129,6 +129,27 @@ class VerificationChecks(unittest.TestCase):
         self.assertEqual(unverified_acceptance(AC, [], []), ['AC1', 'AC2'])
 
 
+class WriteScopeShape(unittest.TestCase):
+    """Live run fa83e2: every write scope began with a slash, which can never match a workspace-relative file name."""
+    def plan(self, scope):
+        return [item('b1', 'backend', scope=scope), item('f1', 'frontend', scope=('web/**',))]
+
+    def errors(self, scope):
+        return check_work_plan(self.plan(scope), [dict(kind='infra', reason='x'), dict(kind='ai_data', reason='y')], AC[:1])
+
+    def test_a_scope_starting_with_a_slash_is_refused_and_says_what_a_scope_looks_like(self):
+        errors = self.errors(('/app/main.py',))
+        text = ' '.join(errors)
+        self.assertIn('b1', text)
+        self.assertIn('상대 경로', text)
+        self.assertIn('/app/main.py', text)
+
+    def test_parent_escapes_and_repository_internals_are_refused_but_relative_globs_pass(self):
+        for bad in ('../x/**', 'a/../b', '.git/**'):
+            self.assertTrue(self.errors((bad,)), bad)
+        self.assertEqual(self.errors(('app/**', 'tests/**', 'docs/*.md', 'lifecycle.app.json')), [])
+
+
 class VerificationFeedback(unittest.TestCase):
     """Live run ce7a5d: the model got "c3: ... path" back, could not tell which check that was or what a valid path looks like."""
     def test_a_file_check_with_an_absolute_path_is_named_by_its_own_id_and_told_to_use_a_relative_path(self):
