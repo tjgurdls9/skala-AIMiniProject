@@ -46,6 +46,7 @@ beforeEach(() => {
   }) as typeof window.scrollTo)
 })
 afterEach(() => {
+  document.body.innerHTML = ''
   vi.restoreAllMocks()
   vi.useRealTimers()
   setScroll(0)
@@ -177,6 +178,62 @@ describe('모션이 켜져 있으면', () => {
     vi.advanceTimersByTime(1000)
     expect(scrollY).toBe(DISTANCE)
     expect(api().progress.value).toBe(1)
+    wrapper.unmount()
+  })
+})
+
+describe('대화상자가 열려 있으면 (승인·프리뷰 창)', () => {
+  function openDialog(): HTMLDialogElement {
+    const d = document.createElement('dialog')
+    d.setAttribute('open', '')
+    document.body.append(d)
+    return d
+  }
+
+  test('휠을 막지 않아 창 안이 스크롤되고, 뒤의 사무실은 상세로 내려가지 않는다', () => {
+    const { wrapper, api } = host()
+    openDialog()
+    expect(wheel(100).defaultPrevented).toBe(false)
+    expect(wheel(WHEEL_THRESHOLD * 2).defaultPrevented).toBe(false)
+    expect(api().mode.value).toBe('full')
+    expect(api().progress.value).toBe(0)
+    expect(window.scrollTo).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  test('터치 드래그도 막지 않고 전환하지 않는다', () => {
+    const { wrapper, api } = host()
+    openDialog()
+    touch('touchstart', 600)
+    const move = new Event('touchmove', { cancelable: true }) as Event & { touches: Array<{ clientY: number }> }
+    Object.defineProperty(move, 'touches', { value: [{ clientY: 600 - TOUCH_THRESHOLD * 2 }] })
+    window.dispatchEvent(move)
+    expect(move.defaultPrevented).toBe(false)
+    touch('touchend')
+    expect(api().mode.value).toBe('full')
+    expect(api().progress.value).toBe(0)
+    wrapper.unmount()
+  })
+
+  test('창이 열리기 전에 쌓인 입력은 버리고, 닫히면 다시 처음부터 쌓는다', () => {
+    const { wrapper, api } = host()
+    wheel(150)
+    const dialog = openDialog()
+    wheel(200)
+    expect(api().progress.value).toBe(0)
+    dialog.remove()
+    expect(wheel(150).defaultPrevented).toBe(true)
+    expect(api().mode.value).toBe('full')
+    wheel(150)
+    expect(api().mode.value).toBe('detail')
+    wrapper.unmount()
+  })
+
+  test('닫힌 대화상자(open 아님)는 막지 않는다', () => {
+    const { wrapper, api } = host()
+    document.body.append(document.createElement('dialog'))
+    expect(wheel(100).defaultPrevented).toBe(true)
+    expect(api().progress.value).toBeGreaterThan(0)
     wrapper.unmount()
   })
 })

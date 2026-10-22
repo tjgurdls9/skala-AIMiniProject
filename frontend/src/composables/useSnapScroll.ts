@@ -112,7 +112,16 @@ export function useSnapScroll(options: SnapOptions) {
     idleTimer = setTimeout(resetPull, IDLE_RESET_MS)
   }
 
+  /** 승인·프리뷰 같은 모달 대화상자가 열려 있으면 입력은 창의 것이다. 쌓인 입력은 버리고 막지 않는다 */
+  function yieldToDialog(): boolean {
+    if (!document.querySelector('dialog[open]')) return false
+    touchY = null
+    if (pull !== 0 || resist !== 0) resetPull()
+    return true
+  }
+
   function onWheel(e: WheelEvent): void {
+    if (yieldToDialog()) return
     const delta = e.deltaMode === 1 ? e.deltaY * LINE_PX : e.deltaY
     if (!inZone(delta)) return
     e.preventDefault()
@@ -121,11 +130,12 @@ export function useSnapScroll(options: SnapOptions) {
   }
 
   function onTouchStart(e: TouchEvent): void {
+    if (yieldToDialog()) return
     touchY = e.touches[0]?.clientY ?? null
   }
 
   function onTouchMove(e: TouchEvent): void {
-    if (touchY === null) return
+    if (yieldToDialog() || touchY === null) return
     const y = e.touches[0]?.clientY ?? touchY
     const delta = touchY - y
     if (!inZone(delta)) return
