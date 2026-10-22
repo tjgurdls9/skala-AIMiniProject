@@ -167,9 +167,25 @@ function scrollToDetails(): void {
 const heroAlerts = computed(() => alerts.value.filter((a) => a.action).slice(0, HERO_ALERT_LIMIT))
 
 interface Floor extends FloorEntry { tasks: Task[]; goal: string }
+
+/**
+ * 기획이 확정되기 전에 멈춘 실행(예: 기획 검증 반복 실패)은 서버가 phase·sprint·작업을 하나도 주지 않는다.
+ * 사무실이 비어 보이지 않게 자리표시 층만 그린다. 층·작업을 지어내지 않고 자리표시임을 화면에 적는다.
+ */
+const PLACEHOLDER_FLOOR: Floor = {
+  id: 'placeholder-plan', num: '1F', title: '기획 (자리표시)', tone: 'neutral', tasks: [],
+  sub: '서버가 아직 층(작업)을 만들지 않았습니다',
+  goal: '아직 기획이 확정되지 않았습니다 · 층(작업)이 만들어지지 않았습니다',
+}
+/** 서버가 알린 대기 표시(입력 필요·승인 대기 등)가 있으면 그것을 살리고 자리표시임을 앞에 붙인다 */
+const placeholderWaiting = computed(() =>
+  sceneWaiting.value ? { ...sceneWaiting.value, text: `자리표시 · ${sceneWaiting.value.text}` } : { text: '자리표시 · 기획 미확정', zone: 'meeting' as const },
+)
+
 const floors = computed<Floor[]>(() => {
   const s = snapshot.value
   if (!s) return []
+  if (s.sprints.length === 0) return [PLACEHOLDER_FLOOR]
   const byPhase = orderedPhases(s).flatMap((p) => sprintsOf(s, p.id))
   const ordered = byPhase.length === s.sprints.length ? byPhase : s.sprints
   const phaseTitle = new Map(s.phases.map((p) => [p.id, p.title]))
@@ -255,7 +271,7 @@ onBeforeUnmount(() => {
             :selected-task-id="view.taskId"
             :motion="effectiveMotion"
             :subscribe="run.onLiveEvent"
-            :waiting="shownFloor.id === ghostFloorId ? sceneWaiting : null"
+            :waiting="shownFloor === PLACEHOLDER_FLOOR ? placeholderWaiting : shownFloor.id === ghostFloorId ? sceneWaiting : null"
             :doors-open="elevator.doorsOpen.value"
             :floor-label="shownFloor.num"
             @select="selectTask"
