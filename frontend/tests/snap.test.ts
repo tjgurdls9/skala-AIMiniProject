@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import {
-  COOLDOWN_MS, IDLE_RESET_MS, rubber, SETTLE_MS, TOUCH_THRESHOLD, useSnapScroll, WHEEL_THRESHOLD,
+  BURST_GAP_MS, COOLDOWN_MS, IDLE_RESET_MS, rubber, SETTLE_MS, TICK_MEMORY_MS, TICKS_TO_COMMIT, TOUCH_THRESHOLD, useSnapScroll, WHEEL_THRESHOLD,
 } from '../src/composables/useSnapScroll'
 
 const DISTANCE = 500
@@ -234,6 +234,108 @@ describe('대화상자가 열려 있으면 (승인·프리뷰 창)', () => {
     document.body.append(document.createElement('dialog'))
     expect(wheel(100).defaultPrevented).toBe(true)
     expect(api().progress.value).toBeGreaterThan(0)
+    wrapper.unmount()
+  })
+})
+
+describe('마우스 휠 한 칸씩 굴리기 (칸 사이가 길어도 칸 수로 센다)', () => {
+  const SLOW_MS = 300
+
+  function notches(count: number, deltaY: number, gap = SLOW_MS): void {
+    for (let i = 0; i < count; i++) {
+      wheel(deltaY)
+      vi.advanceTimersByTime(gap)
+    }
+  }
+
+  test('0.3초 간격으로 세 칸을 굴리면 상세로 전환한다', () => {
+    const { wrapper, api } = host()
+    expect(TICKS_TO_COMMIT).toBe(3)
+    expect(SLOW_MS).toBeGreaterThan(IDLE_RESET_MS)
+    notches(2, 100)
+    expect(api().mode.value).toBe('full')
+    wheel(100)
+    expect(api().mode.value).toBe('detail')
+    expect(scrollY).toBe(DISTANCE)
+    wrapper.unmount()
+  })
+
+  test('한 칸이나 두 칸만 굴리고 멈추면 전환하지 않고 되돌아간다', () => {
+    const { wrapper, api } = host()
+    notches(1, 100)
+    vi.advanceTimersByTime(TICK_MEMORY_MS + 1)
+    expect(api().mode.value).toBe('full')
+    expect(api().progress.value).toBe(0)
+
+    notches(2, 100)
+    vi.advanceTimersByTime(TICK_MEMORY_MS + 1)
+    expect(api().mode.value).toBe('full')
+    wrapper.unmount()
+  })
+
+  test('칸 사이가 너무 길면 처음부터 다시 센다', () => {
+    const { wrapper, api } = host()
+    notches(3, 100, TICK_MEMORY_MS + 100)
+    expect(api().mode.value).toBe('full')
+    wrapper.unmount()
+  })
+
+  test('칸당 델타가 아주 작은 마우스도 세 칸이면 전환한다', () => {
+    const { wrapper, api } = host()
+    notches(2, 4)
+    wheel(4)
+    expect(api().mode.value).toBe('detail')
+    wrapper.unmount()
+  })
+
+  test('줄 단위 한 칸씩도 센다', () => {
+    const { wrapper, api } = host()
+    for (let i = 0; i < 2; i++) {
+      wheel(1, 1)
+      vi.advanceTimersByTime(SLOW_MS)
+    }
+    wheel(1, 1)
+    expect(api().mode.value).toBe('detail')
+    wrapper.unmount()
+  })
+
+  test('반대로 굴리면 센 칸을 버린다', () => {
+    const { wrapper, api } = host()
+    notches(2, 100)
+    notches(1, -100)
+    notches(2, 100)
+    expect(api().mode.value).toBe('full')
+    wheel(100)
+    expect(api().mode.value).toBe('detail')
+    wrapper.unmount()
+  })
+
+  test('상세에서 위로도 세 칸이면 전체 화면으로 돌아간다', () => {
+    setScroll(DISTANCE)
+    const { wrapper, api } = host()
+    notches(2, -100)
+    expect(api().mode.value).toBe('detail')
+    wheel(-100)
+    expect(api().mode.value).toBe('full')
+    expect(scrollY).toBe(0)
+    wrapper.unmount()
+  })
+
+  test('트랙패드처럼 이어지는 작은 델타는 한 번의 굴림이라 기존대로 누적 크기로만 전환한다', () => {
+    const { wrapper, api } = host()
+    expect(BURST_GAP_MS).toBeGreaterThan(16)
+    for (let i = 0; i < 20; i++) {
+      wheel(5)
+      vi.advanceTimersByTime(10)
+    }
+    expect(api().mode.value).toBe('full')
+
+    vi.advanceTimersByTime(TICK_MEMORY_MS + 1)
+    for (let i = 0; i < 40; i++) {
+      wheel(8)
+      vi.advanceTimersByTime(10)
+    }
+    expect(api().mode.value).toBe('detail')
     wrapper.unmount()
   })
 })
