@@ -93,7 +93,7 @@ class PlanningContext:
     async def ask(self, job, worker, call, step_schema, schema, previous, part):
         """One fragment's answer. The reasons for a rejection go back to the model like in every other planning step; only the same
         rejection twice stops for the user. The proof rules for retiring a requirement (`revise`) are not relaxed."""
-        notes, last = None, None
+        notes, seen = None, set()
         while True:
             proposal = await worker.infer(job, bounded(dict(call, previous_errors=notes)) if notes else call, step_schema)
             require(not SECRET.search(canonical(proposal)), 'INVALID_COMMAND', '모델 출력에 비밀 형식이 포함됐습니다.', 422)
@@ -112,9 +112,9 @@ class PlanningContext:
                 await asyncio.to_thread(self.store.record_model_output, dict(
                     run_id=job['run_id'], job_id=job.get('id'), attempt_id=job.get('attempt_id'), role='planner', step='plan',
                     kind='rejected', content=json.dumps(notes, ensure_ascii=False)))
-                if digest(notes) == last:
+                if digest(notes) in seen:   # a mistake that comes back, even after a different one, is no progress
                     raise
-                last = digest(notes)
+                seen.add(digest(notes))
 
     async def plan(self, job, worker, schema):
         packet = job['packet']

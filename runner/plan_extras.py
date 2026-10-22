@@ -52,7 +52,7 @@ class PlanExtras:
         cached = self._recall(key)
         if cached is not None:
             return cached
-        previous = None
+        seen = set()
         while True:
             proposal = await worker.infer(job, bounded(dict(call)), schema)
             try:
@@ -67,8 +67,10 @@ class PlanExtras:
                 run_id=job["run_id"], job_id=job.get("id"), attempt_id=job.get("attempt_id"), role="planner", step=step,
                 kind="rejected", content=json.dumps(errors, ensure_ascii=False)))
             current = digest(errors)
-            require(current != previous, "INVALID_COMMAND", f"{step} 단계에서 같은 오류가 반복돼 사람의 입력이 필요합니다: {errors[0]}", 422)
-            previous, call = current, dict(call, previous_errors=errors[:5])
+            # a mistake that comes back, even after a different one, is no progress (the model may alternate between two wrong answers)
+            require(current not in seen, "INVALID_COMMAND", f"{step} 단계에서 같은 오류가 반복돼 사람의 입력이 필요합니다: {errors[0]}", 422)
+            seen.add(current)
+            call = dict(call, previous_errors=errors[:5])
 
     def _recall(self, key):
         with self.store.transaction() as db:

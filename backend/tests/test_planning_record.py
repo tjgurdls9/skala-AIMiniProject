@@ -158,6 +158,48 @@ class VerificationRetry(unittest.TestCase):
         self.assertNotIn('c2', ' '.join(seen[1]))
 
 
+class AlternatingMistakes(unittest.TestCase):
+    """Live run b7630a: the model alternated between two wrong answers, so "the same error twice in a row" never happened."""
+    setUp = extras.PlanExtrasChecks.setUp
+    command = extras.PlanExtrasChecks.command
+    post_command = extras.PlanExtrasChecks.post_command
+    start = extras.PlanExtrasChecks.start
+    spec = extras.PlanExtrasChecks.spec
+
+    def test_a_mistake_seen_before_ends_the_loop_even_when_another_one_came_between(self):
+        calls = []
+
+        def verification(packet):
+            ac = packet['acceptance_criterion']['id']
+            calls.append(1)
+            relative_missing = dict(id='OWN-2', ac_ids=[ac], kind='file', path='/abs/path.py', expect=dict(exists=True))
+            bad_tool = dict(id='OWN-1', ac_ids=[ac], kind='command', argv=['curl', 'x'], expect=dict(exit=0))
+            return dict(checks=[relative_missing] if len(calls) % 2 else [bad_tool, relative_missing], manual_reason=None)
+        run_id = self.start(extras.Scripted(verification=verification))
+        asyncio.run(self.worker.tick())
+        snapshot = self.store.snapshot(run_id)
+        self.assertEqual((snapshot['state'], len(calls)), ('needs_input', 3), snapshot.get('reason'))   # A, B, then A again is the repeat
+
+    def test_the_correction_fragment_loop_also_stops_on_a_returning_mistake(self):
+        wrong_a = [dict(field='goal', previous_digest='sha256:' + '0' * 64, quote=CorrectionFeedback.SCOPE_NOTE)]
+        calls = []
+
+        class Flipper(extras.Scripted):
+            async def generate(inner, packet, schema):
+                if packet.get('step') is None and packet.get('fragment_index') == 1:
+                    calls.append(1)
+                    if len(calls) % 2:
+                        return dict(copy.deepcopy(extras.BASE), revisions=wrong_a)                       # a revision that does not match
+                    return dict(copy.deepcopy(extras.BASE), features=['목록'], revisions=[])         # a requirement dropped without proof
+                return await super().generate(packet, schema)
+        run_id = self.start(Flipper())
+        asyncio.run(self.worker.tick())
+        snapshot = self.store.snapshot(run_id)
+        self.post_command(self.command(snapshot, 'request_changes', dict(scope='spec', feedback=CorrectionFeedback.SCOPE_NOTE)))
+        asyncio.run(self.worker.tick())
+        self.assertEqual((self.store.snapshot(run_id)['state'], len(calls)), ('needs_input', 3))
+
+
 class CorrectionFeedback(unittest.TestCase):
     """The correction fragment gets the same treatment as every other planning step: the reasons for a rejected answer go back to the
     model, and only the same mistake twice stops for the user. The proof rules for retiring a requirement are unchanged (CT40)."""
