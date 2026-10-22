@@ -92,6 +92,10 @@ class Store:
                     args TEXT NOT NULL, ok INTEGER NOT NULL, error_code TEXT, exit_code INTEGER, result_digest TEXT,
                     stdout_digest TEXT, stderr_digest TEXT, stdout_excerpt TEXT, stderr_excerpt TEXT,
                     started_at TEXT NOT NULL, finished_at TEXT NOT NULL, UNIQUE(run_id, seq));
+                CREATE TABLE IF NOT EXISTS model_outputs (
+                    id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), seq INTEGER NOT NULL,
+                    job_id TEXT, attempt_id TEXT, role TEXT, step TEXT NOT NULL, kind TEXT NOT NULL,
+                    content TEXT NOT NULL, truncated INTEGER NOT NULL, created_at TEXT NOT NULL, UNIQUE(run_id, seq));
                 CREATE TABLE IF NOT EXISTS reviews (
                     id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id),
                     candidate_digest TEXT NOT NULL, role TEXT NOT NULL,
@@ -107,7 +111,7 @@ class Store:
             """)
             if "attempt_id" not in {row[1] for row in db.execute("PRAGMA table_info(grants)")}:
                 db.execute("ALTER TABLE grants ADD COLUMN attempt_id TEXT REFERENCES attempts(id)")
-            for table in ("requests", "artifacts", "specs", "reviews", "events", "commands", "attempts", "attempt_results", "candidates", "task_scopes", "recording_imports", "run_templates", "tool_calls"):
+            for table in ("requests", "artifacts", "specs", "reviews", "events", "commands", "attempts", "attempt_results", "candidates", "task_scopes", "recording_imports", "run_templates", "tool_calls", "model_outputs"):
                 for action in ("UPDATE", "DELETE"):
                     db.execute(f"CREATE TRIGGER IF NOT EXISTS {table}_{action.lower()}_blocked BEFORE {action} ON {table} "
                                f"BEGIN SELECT RAISE(ABORT, 'immutable record'); END")
@@ -436,6 +440,22 @@ class Store:
                        " result_digest, stdout_digest, stderr_digest, stdout_excerpt, stderr_excerpt, started_at, finished_at)"
                        " VALUES (" + ",".join("?" * 19) + ")", row)
         return dict(seq=seq)
+
+    OUTPUT_CHARS = 16384   # an answer is evidence for failure analysis, not an archive
+
+    def record_model_output(self, entry):
+        """Append one raw model answer (kind 'output') or the reasons the server rejected it (kind 'rejected') to the internal ledger.
+        Never public: no event or artifact carries it. Secrets are masked and long text is cut."""
+        text = SECRET.sub("[redacted]", entry["content"])
+        with self.transaction() as db:
+            seq = db.execute("SELECT COALESCE(MAX(seq), 0) + 1 FROM model_outputs WHERE run_id=?", (entry["run_id"],)).fetchone()[0]
+            db.execute("INSERT INTO model_outputs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                       (uid(), entry["run_id"], seq, entry.get("job_id"), entry.get("attempt_id"), entry.get("role"), entry["step"],
+                        entry["kind"], text[:self.OUTPUT_CHARS], int(len(text) > self.OUTPUT_CHARS), now()))
+
+    def model_outputs(self, run_id):
+        with self.transaction() as db:
+            return [dict(r) for r in db.execute("SELECT * FROM model_outputs WHERE run_id=? ORDER BY seq", (run_id,))]
 
     def tool_calls(self, run_id, task_id=None):
         with self.transaction() as db:

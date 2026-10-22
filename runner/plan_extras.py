@@ -2,6 +2,7 @@
 
 Each step is one small bounded call. The service validates what the model proposes and returns the errors to it;
 it never fills in an answer. A repeated identical mistake stops for the user (no hidden attempt cap, no spin)."""
+import asyncio
 import json
 import re
 
@@ -19,10 +20,17 @@ MAX_CHECKS_PER_AC = 3
 ALTERNATIVES_SCHEMA = dict(type="object", additionalProperties=False, required=["alternatives"], properties=dict(
     alternatives=dict(type="array", minItems=1, maxItems=3, items=DEFS["PlanAlternative"]),
     single_reason=dict(type="string", maxLength=2000)))
-WORK_PLAN_SCHEMA = dict(type="object", additionalProperties=False, required=["work_plan", "omitted_areas"], properties=dict(
+AREA_JUDGEMENT = dict(type="object", additionalProperties=False, required=["needed", "reason"], properties=dict(
+    needed=dict(type="boolean"), reason=dict(type="string", minLength=1, maxLength=2000)))
+WORK_PLAN_SCHEMA = dict(type="object", additionalProperties=False, required=["areas", "work_plan"], properties=dict(
+    areas=dict(type="object", additionalProperties=False, required=list(AREAS), properties={area: AREA_JUDGEMENT for area in AREAS}),
     work_plan=dict(type="array", minItems=1, maxItems=30, items=DEFS["WorkItem"]),
-    omitted_areas=dict(type="array", maxItems=4, items=DEFS["OmittedArea"]),
     dependencies=DEFS["PlanDependencies"]))
+
+
+def omitted_areas(areas):
+    """The areas the model itself judged not needed, with its own reason; the service decides nothing here."""
+    return [dict(kind=area, reason=areas[area]["reason"]) for area in AREAS if not areas[area]["needed"]]
 VERIFICATION_SCHEMA = dict(type="object", additionalProperties=False, required=["checks"], properties=dict(
     checks=dict(type="array", maxItems=MAX_CHECKS_PER_AC, items=DEFS["CheckSpec"]),
     manual_reason=dict(type=["string", "null"], maxLength=2000)))
@@ -55,6 +63,9 @@ class PlanExtras:
             if not errors:
                 self._remember(key, proposal)
                 return proposal
+            await asyncio.to_thread(self.store.record_model_output, dict(
+                run_id=job["run_id"], job_id=job.get("id"), attempt_id=job.get("attempt_id"), role="planner", step=step,
+                kind="rejected", content=json.dumps(errors, ensure_ascii=False)))
             current = digest(errors)
             require(current != previous, "INVALID_COMMAND", f"{step} 단계에서 같은 오류가 반복돼 사람의 입력이 필요합니다: {errors[0]}", 422)
             previous, call = current, dict(call, previous_errors=errors[:5])
@@ -94,15 +105,16 @@ class PlanExtras:
 
     async def work_plan(self, job, worker, plan):
         def check(value):
-            return check_work_plan(value["work_plan"], value["omitted_areas"], plan["acceptance"])
+            return check_work_plan(value["work_plan"], omitted_areas(value["areas"]), plan["acceptance"])
         value = await self.ask(job, worker, "work_plan", dict(
             plan=summary(plan), stack=job["packet"]["template_contract"].get("stack", []), kinds=KINDS,
-            instructions="Break the plan into work items. Each item: id, kind, title, depends_on (item ids), acceptance_ids (plan AC ids), "
+            instructions="First judge each area (" + ", ".join(AREAS) + ") in `areas`: needed true or false, with a short reason either way. "
+                         "Then break the plan into work items. Each item: id, kind, title, depends_on (item ids), acceptance_ids (plan AC ids), "
                          "write_scope (glob paths this item alone writes). Items that are not ordered by depends_on must not share paths. "
-                         "Every AC must be linked to an item. Every area of " + ", ".join(AREAS) + " must either have an item or be listed in "
-                         "omitted_areas with a reason (never both). Put the packages the work needs in dependencies.pip / dependencies.npm."),
+                         "Every AC must be linked to an item. An area judged needed must have at least one work item of that kind; an area judged "
+                         "not needed must have none. Put the packages the work needs in dependencies.pip / dependencies.npm."),
             WORK_PLAN_SCHEMA, check)
-        return dict(work_plan=value["work_plan"], omitted_areas=value["omitted_areas"], dependencies=value.get("dependencies", {}))
+        return dict(work_plan=value["work_plan"], omitted_areas=omitted_areas(value["areas"]), dependencies=value.get("dependencies", {}))
 
     async def verification(self, job, worker, plan, work_plan):
         specs, manual, prefixes = [], [], set()

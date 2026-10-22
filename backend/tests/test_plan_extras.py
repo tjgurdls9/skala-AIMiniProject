@@ -14,6 +14,8 @@ import test_runtime as fixtures
 BASE = dict(goal='요청 처리 서비스', features=['목록', '상세'], non_goals=[], constraints=['무료만'], assumptions=['합성 데이터'],
             changes=[], acceptance=[dict(id='AC1', title='목록', description='목록이 보인다'),
                                     dict(id='AC2', title='상세', description='상세가 보인다')])
+AREAS = dict(infra=dict(needed=False, reason='추가 인프라 없음'), backend=dict(needed=True, reason='서버 필요'), frontend=dict(needed=True, reason='화면 필요'),
+             ai_data=dict(needed=False, reason='모델이 필요하지 않음'))
 ALTERNATIVES = [dict(id='A', summary='현재 기획', differences='기준안', risks='범위가 넓음'),
                 dict(id='B', summary='목록만 먼저', differences='상세는 후속', risks='가치가 작음')]
 
@@ -44,9 +46,7 @@ class Scripted(fixtures.FakeModel):
         if step == 'alternatives':
             return dict(alternatives=copy.deepcopy(ALTERNATIVES))
         if step == 'work_plan':
-            return dict(work_plan=plan_items(), omitted_areas=[dict(kind='infra', reason='추가 인프라 없음'),
-                                                                dict(kind='ai_data', reason='모델이 필요하지 않음')],
-                        dependencies=dict(pip=['fastapi'], npm=[]))
+            return dict(work_plan=plan_items(), areas=AREAS, dependencies=dict(pip=['fastapi'], npm=[]))
         if step == 'verification':
             ac = packet['acceptance_criterion']['id']
             return dict(checks=[dict(http_check(ac), ac_ids=[ac])], manual_reason=None)
@@ -145,7 +145,7 @@ class PlanExtrasChecks(unittest.TestCase):
             plan = plan_items()
             if len(attempts) == 1:
                 plan[1]['depends_on'] = ['i1']     # introduces a cycle b1 -> i1 -> b1
-            return dict(work_plan=plan, omitted_areas=[dict(kind='infra', reason='x'), dict(kind='ai_data', reason='y')], dependencies={})
+            return dict(work_plan=plan, areas=AREAS, dependencies={})
         run_id = self.start(Scripted(work_plan=work_plan))
         asyncio.run(self.worker.tick())
         self.assertEqual(self.store.snapshot(run_id)['state'], 'awaiting_plan_approval')
@@ -156,7 +156,7 @@ class PlanExtrasChecks(unittest.TestCase):
         def work_plan(packet):
             plan = plan_items()
             plan[1]['depends_on'] = ['i1']
-            return dict(work_plan=plan, omitted_areas=[dict(kind='infra', reason='x'), dict(kind='ai_data', reason='y')], dependencies={})
+            return dict(work_plan=plan, areas=AREAS, dependencies={})
         model = Scripted(work_plan=work_plan)
         run_id = self.start(model)
         asyncio.run(self.worker.tick())

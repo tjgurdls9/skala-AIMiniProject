@@ -18,6 +18,7 @@ from backend.config import Settings
 from backend.contracts import digest, validate
 from backend.store import Store, uid
 from runner.model import ModelUnavailable
+from runner.plan_extras import omitted_areas
 from runner.worker import Worker
 
 ORIGIN = "http://127.0.0.1:5173"
@@ -34,7 +35,9 @@ def planning_extras(packet):
         ids = [a["id"] for a in packet["plan"]["acceptance"]]
         return dict(work_plan=[dict(id="b1", kind="backend", title="서버", depends_on=[], acceptance_ids=ids, write_scope=["server/**"]),
                                dict(id="f1", kind="frontend", title="화면", depends_on=["b1"], acceptance_ids=ids, write_scope=["web/**"])],
-                    omitted_areas=[dict(kind="infra", reason="추가 인프라 없음"), dict(kind="ai_data", reason="모델이 필요하지 않음")], dependencies=dict(pip=[], npm=[]))
+                    areas=dict(infra=dict(needed=False, reason="추가 인프라 없음"), backend=dict(needed=True, reason="서버 필요"),
+                               frontend=dict(needed=True, reason="화면 필요"), ai_data=dict(needed=False, reason="모델이 필요하지 않음")),
+                    dependencies=dict(pip=[], npm=[]))
     if step == "verification":
         ac = packet["acceptance_criterion"]["id"]
         return dict(checks=[dict(id="x", ac_ids=[ac], kind="http", steps=[dict(method="GET", path="/health", expect=dict(status=200))])], manual_reason=None)
@@ -47,7 +50,7 @@ def extras_for(plan):
     work = planning_extras(dict(step="work_plan", plan=plan))
     checks = [dict(planning_extras(dict(step="verification", acceptance_criterion=a))["checks"][0], id=a["id"] + "-1", ac_ids=[a["id"]]) for a in plan["acceptance"]]
     return dict(alternatives=alternatives["alternatives"], selected_alternative_id="A", single_alternative_reason=alternatives["single_reason"],
-                work_plan=work["work_plan"], omitted_areas=work["omitted_areas"], dependencies=work["dependencies"],
+                work_plan=work["work_plan"], omitted_areas=omitted_areas(work["areas"]), dependencies=work["dependencies"],
                 verification=checks, manual_acceptance=[])
 
 

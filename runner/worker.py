@@ -297,7 +297,11 @@ class Worker:
                     generation.cancel()
                     break
                 await asyncio.sleep(0.2)
-            return (await generation)["result"]
+            result = (await generation)["result"]
+            await asyncio.to_thread(self.store.record_model_output, dict(
+                run_id=job["run_id"], job_id=job.get("id"), attempt_id=job.get("attempt_id"), role=packet.get("role"),
+                step=packet.get("step", "plan"), kind="output", content=canonical(result)))
+            return result
         except asyncio.CancelledError:
             if asyncio.current_task().cancelling():
                 raise
