@@ -256,3 +256,147 @@ CRITICAL은 없다. 그러나 H-1, H-2, H-3은 C6(독립 리뷰 후 CRITICAL/HIG
 - Python 3.13 미만 동작은 `full_match` 문서 지식에 근거했고 실행으로 확인하지 않았다.
 
 관련 파일은 모두 `/Users/seohyeokin/workspace/skala-AIMiniProject/.worktrees/codex-runtime/` 아래에 있다. 주요 파일은 `runner/plan_extras.py`, `runner/check_runner.py`, `runner/review.py`, `runner/tools.py`, `runner/tdd_gate.py`, `runner/builder_loop.py`, `runner/worker.py`, `runner/pipeline.py`, `runner/access.py`, `infra/checks/security.py`, `backend/contracts.py`, `backend/store.py`다.
+
+---
+
+# 재검토 (수정분) — 서브 에이전트 보고 원문
+
+<!-- 출처: 재검토 서브 에이전트(ecc:code-reviewer, sonnet, high, 읽기 전용) 1개의 최종 보고 원문. 대상 git diff d849722..2beae84 -- backend runner infra.
+     런타임 세션이 확인한 것: N-2는 실제 node:24-slim(digest 91acba91…)에서 `node --test`를 비 TTY로 돌려 확인했다 — 출력은 `ℹ tests 1 / ℹ pass 1`이고 `count_tests`는 None을 돌려준다(CONFIRMED로 승격).
+     나머지는 확인하지 않았고, 이 절의 어떤 항목도 아직 고치지 않았다(실서버 실행 중 코드 수정 금지 규칙). -->
+
+범위: `git diff d849722..HEAD -- backend runner infra` (9f4b375, 2beae84). git, grep, 파일 읽기와 로컬 `node -e` 한 줄만 썼다. 테스트, Docker, Ollama는 실행하지 않았다. 아래 CONFIRMED는 "코드 경로를 끝까지 읽어 확인했다"는 뜻이고, 실행 재현은 아니다.
+
+## 요약
+
+| 항목 | 판정 | 남은 틈 |
+|---|---|---|
+| H-1 check id 충돌 | FIXED | 접두사 재생성 충돌이 이론상 남아 있으나(N-6), 이제 조용히 통과하지 않고 계획 단계에서 거부된다 |
+| H-2 vendor 면제 | FIXED | 파일 확장자로 검사 여부를 정하는 얕은 검사는 그대로다(기존 한계) |
+| H-3 RED/GREEN, run_command 우회 | FIXED (인용 시나리오 기준) | RED는 테스트 실행 없이도 얻을 수 있다(N-4). node 24 보고 형식에 막힐 수 있다(N-2) |
+| H-4 이벤트 루프 | FIXED | 빌더 경로에서 큰 동기 작업은 `build`의 difflib뿐이다(LOW) |
+| H-5 출력, 크기 상한 | FIXED | `/deps` 총량과 `Sandbox.docker` 버퍼링은 상한이 없다(LOW). 작업 공간 총량 검사는 사실상 도달 불가다 |
+| M-3 SECRET 경계 | PARTIALLY FIXED | `infra/checks/security.py`의 정규식을 안 고쳐 새 문제가 생겼다(N-1). `pipeline.py:203`의 `require`도 그대로다 |
+
+새로 발견한 문제:
+
+| 심각도 | 개수 |
+|---|---|
+| CRITICAL | 0 |
+| HIGH | 2 (CONFIRMED 1, PLAUSIBLE 1) |
+| MEDIUM | 2 |
+| LOW | 4 |
+
+## 항목별 판정
+
+### H-1 FIXED
+- 근거:
+  - `runner/plan_extras.py:120-123`은 접두사가 겹치면 `prefix[:24]_{len+1}`로 바꾼다. check id는 `접두사-숫자` 꼴이고 숫자는 순수 숫자라, 마지막 `-`로 나누면 (접두사, n)이 하나로 정해진다. 접두사가 다르면 id도 다르다.
+  - `plan_extras.py:127-128`이 만든 전체 목록에 `check_verification`을 한 번 더 돌린다. 이 함수의 `plan_checks.py:80-81`이 중복 id를 오류로 낸다.
+  - `runner/worker.py:188-191`의 `finish`가 `extras["verification"]` id 유일성을 검사한다.
+  - `runner/check_runner.py:81,89-90`은 id가 반복된 outcome에 연결된 AC를 `unmet / duplicate_check_id`로 만든다. `review.py:40`에서 `"unmet" in states`이면 verdict가 `fail`이다. 예전에 승인돼 DB에 있는 중복 id 명세도 여기서 막힌다.
+- 남은 틈: 실패한 check가 다른 AC를 `met`으로 만드는 경로는 찾지 못했다. 생성 접두사 충돌은 N-6에 적었다.
+
+### H-2 FIXED
+- 근거: `infra/checks/security.py`에서 `vendor` 건너뛰기를 삭제했다(diff 확인). 파일 루프(23행 이후)에서 남은 건너뛰기는 `.git` 경로뿐이다. `.git`은 `relative_parts`(workspace.py:22)가 쓰기를 금지하고 `git add -A`도 무시하므로 후보에 들어올 수 없다. 심볼릭 링크와 1MB 초과 파일은 건너뛰지 않고 `unsafe_file` finding이 된다.
+- 남은 틈 (기존 한계):
+  - AST 검사는 `.py`에만 걸린다(34행). 브라우저 코드 검사는 `.js`/`.html`에만 걸린다(54행).
+  - `lifecycle.app.json`의 `start`는 `["python","server.txt"]`처럼 확장자 없는 파일도 실행할 수 있다(`validate_command`는 argv[0]만 본다). 그런 파일, `.mjs`, `.cjs`, `.ts`는 비밀 정규식 외에는 검사를 받지 않는다. 이는 H-2 자체가 아니라 "정적 검사는 얕은 방어선"이라는 일반 한계다.
+
+### H-3 FIXED (인용된 시나리오 기준), 잔여 위험 3건
+- 근거 (a) GREEN 판정:
+  - `runner/tools.py:123-134`에서 `run_tests`가 `count_tests`를 호출한다. exit 0인데 개수가 0이거나 인식 불가이면 원장에 `error_code=NO_TESTS_RAN`을 남긴다.
+  - `tdd_gate.py:84-87`은 이 기록을 RED로도 GREEN으로도 세지 않는다. `tdd_gate.py:106-107`은 integration 종류에도 같은 규칙을 적용한다.
+  - `commands.py:92-96`의 `NOT_A_RUN`은 `-h`, `--help`, `--version`, `--collect-only` 등을 argv 전체에서 거부한다.
+  - 리뷰가 든 `unittest -h`와 테스트 0개 `node --test`는 GREEN에 닿지 못한다.
+- 근거 (b) 작업 공간 변경:
+  - `commands.py:137`이 `/work`를 `readonly`로 마운트한다.
+  - `/deps`는 `deps_writable=True`인 `_install`에서만 쓰기 가능하다(`tools.py:168`). 이 argv는 서버가 만들고 패키지는 허용 목록으로 제한된다.
+  - 파일 변경은 `write_file`, `delete_file`, `move_file`로만 가능해서, 명령으로 RED 잠금과 `write_scope`를 우회하던 경로는 막혔다.
+  - `intervention.py:13-15`는 이제 명령이 있던 task도 원장 밖 변경을 잡는다.
+- 남은 틈:
+  1. RED는 여전히 "exit≠0"만 본다. 테스트가 실행되지 않아도 얻을 수 있다(N-4).
+  2. `count_tests`는 모델이 통제하는 출력에 속는다. `^Ran N tests?`를 stdout에 찍거나, `@unittest.skip`이 붙은 테스트도 "Ran N"으로 센다. 다만 모델은 `assert True` 테스트를 직접 쓸 수 있으므로, 빌더 게이트에서는 의미 없는 위조다. AC 판정은 독립 검증자가 내린다.
+  3. node 24의 보고 형식이 다르면 node 작업이 GREEN에 못 간다(N-2).
+  4. 정상 흐름의 부작용 두 가지는 N-3(install 잠금 파일)과 N-5(개발용 점검 스크립트)에 적었다. 읽기 전용 마운트 자체는 `python -m unittest`, `node --test`, `npm test`, `pip install --target /deps/py`, `npm install --prefix /deps`, 두 freeze를 깨지 않는다. 쓰기는 `/deps`나 `HOME=/tmp`(32MB tmpfs)로만 간다.
+
+### H-4 FIXED
+- 근거: `builder_loop.py:201`(`context`), `:221`(`execute`), `:223`(`tool_calls`)과 `pipeline.py:112,114,115,116`(`read_tree`, `tool_calls`)을 `asyncio.to_thread`로 옮겼다.
+  - `Store.transaction()`은 호출마다 새 sqlite 연결을 연다(`backend/store.py:116-126`). 그래서 `record_tool_call`, `tool_calls`, `RoleScope.authority`는 스레드에서 써도 안전하다.
+  - `ToolBox.seen`과 `Workspace`는 순차 await라 한 번에 한 스레드만 만진다. `context`는 `seen`을 건드리지 않는다.
+  - 도구가 도는 동안 `keep_alive`의 `heartbeat`가 돌 수 있다.
+- 남은 틈 (LOW):
+  - `build`는 `pipeline.py:124`의 `difflib.unified_diff`를 쓰기 트랜잭션 안에서 이벤트 루프 위에서 돌린다. 큰 파일 여러 개가 통째로 바뀌면 수 초 막힐 수 있다 (PLAUSIBLE).
+  - `heartbeat`의 "내 lock이 만료되면 인수" 분기(`worker.py:55-61`)는 그대로다. 이제 도달하기 어려워졌을 뿐이다.
+  - 도구 스레드는 취소되지 않는다. TaskGroup이 취소해도 스레드는 끝까지 돌고 원장에 기록한다(`_record`는 권한을 다시 보지 않는다). 락을 잃어 다른 워커가 같은 task를 이어받으면 이전 시도의 기록이 섞일 수 있다 (PLAUSIBLE, LOW).
+
+### H-5 FIXED
+- 근거:
+  - `commands.py:32-56`의 `bounded_run`은 스트림당 최대 `CAPTURE_BYTES+1`(262145바이트)만 보관하고 나머지는 읽어서 버린다. 호스트 메모리는 제한된다.
+  - 타임아웃이면 `kill()`, `wait()`, `TimeoutExpired`를 낸다. `DockerExecutor.run`(commands.py:152-154)이 `docker rm -f name`으로 컨테이너를 지운다.
+  - `finally`에서 리더 스레드를 join(5초)하고 파이프를 닫는다. 리더가 읽는 동안 `wait`하므로 파이프가 가득 차서 막히는 교착은 없다.
+  - 좀비도 없다(`wait`가 `kill` 뒤에 있다).
+  - `Reviewer.runner` 기본값도 `bounded_run`이다(`review.py:94`). `CandidateEnv.run`은 같은 호출 형식(`stdin`, `capture_output`, `timeout`)을 쓴다.
+  - `workspace.py`: `_text`는 크기를 먼저 보고 읽는다(`:149`). `manifest`는 청크 해시이고 결과가 이전 방식과 같다. `read_tree`는 큰 파일을 해시 표식으로 바꾼다. `--ulimit fsize=256MiB`는 파일 하나의 크기를 제한한다.
+  - `/work`가 읽기 전용이 되어 컨테이너가 작업 공간 디스크를 채울 수 없다.
+- 남은 틈 (LOW):
+  - 출력을 많이 내는 컨테이너는 읽고 버리면서 타임아웃(최대 300초)까지 계속 돈다. 리뷰가 제안한 "상한이면 kill"이 아니라 "버리기"를 택했다. 메모리는 안전하지만 CPU는 쓴다.
+  - 이미 `/work`가 읽기 전용이라 `MAX_WORKSPACE_BYTES` 검사(`tools.py:143-147`)는 사실상 도달하지 못한다. `write_file`은 최대 200개 × 64KB다. 방어용 코드이고 해롭지 않다.
+  - `/deps` 총량은 install 시 상한이 없다(파일당 256MiB만 제한). `Sandbox.docker`(`sandbox.py:25`)는 여전히 `capture_output`으로 전부 버퍼링한다. 다만 출력은 서버가 정한 도구(grype, `security.py`, `http_probe` 읽기 65536 상한)에서 나온다.
+
+### M-3 PARTIALLY FIXED
+- 근거: `backend/contracts.py:12`가 `(?<![A-Za-z0-9])sk-…`가 되어 `risk-assessment-calculation`, `task-…` 같은 영문 kebab-case 오탐이 사라진다. 실제 키(`OPENAI_API_KEY=sk-…`, `"sk-proj-…"`, `Bearer sk-…`, 줄 맨 앞)는 앞 글자가 영숫자가 아니라 계속 잡힌다. 영숫자에 바로 붙은 키(`xsk-…`)만 놓친다. 이는 정상 키 형식이 아니다.
+- 남은 틈:
+  1. `infra/checks/security.py:11`의 비밀 정규식에는 같은 경계가 없다. 새 문제를 만들었다(N-1).
+  2. 리뷰가 제안한 둘째 수정은 적용되지 않았다. `pipeline.py:203`의 `require(not SECRET.search(canonical(body)))`는 여전히 try 밖이다. 오탐 범위가 훨씬 좁아졌을 뿐, 걸리면 resume해도 같은 후보에서 같은 오류가 반복되는 구조는 그대로다.
+  3. `-sk-…`처럼 앞이 하이픈이나 밑줄인 kebab-case는 여전히 오탐이다(드묾).
+
+## 새로 발견한 문제
+
+### N-1 [HIGH, CONFIRMED] 작성 시 SECRET은 풀리고 보안 정적 검사 정규식은 그대로여서 정상 앱이 늦게 보안 `fail`이 된다
+- 위치: `infra/checks/security.py:11`(`sk-[A-Za-z0-9_-]{20,}`, 경계 없음)와 `backend/contracts.py:12`(수정됨)의 불일치.
+- 시나리오:
+  1. 모델이 할일 앱 HTML이나 CSS에 `task-description-container` 같은 클래스를 쓴다. `sk-` 뒤가 `description-container`(21자)라 `security.py`의 정규식에 일치한다.
+  2. 예전에는 `Workspace.write`의 `SECRET` 검사가 작성 시점에 거부했고 모델이 이름을 바꿀 수 있었다. 이제 `write_file`이 통과한다.
+  3. 보안 리뷰에서 `secret_format` finding이 나와 `checks.secrets`와 `static`이 false가 된다. `review.py:194`가 `verdict="fail"`을 내고, run이 `needs_input`으로 막힌다.
+  4. 빌더에게는 구체적인 피드백이 없다.
+- 이전에는 쓰기 검사가 `security.py`의 같은 결함을 가렸다. 이번 수정이 그것을 드러냈다.
+- 수정: `security.py:11`을 `(?<![A-Za-z0-9])sk-…`로 맞춘다(가능하면 한 모듈의 정규식을 공유한다).
+
+### N-2 [HIGH, PLAUSIBLE → 런타임 세션이 CONFIRMED로 확인] 노드 보고 형식이 `# pass N`이 아니면 node 작업이 GREEN에 닿지 못한다
+- 위치: `runner/tdd_gate.py:11`(`^# pass (\d+)$`).
+- 근거: 이 개발 장비의 Node 26.5에서 `node -e "require('node:test')('x',()=>{})" | cat`(비 TTY)은 `ℹ tests 1 / ℹ pass 1`을 출력하고 `# pass`는 없다. 이 형식은 어떤 패턴에도 일치하지 않는다. 저장소의 테스트 입력은 TAP 형식(`# tests 4`, `# pass 4`)을 직접 쓴 문자열이다. 실제 `node:24-slim` 출력은 확인하지 못했다.
+- 시나리오: 이미지가 spec 보고 형식이면 모든 통과한 `node --test`가 `NO_TESTS_RAN`이 된다. 모델은 이유를 모르고 같은 동작을 반복하다 `STREAK_LIMIT`으로 `needs_input`이 된다. python 작업은 영향이 없다.
+- 확인: 이미지에서 `node --test`를 한 번 돌려 본다. 수정: `^[#ℹ] pass (\d+)$`를 허용하거나 `--test-reporter=tap`을 강제한다.
+- 런타임 세션의 확인(2026-10-22): `node:24-slim`(v24.22.0)에서 `node --test`를 비 TTY로 실행 → `✔ x`, `ℹ tests 1`, `ℹ pass 1` 출력, exit 0. `count_tests(stdout, stderr)`는 `None`.
+
+### N-3 [MEDIUM, CONFIRMED] `install_dependencies`가 쓴 잠금 파일이 개입(`outside_ledger`)으로 표시된다
+- 위치: `runner/tools.py:178`(`self.workspace.write(lock_file, …)`는 원장의 `write_file`이 아니다)와 `runner/intervention.py:8-15`(`MUTATING`에 install이 없고, 명령이 있으면 건너뛰던 분기가 삭제됨).
+- 시나리오: pip 의존성을 설치한 task에서 `requirements.lock`이 생긴다. 이 파일은 before/after 비교의 `changes`에 들어가고 원장 경로에 없다. `pipeline.py:~131`이 `outside_ledger` 개입과 "자율 수행 근거로 쓰지 않습니다" 경고를 붙인다. 기존 테스트는 이 경우를 다루지 않는다(`test_intervention`은 `.pytest_cache` 사례만 본다). npm 잠금은 64KB를 넘으면 쓰기가 조용히 실패하므로 덜 걸린다.
+- 수정: `ledgered_paths`가 성공한 `install_dependencies`에 대해 `LOCK_FILES[manager]`를 설명 가능한 경로로 포함한다.
+
+### N-4 [MEDIUM, CONFIRMED] RED는 테스트가 하나도 실행되지 않아도 얻을 수 있다
+- 위치: `runner/tdd_gate.py:88-90`. `count_tests`는 exit 0일 때만 쓰이고, RED는 `code not in (0, None)`만 본다.
+- 시나리오: 테스트 파일이 비어 있다. `python:3.13-slim`에서 `python -m unittest`는 "Ran 0 tests"에 exit 5로 끝난다. 이것이 RED가 된다. 구현을 쓰고, 그다음 테스트를 추가해 통과시키면 GREEN이다. 실패한 적 없는 테스트로 RED→GREEN이 성립한다. 존재하지 않는 모듈 이름을 넘긴 exit 1도 마찬가지로 RED가 된다.
+- 수정: `tests_run == 0`이면 exit 코드와 상관없이 `NO_TESTS_RAN`으로 기록한다. unittest의 import 오류는 "Ran 1 test"로 세어지므로 정상 RED는 유지된다.
+
+### N-5 [LOW, CONFIRMED] 개발용 격리 점검이 낡았다
+- 위치: `infra/verify_isolation.py:84-86`. `/work/lc-x` 쓰기가 `ok`여야 통과하는 기대(`root_filesystem_read_only_work_and_tmp_writable`)가 읽기 전용 마운트와 맞지 않아 EROFS로 실패한다.
+- 수정: `/work`는 `EROFS`를 기대하도록 바꾼다.
+
+### N-6 [LOW, CONFIRMED] 접두사 재생성이 다른 접두사와 다시 충돌할 수 있다
+- 위치: `runner/plan_extras.py:121-122`. 생성한 접두사는 `prefixes`와 비교하지 않는다.
+- 시나리오: AC id가 `["a__3","a!","a?"]`이면 셋째가 `a__3`으로 재생성되어 첫째와 같아진다. 중복 id 검사(`plan_extras.py:127`, `worker.py:190`)가 막아서 조용히 통과하지는 않고, 계획이 422로 거부된다.
+- 수정: `while prefix in prefixes:`로 반복한다.
+
+### N-7 [LOW, CONFIRMED] 통과한 run_tests의 요약이 출력 상한에 잘릴 수 있다
+- 위치: `runner/tools.py:128`. 개수 판독이 이미 64KB로 잘린 `public["stdout"]`와 `stderr`에서 이루어진다(`commands.py:157-159`).
+- 시나리오: 요약이 끝에 오는 형식에서 노이즈가 64KB를 넘으면 개수를 못 찾아 `NO_TESTS_RAN`이 된다. 드문 경우다.
+- 수정: 개수 판독은 잘리기 전 원본의 꼬리로 한다.
+
+## 보지 못한 범위
+- 테스트 스위트, Docker, Ollama를 실행하지 않았다. 읽기 전용 마운트에서 npm과 pip가 실제로 어떻게 동작하는지, `bounded_run`의 실제 타이밍은 실행으로 확인하지 못했다.
+- `node:24-slim`의 비 TTY 보고 형식과 `python:3.13-slim`의 exit 5 동작은 실행하지 않았다. 앞의 것은 로컬 Node 26.5 출력과 알려진 동작에서, 뒤의 것은 알려진 동작에서 추정했다(N-2는 PLAUSIBLE).
+- `runner/mcp_server.py`의 ToolBox 경로(동기 호출 여부), 프론트엔드, `release`와 프리뷰 경로, 후보 앱의 `/data` 볼륨 디스크 상한은 읽지 않았다.
+- 새 테스트(`test_gate_hardening`, `test_resource_limits`, `test_review_fixes`)는 읽기만 했고 실행하지 않았다.
+- M-1(재시도 task의 거짓 개입)과 M-2 이하는 이번 범위가 아니라 재검토하지 않았다.
