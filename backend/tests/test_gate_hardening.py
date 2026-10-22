@@ -6,6 +6,7 @@ from backend.contracts import DomainError
 from runner.commands import DockerExecutor, validate_test_command
 from runner.intervention import unledgered
 from runner.tdd_gate import NO_TESTS_RAN, can_finish, count_tests, progress
+import test_builder_loop
 import test_tdd_gate as gate
 
 IMAGE = 'python@sha256:' + 'a' * 64
@@ -19,7 +20,9 @@ class CountTests(unittest.TestCase):
     def test_the_runners_summaries_are_read(self):
         cases = [('', 'Ran 3 tests in 0.002s\n\nOK\n', 3), ('', 'Ran 0 tests in 0.000s\n\nNO TESTS RAN\n', 0),
                  ('===== 2 passed, 1 warning in 0.05s =====', '', 2), ('===== no tests ran in 0.01s =====', '', 0),
-                 ('# tests 4\n# suites 0\n# pass 4\n# fail 0\n', '', 4), ('Tests:       1 failed, 2 passed, 3 total', '', 2),
+                 ('# tests 4\n# suites 0\n# pass 4\n# fail 0\n', '', 4), ('Tests:       1 failed, 2 passed, 3 total', '', 3),
+                 ('===== 1 failed, 2 passed in 0.1s =====', '', 3), ('===== 1 error in 0.05s =====', '', 1),
+                 ('  2 passing (10ms)\n  1 failing', '', 3), ('\u2139 tests 2\n\u2139 pass 0\n\u2139 fail 2', '', 2),
                  ('  5 passing (10ms)', '', 5), ('usage: pytest [options]', '', None),
                  ('\u2714 x (0.5ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 1\n\u2139 fail 0\n', '', 1),   # node:24 in a container (not a TTY)
                  ('\u2139 tests 0\n\u2139 pass 0\n', '', 0)]
@@ -67,6 +70,33 @@ class WorkspaceChangesOnlyThroughTheLedger(unittest.TestCase):
     def test_a_task_that_ran_commands_is_still_blamed_for_unledgered_files(self):
         calls = [dict(tool='write_file', ok=True, args=dict(path='a.py')), dict(tool='run_tests', ok=True, args=dict(argv=['pytest']))]
         self.assertEqual(unledgered(['a.py', 'generated.txt'], calls), ['generated.txt'])
+
+
+class RedNeedsATestToRun(unittest.TestCase):
+    """Re-review N-4: a failing exit code proves RED only if some test actually ran (or the runner's output cannot tell)."""
+    setUp = test_builder_loop.LoopChecks.setUp
+    toolbox = test_builder_loop.LoopChecks.toolbox
+
+    def run_tests(self, code, stdout='', stderr=''):
+        from runner.commands import CommandResult
+        self.executor.run = lambda workspace, argv, cwd, timeout, **kw: CommandResult(code, stdout, stderr, False, False)
+        self.toolbox().run_tests(['python', '-m', 'unittest'])
+        return self.store.tool_calls(self.run_id, 't1')[-1]
+
+    def test_a_failing_run_that_executed_no_test_is_not_red(self):
+        entry = self.run_tests(5, stderr='Ran 0 tests in 0.000s\n\nNO TESTS RAN\n')
+        self.assertEqual((entry['exit_code'], entry['error_code']), (5, NO_TESTS_RAN))
+        entries = [gate.write('tests/t.py'), entry]
+        self.assertEqual(progress(entries, 'backend').phase, 'red')
+
+    def test_a_failing_run_of_real_tests_is_red(self):
+        entry = self.run_tests(1, stderr='Ran 1 test in 0.001s\n\nFAILED (failures=1)\n')
+        self.assertIsNone(entry['error_code'])
+        self.assertEqual(progress([gate.write('tests/t.py'), entry], 'backend').phase, 'impl')
+
+    def test_a_failing_run_whose_output_is_not_recognised_still_counts(self):
+        entry = self.run_tests(2, stderr='some runner we do not parse failed\n')
+        self.assertIsNone(entry['error_code'])
 
 
 if __name__ == '__main__':

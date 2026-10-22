@@ -7,19 +7,27 @@ TDD_KINDS = frozenset({"backend", "frontend", "ai_data"})
 TEST_PATTERNS = ("tests/**", "**/tests/**", "test_*.py", "**/test_*.py", "*_test.py", "**/*_test.py", "*.test.*", "**/*.test.*",
                  "*.spec.*", "**/*.spec.*", "**/__tests__/**")
 MUTATIONS = frozenset({"write_file", "delete_file", "move_file"})
-NO_TESTS_RAN = "NO_TESTS_RAN"   # ledger error_code of a run_tests that exited 0 without a readable count of executed tests
-SUMMARIES = (re.compile(r"^Ran (\d+) tests?\b", re.M), re.compile(r"^[#\u2139] pass (\d+)$", re.M), re.compile(r"\b(\d+) passed\b"),
-             re.compile(r"\b(\d+) passing\b"), re.compile(r"\bno tests ran\b(?!.*\bpassed\b)", re.I))
+NO_TESTS_RAN = "NO_TESTS_RAN"   # ledger error_code of a run_tests in which no test is known to have run (exit 0 without a count, or a count of 0)
+UNITTEST = re.compile(r"^Ran (\d+) tests?\b", re.M)
+NODE = re.compile(r"^[#\u2139] tests (\d+)$", re.M)
+JEST = re.compile(r"\bTests:\s.*?(\d+) total")
+PYTEST = re.compile(r"\b(\d+) (?:passed|failed|errors?)\b")
+MOCHA = re.compile(r"\b(\d+) (?:passing|failing)\b")
+NONE_RAN = re.compile(r"\bno tests ran\b", re.I)
 
 
 def count_tests(stdout, stderr):
-    """How many tests a runner says it executed (unittest, pytest, node:test, jest, mocha), or None if no summary is recognised."""
+    """How many tests a runner says it executed (unittest, node:test, jest, pytest, mocha), or None if no summary is recognised."""
     text = stdout + "\n" + stderr
-    for pattern in SUMMARIES:
+    for pattern in (UNITTEST, NODE, JEST):
         found = pattern.search(text)
         if found:
-            return int(found.group(1)) if found.groups() else 0
-    return None
+            return int(found.group(1))
+    for pattern in (PYTEST, MOCHA):
+        found = [int(m.group(1)) for m in pattern.finditer(text)]
+        if found:
+            return sum(found)
+    return 0 if NONE_RAN.search(text) else None
 
 
 @dataclass(frozen=True)
@@ -46,7 +54,7 @@ def state_message(phase, tests_written, implemented, last_run):
     if phase == "done":
         return "RED와 GREEN 기록 확인됨. finish 가능."
     if last_run == "no_tests":
-        return "run_tests가 통과했지만 실행된 테스트가 확인되지 않습니다(실행된 테스트 수 0 또는 요약 없음). 테스트가 실제로 실행돼 통과해야 판정됩니다."
+        return "run_tests에서 실행된 테스트가 확인되지 않습니다(실행된 테스트 수 0, 또는 통과인데 요약이 없음). 테스트가 실제로 실행돼야 RED·GREEN이 판정됩니다."
     if phase == "red":
         if not tests_written:
             return "테스트 파일 기록 없음. RED 판정에는 실패하는 테스트 파일 작성과 실패한 run_tests 기록이 필요합니다."

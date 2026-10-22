@@ -128,7 +128,8 @@ class ToolBox:
             count = count_tests(public["stdout"], public["stderr"])
             public = dict(public, tests_run=count)
             extra = dict(extra, result_digest=digest(public))
-            if public["exit_code"] == 0 and not count:
+            executed_nothing = count == 0 or (count is None and public["exit_code"] == 0)   # an unreadable summary may still be a real RED
+            if public["exit_code"] is not None and executed_nothing:
                 extra["error_code"] = NO_TESTS_RAN   # recorded, not raised: the run happened, it just proves nothing
             return public, extra
         return self._call("run_tests", dict(argv=argv, cwd=cwd, timeout=timeout), BUILD_ROLES, action)
