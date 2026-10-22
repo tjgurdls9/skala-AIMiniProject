@@ -18,6 +18,7 @@ import BuildingRail, { type FloorEntry } from './BuildingRail.vue'
 import ChangeDialog from './ChangeDialog.vue'
 import EventLog from './EventLog.vue'
 import DemoControl from './DemoControl.vue'
+import ModelWorkNotice from './ModelWorkNotice.vue'
 import EvidencePanel from './EvidencePanel.vue'
 import OfficeScene from './OfficeScene.vue'
 import PlanApprovalDialog from './PlanApprovalDialog.vue'
@@ -53,6 +54,16 @@ const onReducedChange = (): void => {
   prefersReduced.value = reducedMq?.matches ?? false
 }
 const effectiveMotion = computed(() => motion.value && !prefersReduced.value)
+
+// 모델 작업 대기 표시: 정지된 합성 예시·기록 재생·연결 끊김에서는 "응답 대기"라고 말할 근거가 없어 보이지 않는다
+const lastEvent = computed(() => run.events.value.at(-1) ?? null)
+const receivedAt = ref(Date.now())
+watch(() => lastEvent.value?.seq, () => {
+  receivedAt.value = Date.now()
+})
+const showModelWork = computed(
+  () => (props.source.kind === 'live' || !!props.source.demo) && !run.isReplay.value && run.connection.value === 'open',
+)
 
 const currentSprintId = computed(() => (snapshot.value ? deriveCurrentSprintId(snapshot.value) : null))
 const sceneTasks = computed(() => (snapshot.value && view.sprintId ? snapshot.value.tasks.filter((t) => t.sprint_id === view.sprintId) : []))
@@ -234,6 +245,7 @@ onBeforeUnmount(() => {
     </div>
 
     <template v-else>
+      <ModelWorkNotice v-if="showModelWork" :snapshot="snapshot" :last-event="lastEvent" :received-at="receivedAt" :animated="effectiveMotion" />
       <main id="workspace-main" class="office-page" tabindex="-1" aria-label="작업 공간">
         <section class="scene-cell" :class="{ 'in-transit': inTransit }" aria-label="현재 층 사무실">
           <OfficeScene
