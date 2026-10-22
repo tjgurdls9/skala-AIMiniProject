@@ -131,7 +131,7 @@ def create_app(settings=None, store=None, model=None):
             value["reasons"].append("실행기 heartbeat가 없습니다.")
         if status != "ready":
             value["reasons"].append("명시적으로 설정한 로컬 Qwen/DeepSeek 모델이 필요합니다.")
-        value["reasons"].append("작은 문의 앱 템플릿만 지원합니다. 격리 이미지·취약점 DB 준비가 필요하며 실제 배포는 비활성입니다.")
+        value["reasons"].append(f"시작 프로젝트는 비어 있는 {value['template_id']}이며 앱 코드는 로컬 모델이 작성합니다. 격리 이미지·취약점 DB 준비가 필요하며 실제 배포는 비활성입니다.")
         validate("Runtime", value)
         return value
 

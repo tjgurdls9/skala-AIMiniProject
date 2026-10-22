@@ -98,5 +98,17 @@ class SecretPattern(unittest.TestCase):
             self.assertIsNotNone(SECRET.search(text), text)
 
 
+class RuntimeNotice(unittest.TestCase):
+    """Review L-5: the common screen shows these reasons, so they must describe the current product."""
+    setUp = fixtures.RuntimeChecks.setUp
+
+    def test_the_runtime_notice_names_the_blank_starter_not_a_retired_template(self):
+        reasons = self.client.get('/api/runtime').json()['reasons']
+        text = ' '.join(reasons)
+        self.assertNotIn('문의', text)
+        self.assertIn('blank-v1', text)
+        self.assertIn('모델', text)
+
+
 if __name__ == '__main__':
     unittest.main()
