@@ -1,8 +1,11 @@
 """Durable, source-bound planning steps; checkpoints contain no hidden reasoning."""
+import asyncio
 import copy
 import json
 
-from backend.contracts import SECRET, canonical, digest, plan_inputs, require, validate
+from jsonschema import Draft202012Validator, ValidationError
+
+from backend.contracts import SECRET, DomainError, canonical, digest, plan_inputs, require, validate
 from backend.store import now
 
 BUDGET = 14000
@@ -87,6 +90,32 @@ class PlanningContext:
             for action in ('UPDATE', 'DELETE'):
                 db.execute(f"CREATE TRIGGER IF NOT EXISTS context_steps_{action.lower()}_blocked BEFORE {action} ON context_steps BEGIN SELECT RAISE(ABORT, 'immutable context'); END")
 
+    async def ask(self, job, worker, call, step_schema, schema, previous, part):
+        """One fragment's answer. The reasons for a rejection go back to the model like in every other planning step; only the same
+        rejection twice stops for the user. The proof rules for retiring a requirement (`revise`) are not relaxed."""
+        notes, last = None, None
+        while True:
+            proposal = await worker.infer(job, bounded(dict(call, previous_errors=notes)) if notes else call, step_schema)
+            require(not SECRET.search(canonical(proposal)), 'INVALID_COMMAND', '모델 출력에 비밀 형식이 포함됐습니다.', 422)
+            try:
+                Draft202012Validator(step_schema).validate(proposal)
+                revisions = proposal.pop('revisions', [])
+                validate('PlanDraft', proposal)
+                if previous:
+                    revisions = revise(previous, proposal, revisions, part)
+                    validate('PlanDraft', proposal)
+                else:
+                    require(not revisions, 'INVALID_COMMAND', '최초 조각에는 이전 요구 정정 대상을 만들 수 없습니다.', 422)
+                return proposal, revisions
+            except (ValidationError, DomainError) as error:
+                notes = [(error.message if isinstance(error, DomainError) else '형식 오류: ' + error.message)[:300]]
+                await asyncio.to_thread(self.store.record_model_output, dict(
+                    run_id=job['run_id'], job_id=job.get('id'), attempt_id=job.get('attempt_id'), role='planner', step='plan',
+                    kind='rejected', content=json.dumps(notes, ensure_ascii=False)))
+                if digest(notes) == last:
+                    raise
+                last = digest(notes)
+
     async def plan(self, job, worker, schema):
         packet = job['packet']
         parts = fragments(packet['requests'])
@@ -114,17 +143,7 @@ class PlanningContext:
                                 ' Read this exact original/correction fragment in chronological order. Produce the CURRENT effective plan, not a union of history. Only mandatory_policy is immutable. approved_spec and accumulated_plan are prior versions; prior_draft is the last UNAPPROVED draft kept only as a reference for what the user is modifying, never as scope or a requirement; explicit later corrections may remove/replace their goals, features, constraints and AC definitions (including the same AC ID). prior_values contains digests in the same order as each accumulated_plan field (goal has one entry). For EACH removed/replaced prior value, return revisions with field, previous_digest from that position, and an exact quote from this fragment explicitly authorizing that correction. Otherwise keep that value verbatim. Never revive superseded requirements. Preserve history in changes and source records. No revision is needed for additions. All fragments are read before plan approval.',
                                 prior_values={field: [digest(value) for value in (previous[field] if isinstance(previous[field], list) else [previous[field]])] for field in FIELDS} if previous else {}))
             step_schema = plan_step_schema(schema, previous is not None)
-            proposal = await worker.infer(job, call, step_schema)
-            from jsonschema import Draft202012Validator
-            Draft202012Validator(step_schema).validate(proposal)
-            revisions = proposal.pop('revisions', [])
-            validate('PlanDraft', proposal)
-            require(not SECRET.search(canonical(proposal)), 'INVALID_COMMAND', '모델 출력에 비밀 형식이 포함됐습니다.', 422)
-            if previous:
-                revisions = revise(previous, proposal, revisions, part)
-                validate('PlanDraft', proposal)
-            else:
-                require(not revisions, 'INVALID_COMMAND', '최초 조각에는 이전 요구 정정 대상을 만들 수 없습니다.', 422)
+            proposal, revisions = await self.ask(job, worker, call, step_schema, schema, previous, part)
             with self.store.transaction() as db:
                 require(worker.attempt_active(db, job) and worker.owns(db), 'TEMPORARILY_UNAVAILABLE', '문맥 인계 시도가 만료됐습니다.', 503)
                 current = self.store.load(db, job['run_id'])

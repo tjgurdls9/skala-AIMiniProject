@@ -134,5 +134,67 @@ class ModelOutputLedger(unittest.TestCase):
         self.assertEqual(row['truncated'], 1)
 
 
+class CorrectionFeedback(unittest.TestCase):
+    """The correction fragment gets the same treatment as every other planning step: the reasons for a rejected answer go back to the
+    model, and only the same mistake twice stops for the user. The proof rules for retiring a requirement are unchanged (CT40)."""
+    setUp = extras.PlanExtrasChecks.setUp
+    command = extras.PlanExtrasChecks.command
+    post_command = extras.PlanExtrasChecks.post_command
+    start = extras.PlanExtrasChecks.start
+    spec = extras.PlanExtrasChecks.spec
+    SCOPE_NOTE = '이번 앱에는 AI/Data 기능이 필요 없습니다.'
+
+    def replan(self, answers):
+        """Plan once, then send a scope-only correction; `answers` are the revisions the model returns for the correction fragment, in order."""
+        class Reviser(extras.Scripted):
+            def __init__(inner):
+                super().__init__()
+                inner.fragment_calls = []
+
+            async def generate(inner, packet, schema):
+                if packet.get('step') is None and packet.get('fragment_index') == 1:
+                    inner.fragment_calls.append(packet)
+                    revisions = answers[min(len(inner.fragment_calls), len(answers)) - 1]
+                    return dict(copy.deepcopy(extras.BASE), revisions=revisions(packet) if callable(revisions) else revisions)
+                return await super().generate(packet, schema)
+        model = Reviser()
+        run_id = self.start(model)
+        asyncio.run(self.worker.tick())
+        snapshot = self.store.snapshot(run_id)
+        self.assertEqual(self.post_command(self.command(snapshot, 'request_changes', dict(scope='spec', feedback=self.SCOPE_NOTE))).status_code, 202)
+        asyncio.run(self.worker.tick())
+        return run_id, model
+
+    def test_a_wrong_citation_is_returned_to_the_model_and_a_corrected_answer_goes_through(self):
+        bad = [dict(field='goal', previous_digest='sha256:' + '0' * 64, quote=self.SCOPE_NOTE)]
+        run_id, model = self.replan([bad, []])
+        self.assertEqual(self.store.snapshot(run_id)['state'], 'awaiting_plan_approval')
+        self.assertEqual(len(model.fragment_calls), 2)
+        self.assertNotIn('previous_errors', model.fragment_calls[0])
+        self.assertIn('정정 근거', ' '.join(model.fragment_calls[1]['previous_errors']))
+
+    def test_the_same_mistake_twice_still_stops_for_the_user(self):
+        bad = [dict(field='goal', previous_digest='sha256:' + '0' * 64, quote=self.SCOPE_NOTE)]
+        run_id, model = self.replan([bad])
+        self.assertEqual(self.store.snapshot(run_id)['state'], 'needs_input')
+        self.assertEqual(len(model.fragment_calls), 2)
+        self.assertTrue([r for r in self.store.model_outputs(run_id) if r['kind'] == 'rejected' and r['step'] == 'plan'])
+
+    def test_dropping_a_requirement_without_proof_is_still_refused(self):
+        class Dropper(extras.Scripted):
+            async def generate(inner, packet, schema):
+                if packet.get('step') is None and packet.get('fragment_index') == 1:
+                    return dict(copy.deepcopy(extras.BASE), features=['목록'], revisions=[])      # '상세' vanished, nothing cites why
+                return await super().generate(packet, schema)
+        run_id = self.start(Dropper())
+        asyncio.run(self.worker.tick())
+        snapshot = self.store.snapshot(run_id)
+        self.post_command(self.command(snapshot, 'request_changes', dict(scope='spec', feedback=self.SCOPE_NOTE)))
+        asyncio.run(self.worker.tick())
+        after = self.store.snapshot(run_id)
+        self.assertEqual(after['state'], 'needs_input')
+        self.assertIn('정정 근거 없이 누락', after['reason'])
+
+
 if __name__ == '__main__':
     unittest.main()
