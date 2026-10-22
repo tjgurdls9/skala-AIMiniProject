@@ -129,5 +129,22 @@ class VerificationChecks(unittest.TestCase):
         self.assertEqual(unverified_acceptance(AC, [], []), ['AC1', 'AC2'])
 
 
+class VerificationFeedback(unittest.TestCase):
+    """Live run ce7a5d: the model got "c3: ... path" back, could not tell which check that was or what a valid path looks like."""
+    def test_a_file_check_with_an_absolute_path_is_named_by_its_own_id_and_told_to_use_a_relative_path(self):
+        spec = dict(id='CHK-003', ac_ids=['AC1'], kind='file', path='/app/routes/tasks.py', expect=dict(exists=True))
+        errors = check_verification([spec], [], AC)
+        self.assertEqual(len(errors), 1)
+        self.assertIn('CHK-003', errors[0])
+        self.assertIn('상대 경로', errors[0])
+        self.assertIn('/app/routes/tasks.py', errors[0])
+
+    def test_a_relative_path_is_accepted_and_parent_escapes_are_still_refused(self):
+        good = dict(id='f1', ac_ids=['AC1'], kind='file', path='routes/tasks.py', expect=dict(exists=True))
+        self.assertEqual(check_verification([good], [], AC), [])
+        for bad in ('../x.py', '.git/config'):
+            self.assertTrue(check_verification([dict(good, path=bad)], [], AC), bad)
+
+
 if __name__ == '__main__':
     unittest.main()

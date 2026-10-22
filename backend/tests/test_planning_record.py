@@ -134,6 +134,30 @@ class ModelOutputLedger(unittest.TestCase):
         self.assertEqual(row['truncated'], 1)
 
 
+class VerificationRetry(unittest.TestCase):
+    setUp = extras.PlanExtrasChecks.setUp
+    command = extras.PlanExtrasChecks.command
+    post_command = extras.PlanExtrasChecks.post_command
+    start = extras.PlanExtrasChecks.start
+    spec = extras.PlanExtrasChecks.spec
+
+    def test_the_model_is_told_which_of_its_checks_is_wrong_and_can_fix_it(self):
+        seen = []
+
+        def verification(packet):
+            ac = packet['acceptance_criterion']['id']
+            seen.append(packet.get('previous_errors'))
+            path = '/app/server.py' if len(seen) == 1 else 'server.py'
+            return dict(checks=[dict(extras.http_check(ac), ac_ids=[ac], id='OWN-1'),
+                                dict(id='OWN-2', ac_ids=[ac], kind='file', path=path, expect=dict(exists=True))], manual_reason=None)
+        run_id = self.start(extras.Scripted(verification=verification))
+        asyncio.run(self.worker.tick())
+        self.assertEqual(self.store.snapshot(run_id)['state'], 'awaiting_plan_approval')
+        self.assertIsNone(seen[0])
+        self.assertIn('OWN-2', ' '.join(seen[1]))
+        self.assertNotIn('c2', ' '.join(seen[1]))
+
+
 class CorrectionFeedback(unittest.TestCase):
     """The correction fragment gets the same treatment as every other planning step: the reasons for a rejected answer go back to the
     model, and only the same mistake twice stops for the user. The proof rules for retiring a requirement are unchanged (CT40)."""

@@ -88,7 +88,10 @@ def check_verification(verification, manual_acceptance, acceptance):
                 if problem:
                     errors.append(f"{spec['id']}: command 점검은 승인된 명세 안에서 자기 완결이어야 합니다 ({problem}).")
             elif spec["kind"] == "file":
-                relative_parts(spec["path"])
+                try:
+                    relative_parts(spec["path"])
+                except DomainError:
+                    errors.append(f"{spec['id']}: file 점검의 path는 작업 공간 기준 상대 경로여야 합니다(앞에 /를 붙이지 않고 dir/file.ext 형식, '..'과 .git 불가): {spec['path'][:200]}")
         except DomainError as error:
             errors.append(f"{spec['id']}: {error.message}")
     marked = [m["ac_id"] for m in manual_acceptance]

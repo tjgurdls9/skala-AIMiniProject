@@ -121,7 +121,7 @@ class PlanExtras:
         areas = [dict(kind=i["kind"], title=i["title"], write_scope=i["write_scope"]) for i in work_plan]
         for ac in plan["acceptance"]:
             def check(value, ac=ac):
-                return check_verification([dict(c, id=f"c{n}", ac_ids=[ac["id"]]) for n, c in enumerate(value["checks"], 1)], [], plan["acceptance"])
+                return check_verification([dict(c, ac_ids=[ac["id"]]) for c in value["checks"]], [], plan["acceptance"])   # the model's own ids, so errors name its checks
             value = await self.ask(job, worker, "verification", dict(
                 acceptance_criterion=dict(id=ac["id"], title=ac["title"], description=ac["description"]),
                 features=plan["features"], work_areas=areas,
