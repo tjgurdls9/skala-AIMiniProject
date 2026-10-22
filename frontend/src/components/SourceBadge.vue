@@ -5,10 +5,10 @@ import type { Snapshot } from '../api/types'
 import { formatTime, shortDigest, shortId } from '../model/labels'
 
 /** LIVE 배지는 연결 출처가 실제 API이고 snapshot.mode가 live일 때만 붙인다. 예시의 mode 값만 보고 붙이지 않는다. */
-const props = defineProps<{ kind: SourceKind; snapshot: Snapshot | null }>()
+const props = defineProps<{ kind: SourceKind; snapshot: Snapshot | null; demoBadge?: string }>()
 
 const badge = computed(() => {
-  if (props.kind === 'example') return { cls: 'example', text: '합성 예시 · 실제 실행 아님' }
+  if (props.kind === 'example') return { cls: 'example', text: props.demoBadge ?? '합성 예시 · 실제 실행 아님' }
   if (props.snapshot?.mode === 'replay' && props.snapshot.replay_source?.provenance === 'imported_unsigned') {
     return { cls: 'imported', text: '가져온 기록(서명 없음) · 읽기 전용' }
   }

@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { LiveApi, liveSource } from './api/live'
 import type { RunSource } from './api/source'
 import { exampleSource } from './examples/exampleSource'
+import { FULL_CYCLE_ID, fullCycleSource } from './examples/fullCycle'
 import { findScenario } from './examples/scenarios'
 import type { Origin } from './model/prompt'
 import RunWorkspace from './components/RunWorkspace.vue'
@@ -15,6 +16,7 @@ const params = ref(new URLSearchParams(window.location.search))
 const source = computed<RunSource | null>(() => {
   const runId = params.value.get('run')
   if (runId) return liveSource(api, runId)
+  if (params.value.get('example') === FULL_CYCLE_ID) return fullCycleSource()
   const scenario = findScenario(params.value.get('example'))
   return scenario ? exampleSource(scenario) : null
 })

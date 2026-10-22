@@ -17,6 +17,7 @@ import AlertStrip from './AlertStrip.vue'
 import BuildingRail, { type FloorEntry } from './BuildingRail.vue'
 import ChangeDialog from './ChangeDialog.vue'
 import EventLog from './EventLog.vue'
+import DemoControl from './DemoControl.vue'
 import EvidencePanel from './EvidencePanel.vue'
 import OfficeScene from './OfficeScene.vue'
 import PlanApprovalDialog from './PlanApprovalDialog.vue'
@@ -210,6 +211,7 @@ onBeforeUnmount(() => {
     <RunHeader
       v-model:motion="motion"
       :kind="source.kind"
+      :demo-badge="source.demo?.badge"
       :snapshot="snapshot"
       :connection="run.connection.value"
       :pending="run.pending.value"
@@ -221,6 +223,7 @@ onBeforeUnmount(() => {
       @home="emit('home')"
     />
     <p class="sr-only" role="status" aria-live="polite">{{ announce }}</p>
+    <DemoControl v-if="source.demo" :demo="source.demo" />
 
     <div v-if="!snapshot" class="loading">
       <p v-if="run.loadError.value" class="error-box" role="alert">
