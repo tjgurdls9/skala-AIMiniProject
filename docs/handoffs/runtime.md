@@ -161,3 +161,10 @@
 - **관제 문서 채택**: `docs/handoffs/control-tower.md`(sha256 `53f178d0…`)와 `claude-control-tower.md`(`1bf3215e…`)를 원본에서 바이트 그대로 복사했다. 관제 소유이며 이 브랜치에서 수정하지 않는다.
 - **push**: 이 문서를 포함한 커밋 뒤에 `origin/work/codex-runtime`, `origin/work/claude-office`로 올린다. `main`은 건드리지 않는다. 결과(원격 해시)는 관제 보고에 적었다.
 - **리뷰(C6)**: 독립 리뷰 1회(sonnet, high), 대상은 6cc9a0b 이후 `backend/`·`runner/`·`infra/`. 원문은 `docs/reports/code-review-f0-f6.md`. CRITICAL/HIGH는 고치지 않고 목록만 관제에 보고했다. 수정 여부는 사용자 결정이다.
+
+## 12. 리뷰 수정과 첫 실서버 run (2026-10-22)
+
+- **수정 커밋**: `9f4b375`(H-4·H-5), `2beae84`(H-1·H-2·H-3·SECRET 경계), 그 뒤 재검토 N-1(보안 검사 `sk-` 단어 경계)·N-2(`node --test`의 `ℹ pass N` 인식) 수정. 재검토 원문은 `docs/reports/code-review-f0-f6.md`.
+- **마감으로 수정하지 않은 것**(사유: 제출 마감): 리뷰 MEDIUM 중 grant 900초 만료 표시, 앱 미기동 판정, 비UTF-8 파일의 보안 스캐너 크래시, 재시도 task의 거짓 개입 표시·첫 task 사각지대, 예외 진단 로그, `/data` 볼륨 쓰기 권한, LOW 8건. 재검토 N-3(설치 잠금 파일이 개입으로 표시), N-4(테스트가 하나도 안 돌아도 exit≠0이면 RED), N-5(`verify_isolation.py` 낡음), N-6(접두사 재충돌, 거부는 됨), N-7(요약이 64KB에 잘리면 개수 못 읽음). 알려진 문구 문제: `/api/runtime`의 `reasons`에 옛 문구 "작은 문의 앱 템플릿만 지원합니다…"가 남아 있다(`backend/api.py:134`).
+- **첫 실서버 run `67f60a`**(DB `runtime-data/live-20261022.sqlite3`, 보존): 사용자가 화면에서 "할 일을 추가하고 완료 표시할 수 있는 간단한 웹 앱을 만들어 줘"를 입력했다. 기획(AC 2개)과 아이디어 대안 3개까지 성공했고, 작업 분해(work_plan)에서 `qwen3.5:4b`가 `ai_data` 영역을 작업에도 생략 이유에도 넣지 않는 오류를 서버가 돌려줘도 반복해 `needs_input`(v2)으로 멈췄다. 판정은 **모델 판단 실패**(서비스 결함 아님). 이 run에는 명령을 보내지 않았다. 모델의 원문 응답이 원장에 남지 않는 기록 약점이 있다(후속 과제). 이 run은 빌더·검증·프리뷰 단계에 도달하지 못했다.
+- 이 run 뒤에 서비스 결함 N-1·N-2를 고치고(실행 경계 절차: 해당 run 평가 종료·보존 → 수정 커밋 → 새 run) API와 worker만 재시작해 새 run을 받는다.

@@ -20,7 +20,9 @@ class CountTests(unittest.TestCase):
         cases = [('', 'Ran 3 tests in 0.002s\n\nOK\n', 3), ('', 'Ran 0 tests in 0.000s\n\nNO TESTS RAN\n', 0),
                  ('===== 2 passed, 1 warning in 0.05s =====', '', 2), ('===== no tests ran in 0.01s =====', '', 0),
                  ('# tests 4\n# suites 0\n# pass 4\n# fail 0\n', '', 4), ('Tests:       1 failed, 2 passed, 3 total', '', 2),
-                 ('  5 passing (10ms)', '', 5), ('usage: pytest [options]', '', None)]
+                 ('  5 passing (10ms)', '', 5), ('usage: pytest [options]', '', None),
+                 ('\u2714 x (0.5ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 1\n\u2139 fail 0\n', '', 1),   # node:24 in a container (not a TTY)
+                 ('\u2139 tests 0\n\u2139 pass 0\n', '', 0)]
         for out, err, expected in cases:
             self.assertEqual(count_tests(out, err), expected, (out, err))
 

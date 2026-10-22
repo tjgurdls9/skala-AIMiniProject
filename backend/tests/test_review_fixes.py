@@ -75,6 +75,19 @@ class StaticScan(unittest.TestCase):
         self.assertFalse(result['checks']['secrets'])
 
 
+class StaticScanSecretBoundary(unittest.TestCase):
+    scan = StaticScan.scan
+    """Re-review N-1: the scan's own secret pattern needs the same word boundary as the write-time check."""
+    def test_ordinary_kebab_case_names_are_not_secrets_in_the_scan(self):
+        result = self.scan({'web/style.css': '.task-description-container { color: red }\n',
+                            'web/index.html': '<div class="disk-usage-monitoring-report"></div>\n'})
+        self.assertTrue(result['checks']['secrets'], result)
+
+    def test_a_real_key_next_to_punctuation_is_still_found_in_the_scan(self):
+        result = self.scan({'server/config.py': 'API_KEY = "sk-' + 'a' * 24 + '"\n'})
+        self.assertFalse(result['checks']['secrets'])
+
+
 class SecretPattern(unittest.TestCase):
     def test_words_that_merely_end_in_sk_are_not_secrets(self):
         for text in ('risk-assessment-calculation.py', 'task-management-service-handler', 'disk-usage-monitoring-report', 'a_disk-usage-monitoring-report'):

@@ -8,7 +8,7 @@ import sys
 
 root = Path(os.environ.get("CANDIDATE_ROOT", "/candidate"))
 findings = []
-secret = re.compile(r"sk-[A-Za-z0-9_-]{20,}|AKIA[A-Z0-9]{16}|gh[pousr]_[A-Za-z0-9]{20,}|BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY")
+secret = re.compile(r"(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}|AKIA[A-Z0-9]{16}|gh[pousr]_[A-Za-z0-9]{20,}|BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY")
 allowed_imports = {"pathlib", "sqlite3", "fastapi", "pydantic", "typing"}
 argv = sys.argv[1:]
 model_authored = "--model-authored" in argv

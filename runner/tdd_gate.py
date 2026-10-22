@@ -8,7 +8,7 @@ TEST_PATTERNS = ("tests/**", "**/tests/**", "test_*.py", "**/test_*.py", "*_test
                  "*.spec.*", "**/*.spec.*", "**/__tests__/**")
 MUTATIONS = frozenset({"write_file", "delete_file", "move_file"})
 NO_TESTS_RAN = "NO_TESTS_RAN"   # ledger error_code of a run_tests that exited 0 without a readable count of executed tests
-SUMMARIES = (re.compile(r"^Ran (\d+) tests?\b", re.M), re.compile(r"^# pass (\d+)$", re.M), re.compile(r"\b(\d+) passed\b"),
+SUMMARIES = (re.compile(r"^Ran (\d+) tests?\b", re.M), re.compile(r"^[#\u2139] pass (\d+)$", re.M), re.compile(r"\b(\d+) passed\b"),
              re.compile(r"\b(\d+) passing\b"), re.compile(r"\bno tests ran\b(?!.*\bpassed\b)", re.I))
 
 
