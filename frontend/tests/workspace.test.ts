@@ -59,7 +59,7 @@ describe('작업 공간 (합성 예시)', () => {
     await flush()
     await w.find('aside.evidence').findAll('button').find((b) => b.text().includes('데이터 적재 변경'))!.trigger('click')
     await flush()
-    expect(w.find('aside.evidence').text()).toContain('seed/inquiries.csv 적재')
+    expect(w.find('aside.evidence').text()).toContain('seed/todos.csv 적재')
     expect(w.find('aside.evidence').text()).toContain('합성 예시에는 이 산출물의 본문이 없습니다')
     w.unmount()
   })

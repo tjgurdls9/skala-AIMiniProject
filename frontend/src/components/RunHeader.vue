@@ -15,6 +15,7 @@ const props = defineProps<{
   pending: PendingCommand | null
   isReplay: boolean
   motion: boolean
+  demoBadge?: string
 }>()
 const emit = defineEmits<{ pause: []; resume: []; cancel: []; reconnect: []; home: []; 'update:motion': [value: boolean] }>()
 
@@ -50,7 +51,7 @@ const busy = computed(() => props.pending !== null)
     </div>
 
     <div class="status">
-      <SourceBadge :kind="kind" :snapshot="snapshot" />
+      <SourceBadge :kind="kind" :snapshot="snapshot" :demo-badge="demoBadge" />
       <span v-if="state" :class="['tone', `tone-${state.tone}`]" aria-label="실행 상태">
         <span aria-hidden="true">{{ state.glyph }}</span> {{ state.text }}
       </span>

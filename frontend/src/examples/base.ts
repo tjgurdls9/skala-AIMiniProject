@@ -55,7 +55,7 @@ const ARTIFACT_LIST: Artifact[] = [
   { id: 'a-request', title: '최초 요청 원문', kind: 'request', content_digest: fakeDigest('a1'), public_summary: '할 일을 분류하고 처리 상태를 관리하는 작은 대시보드가 필요하다.' },
   { id: 'a-spec', title: '기획안 v1', kind: 'spec', content_digest: fakeDigest('a2'), public_summary: '목표·기능 4개·비범위 3개·AC 5개·스택·무료 정책' },
   { id: 'a-contract', title: '할 일 API 계약', kind: 'contract', content_digest: fakeDigest('a3'), public_summary: 'GET /todos, PATCH /todos/{id}/status' },
-  { id: 'a-diff-data', title: '데이터 적재 변경', kind: 'code_diff', content_digest: fakeDigest('a4'), public_summary: 'seed/inquiries.csv 적재, 키워드 분류 규칙 6개' },
+  { id: 'a-diff-data', title: '데이터 적재 변경', kind: 'code_diff', content_digest: fakeDigest('a4'), public_summary: 'seed/todos.csv 적재, 키워드 분류 규칙 6개' },
   { id: 'a-diff-api', title: 'API 변경', kind: 'code_diff', content_digest: fakeDigest('a5'), public_summary: 'FastAPI 라우터 2개, SQLite 모델 1개' },
   { id: 'a-test-api', title: 'API 테스트 결과', kind: 'test_result', content_digest: fakeDigest('a6'), public_summary: '12개 중 12개 통과 (합성 예시 수치)' },
   { id: 'a-diff-ui', title: '화면 변경', kind: 'code_diff', content_digest: fakeDigest('a7'), public_summary: 'Vue 목록·상세·상태 변경 컴포넌트' },

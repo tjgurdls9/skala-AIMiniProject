@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import { ApiError, errorHint } from '../api/errors'
 import type { LiveApi } from '../api/live'
 import type { ReplayRecording, Runtime } from '../api/types'
+import { FULL_CYCLE_BADGE, FULL_CYCLE_ID } from '../examples/fullCycle'
 import { SCENARIOS } from '../examples/scenarios'
 import { formatTime, shortDigest } from '../model/labels'
 import BaseDialog from './BaseDialog.vue'
@@ -229,6 +230,11 @@ onMounted(async () => {
         </label>
         <p v-if="importing" class="small muted">가져오는 중…</p>
         <div v-if="importError" class="error-box small" role="alert">{{ importError.message }} <p>{{ errorHint(importError) }}</p></div>
+      </section>
+      <section aria-labelledby="demo-title">
+        <h3 id="demo-title">전체 과정 시연 <span class="chip example">{{ FULL_CYCLE_BADGE }}</span></h3>
+        <p class="small muted">요청부터 기획 승인, 층별 구현, 검증·보안, 프리뷰, 사람 확인, 배포 승인 대상까지 합성 데이터로 한 번 돕니다. 승인 지점에서는 멈추고, 승인 버튼을 눌러야 이어집니다. 서버로는 아무것도 보내지 않습니다.</p>
+        <button type="button" class="btn primary" @click="openExample(FULL_CYCLE_ID, $event)">전체 과정 시연 시작</button>
       </section>
       <section aria-labelledby="ex-title">
         <h3 id="ex-title">합성 예시 <span class="chip example">실제 실행 아님</span></h3>

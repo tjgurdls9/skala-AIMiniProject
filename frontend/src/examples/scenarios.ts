@@ -24,7 +24,7 @@ export interface ExampleScenario {
 const AC_IDS = ['AC-1', 'AC-2', 'AC-3', 'AC-4', 'AC-5']
 type AcMap = Partial<Record<string, AcceptanceState>>
 
-function acceptanceOf(states: AcMap, reportId?: string): AcceptanceStatus {
+export function acceptanceOf(states: AcMap, reportId?: string): AcceptanceStatus {
   return {
     spec_version_id: SPEC_V1,
     items: AC_IDS.map((id) => {
@@ -38,9 +38,9 @@ function acceptanceOf(states: AcMap, reportId?: string): AcceptanceStatus {
 const FUNCTIONAL_MET: AcMap = { 'AC-2': 'met', 'AC-3': 'met', 'AC-4': 'met' }
 // CR-C18: 계획이 사람 확인으로 정한 AC(AC-4 화면)는 자동 점검 대상이 아니라 미실행으로 남는다. 승인돼도 met가 되지 않는다
 const MANUAL_ACS = ['AC-4'] as const
-const WITH_MANUAL: AcMap = { ...FUNCTIONAL_MET, 'AC-4': 'not_run' }
+export const WITH_MANUAL: AcMap = { ...FUNCTIONAL_MET, 'AC-4': 'not_run' }
 
-type Seeds = Parameters<typeof buildEvents>[0]
+export type Seeds = Parameters<typeof buildEvents>[0]
 
 const PLAN_EVENTS: Seeds = [
   ['run_state_changed', '실행 시작 · 기획 단계', {}],
@@ -93,7 +93,7 @@ function scenario(
 /** 합성 프리뷰 본문(http.Preview). .invalid 도메인이라 실제로 열리지 않는다 */
 const PREVIEW_BODY = { url: 'http://preview.invalid/', origin: 'http://preview.invalid', commit_sha: CANDIDATE.commit }
 
-const STAGING: Environment = { id: 'env-staging', label: '스테이징 (합성)', exposure: 'private' }
+export const STAGING: Environment = { id: 'env-staging', label: '스테이징 (합성)', exposure: 'private' }
 
 const ACCEPTANCE_TARGET: AcceptanceTarget = {
   gate: 'acceptance',
@@ -105,10 +105,10 @@ const ACCEPTANCE_TARGET: AcceptanceTarget = {
   validator_report_id: 'rp-validator',
   validator_report_digest: report('validator', 'pass').content_digest,
 }
-const ACCEPTANCE_PENDING: Approval = { id: 'ap-acceptance-1', state: 'pending', target_digest: fakeDigest('d4'), target: ACCEPTANCE_TARGET }
-const ACCEPTANCE_APPROVED: Approval = { ...ACCEPTANCE_PENDING, state: 'approved', decided_by: 'operator', decided_at: '2026-10-20T10:20:00+09:00' }
+export const ACCEPTANCE_PENDING: Approval = { id: 'ap-acceptance-1', state: 'pending', target_digest: fakeDigest('d4'), target: ACCEPTANCE_TARGET }
+export const ACCEPTANCE_APPROVED: Approval = { ...ACCEPTANCE_PENDING, state: 'approved', decided_by: 'operator', decided_at: '2026-10-20T10:20:00+09:00' }
 
-const RELEASE_TARGET: ReleaseTarget = {
+export const RELEASE_TARGET: ReleaseTarget = {
   gate: 'release',
   spec_version_id: SPEC_V1,
   plan_digest: fakeDigest('d0'),
@@ -280,7 +280,7 @@ const BASE_SCENARIOS: ExampleScenario[] = [
 ]
 
 /** 합성 출시·복구 보기(ReleaseView 형식). 없는 시나리오는 미설정으로 응답한다 */
-const RELEASES: Record<string, ReleaseView> = {
+export const RELEASES: Record<string, ReleaseView> = {
   'release-approval': { run_id: RUN_ID, enabled: false, state: 'prepared', target: RELEASE_TARGET, details: RELEASE_DETAILS, operations: [], reason: '합성 예시: 출시 대상은 준비됐지만 실제 출시 실행은 비활성입니다.' },
   succeeded: {
     run_id: RUN_ID, enabled: false, state: 'applied', target: RELEASE_TARGET, details: RELEASE_DETAILS,

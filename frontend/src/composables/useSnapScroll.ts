@@ -11,6 +11,16 @@ export const WHEEL_THRESHOLD = 240
 export const TOUCH_THRESHOLD = 120
 /** 입력이 멈추면 쌓인 값을 버리고 되돌아가는 시간 */
 export const IDLE_RESET_MS = 220
+/**
+ * 마우스 휠을 한 칸씩 굴리면 칸 사이가 IDLE_RESET_MS보다 길어 크기 누적이 계속 버려진다.
+ * 그래서 크기와 별개로 "굴림 횟수"도 센다: 이 간격 이상 떨어진 입력은 새 굴림(한 칸),
+ * 간격이 이보다 짧게 이어지는 입력(트랙패드)은 한 번의 굴림이다.
+ */
+export const BURST_GAP_MS = 120
+/** 이 시간 안에 다음 굴림이 와야 같은 시도로 센다 */
+export const TICK_MEMORY_MS = 1200
+/** 같은 방향으로 이만큼 굴리면 크기와 상관없이 전환한다(한두 칸의 실수 입력에는 저항을 유지) */
+export const TICKS_TO_COMMIT = 3
 /** 전환 뒤 관성 휠을 흘려보내는 시간 */
 export const COOLDOWN_MS = 450
 /** 키보드·스크롤바로 중간에 멈췄을 때 가까운 상태로 맞추기까지 기다리는 시간 */
@@ -39,6 +49,8 @@ export function useSnapScroll(options: SnapOptions) {
   let resist = 0
   let idleTimer: ReturnType<typeof setTimeout> | null = null
   let settleTimer: ReturnType<typeof setTimeout> | null = null
+  let ticks = 0
+  let lastWheelAt = Number.NEGATIVE_INFINITY
   let lockedUntil = 0
   let tweenRaf = 0
   let animating = false
@@ -71,6 +83,7 @@ export function useSnapScroll(options: SnapOptions) {
     idleTimer = null
     pull = 0
     resist = 0
+    ticks = 0
     mode.value = target
     const to = target === 'full' ? 0 : options.distance()
     lockedUntil = now() + COOLDOWN_MS
@@ -97,14 +110,24 @@ export function useSnapScroll(options: SnapOptions) {
     tweenRaf = requestAnimationFrame(step)
   }
 
+  /** 나가는 방향으로 새 굴림이 올 때마다 센다. 반대 방향이거나 너무 오래 쉬면 처음부터 */
+  function countTick(signed: number): void {
+    const t = now()
+    const gap = t - lastWheelAt
+    lastWheelAt = t
+    if (signed <= 0) ticks = 0
+    else if (gap >= BURST_GAP_MS) ticks = gap <= TICK_MEMORY_MS ? ticks + 1 : 1
+  }
+
   /** 누적값을 더하고, 임계값을 넘으면 전환, 아니면 늘어남만 보여 주고 멈추면 되돌린다 */
   function accumulate(delta: number, threshold: number): void {
     const direction = mode.value === 'full' ? 1 : -1
+    countTick(delta * direction)
     // 현재 상태에서 나가는 방향만 쌓는다(반대 방향은 되돌림)
     pull = Math.max(0, pull * direction + delta * direction) * direction
     resist = rubber(pull, threshold)
     render()
-    if (Math.abs(pull) >= threshold) {
+    if (Math.abs(pull) >= threshold || ticks >= TICKS_TO_COMMIT) {
       commit(mode.value === 'full' ? 'detail' : 'full')
       return
     }
@@ -112,7 +135,17 @@ export function useSnapScroll(options: SnapOptions) {
     idleTimer = setTimeout(resetPull, IDLE_RESET_MS)
   }
 
+  /** 승인·프리뷰 같은 모달 대화상자가 열려 있으면 입력은 창의 것이다. 쌓인 입력은 버리고 막지 않는다 */
+  function yieldToDialog(): boolean {
+    if (!document.querySelector('dialog[open]')) return false
+    touchY = null
+    ticks = 0
+    if (pull !== 0 || resist !== 0) resetPull()
+    return true
+  }
+
   function onWheel(e: WheelEvent): void {
+    if (yieldToDialog()) return
     const delta = e.deltaMode === 1 ? e.deltaY * LINE_PX : e.deltaY
     if (!inZone(delta)) return
     e.preventDefault()
@@ -121,11 +154,12 @@ export function useSnapScroll(options: SnapOptions) {
   }
 
   function onTouchStart(e: TouchEvent): void {
+    if (yieldToDialog()) return
     touchY = e.touches[0]?.clientY ?? null
   }
 
   function onTouchMove(e: TouchEvent): void {
-    if (touchY === null) return
+    if (yieldToDialog() || touchY === null) return
     const y = e.touches[0]?.clientY ?? touchY
     const delta = touchY - y
     if (!inZone(delta)) return
