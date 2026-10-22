@@ -28,8 +28,6 @@ for path in root.rglob("*"):
     if path.is_symlink() or path.stat().st_size > 1024 * 1024:
         findings.append({"path": str(path.relative_to(root)), "rule": "unsafe_file"})
         continue
-    if "vendor" in path.parts:
-        continue
     text = path.read_text()
     if secret.search(text):
         findings.append({"path": str(path.relative_to(root)), "rule": "secret_format"})

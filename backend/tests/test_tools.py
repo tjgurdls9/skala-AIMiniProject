@@ -181,7 +181,7 @@ class DockerExecutorChecks(unittest.TestCase):
         for forbidden in ('--privileged', 'docker.sock', '--volume', ' -v ', '--env-file', '--pid host', '--net host'):
             self.assertNotIn(forbidden, text)
         mounts = [args[i + 1] for i, a in enumerate(args) if a == '--mount']
-        self.assertEqual(mounts, [f'type=bind,src={self.workspace},dst=/work'])
+        self.assertEqual(mounts, [f'type=bind,src={self.workspace},dst=/work,readonly'])   # only the ledger can change the workspace
         self.assertEqual(args[-3:], ['python', '-c', 'print(1); print(2)'])
         self.assertIs(kwargs.get('shell', False), False)
         self.assertNotIn('env', kwargs)  # the host environment is never forwarded into the container

@@ -185,8 +185,10 @@ class Worker:
                 validate("PlanDraft", proposal)
                 require(len({a["id"] for a in proposal["acceptance"]}) == len(proposal["acceptance"]),
                         "INVALID_COMMAND", "AC ID는 중복될 수 없습니다.", 422)
-                spec_id = uid()
                 extras = job.get("plan_extras")
+                names = [c["id"] for c in (extras or {}).get("verification", [])]
+                require(len(set(names)) == len(names), "INVALID_COMMAND", "점검 ID는 중복될 수 없습니다.", 422)
+                spec_id = uid()
                 package = {**proposal, "spec_version_id": spec_id, "stack": job["packet"]["template_contract"].get("stack", []),
                            "repository": None, "deployment": None,
                            "free_policy": POLICY, "allowed_tools": TOOLBOX_TOOLS,

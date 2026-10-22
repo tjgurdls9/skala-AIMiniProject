@@ -55,7 +55,7 @@ class LoopChecks(unittest.TestCase):
 
         def run(workspace, argv, cwd, timeout, **kwargs):
             code = self.codes.pop(0) if self.codes else 0
-            return CommandResult(code, 'out', 'err', False, False)
+            return CommandResult(code, 'out', 'Ran 1 test in 0.0s\n\nOK' if code == 0 else 'err', False, False)   # a runner that really ran a test says so
         self.executor.run = run
 
     def toolbox(self, kind='backend'):

@@ -39,7 +39,8 @@ class FakeExecutor:
 
     def run(self, workspace, argv, cwd, timeout, **kwargs):
         self.calls.append(argv)
-        return CommandResult(self.codes.pop(0), 'out', '', False, False)
+        code = self.codes.pop(0)
+        return CommandResult(code, 'out', 'Ran 1 test in 0.0s\n\nOK' if code == 0 else '', False, False)
 
 
 class ModelBuildChecks(unittest.TestCase):

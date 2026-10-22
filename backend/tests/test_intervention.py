@@ -27,10 +27,9 @@ class LedgerRules(unittest.TestCase):
         self.assertEqual(unledgered(["a.py", "b.py", "c.py"], calls), ["b.py", "c.py"])
         self.assertEqual(unledgered(["a.py"], calls), [])
 
-    def test_a_task_that_ran_commands_cannot_attribute_its_new_files(self):
-        # ponytail limit under test: a command may legitimately create files, so only edits between tasks are caught there
+    def test_commands_do_not_explain_changes_because_they_cannot_write_the_workspace(self):
         calls = [call("write_file", path="a.py"), call("run_tests", argv=["pytest"])]
-        self.assertEqual(unledgered(["a.py", "generated.txt"], calls), [])
+        self.assertEqual(unledgered(["a.py", "generated.txt"], calls), ["generated.txt"])
 
 
 class WorkspaceState(unittest.TestCase):
@@ -131,10 +130,10 @@ class InterventionMarking(unittest.TestCase):
         after, task_id = self.run_task({"web/b.js": "z"}, ["web/b.js"], between=commit_by_hand)
         self.assertEqual(self.interventions(after), [dict(task_id=task_id, kind="history_changed", paths=[])])
 
-    def test_a_task_that_ran_commands_is_not_blamed_for_the_files_they_make(self):
+    def test_a_file_made_during_a_task_that_ran_commands_is_still_marked(self):
         self.approved()
-        after, _ = self.run_task({"server/a.py": "x", ".pytest_cache/README": "cache"}, ["server/a.py"], commands=True)
-        self.assertEqual(self.interventions(after), [])
+        after, task_id = self.run_task({"server/a.py": "x", ".pytest_cache/README": "cache"}, ["server/a.py"], commands=True)
+        self.assertEqual(self.interventions(after), [dict(task_id=task_id, kind="outside_ledger", paths=[".pytest_cache/README"])])
 
 
 if __name__ == "__main__":

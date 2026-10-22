@@ -1,11 +1,25 @@
 """RED -> GREEN as the server judges it, from the tool ledger's real exit codes (never from model statements)."""
 from dataclasses import dataclass
 from pathlib import PurePosixPath
+import re
 
 TDD_KINDS = frozenset({"backend", "frontend", "ai_data"})
 TEST_PATTERNS = ("tests/**", "**/tests/**", "test_*.py", "**/test_*.py", "*_test.py", "**/*_test.py", "*.test.*", "**/*.test.*",
                  "*.spec.*", "**/*.spec.*", "**/__tests__/**")
 MUTATIONS = frozenset({"write_file", "delete_file", "move_file"})
+NO_TESTS_RAN = "NO_TESTS_RAN"   # ledger error_code of a run_tests that exited 0 without a readable count of executed tests
+SUMMARIES = (re.compile(r"^Ran (\d+) tests?\b", re.M), re.compile(r"^# pass (\d+)$", re.M), re.compile(r"\b(\d+) passed\b"),
+             re.compile(r"\b(\d+) passing\b"), re.compile(r"\bno tests ran\b(?!.*\bpassed\b)", re.I))
+
+
+def count_tests(stdout, stderr):
+    """How many tests a runner says it executed (unittest, pytest, node:test, jest, mocha), or None if no summary is recognised."""
+    text = stdout + "\n" + stderr
+    for pattern in SUMMARIES:
+        found = pattern.search(text)
+        if found:
+            return int(found.group(1)) if found.groups() else 0
+    return None
 
 
 @dataclass(frozen=True)
@@ -31,6 +45,8 @@ def state_message(phase, tests_written, implemented, last_run):
     """Ledger facts plus the gate rule that applies; never what to test or how to implement."""
     if phase == "done":
         return "RED와 GREEN 기록 확인됨. finish 가능."
+    if last_run == "no_tests":
+        return "run_tests가 통과했지만 실행된 테스트가 확인되지 않습니다(실행된 테스트 수 0 또는 요약 없음). 테스트가 실제로 실행돼 통과해야 판정됩니다."
     if phase == "red":
         if not tests_written:
             return "테스트 파일 기록 없음. RED 판정에는 실패하는 테스트 파일 작성과 실패한 run_tests 기록이 필요합니다."
@@ -66,6 +82,9 @@ def progress(entries, kind):
                 phase = "impl"
                 implemented = implemented or not tests_only
         elif entry["tool"] == "run_tests":
+            if entry.get("error_code") == NO_TESTS_RAN:   # a pass with nothing executed proves neither RED nor GREEN
+                last_run = "no_tests"
+                continue
             code = last_run = entry["exit_code"]
             if phase == "red" and tests_written and code not in (0, None):
                 phase, implemented = "impl", False
@@ -84,6 +103,7 @@ def can_finish(entries, kind):
         return (state.phase == "done", "" if state.phase == "done" else state.message + " 테스트 단계를 마친 뒤 끝낼 수 있습니다.")
     if kind == "integration":
         last_change = changes[-1]
-        passed = any(e["ok"] and e["tool"] == "run_tests" and e["exit_code"] == 0 for e in entries[last_change + 1:])
+        passed = any(e["ok"] and e["tool"] == "run_tests" and e["exit_code"] == 0 and
+                     e.get("error_code") != NO_TESTS_RAN for e in entries[last_change + 1:])
         return (passed, "" if passed else "마지막 변경 뒤에 run_tests가 통과(종료 코드 0)해야 합니다.")
     return True, ""

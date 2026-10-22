@@ -78,6 +78,7 @@ def evaluate(spec, env):
 def acceptance_verdicts(acceptance, verification, manual_acceptance, outcomes):
     """Per AC: met only if every linked check passed; failed checks win, then tool errors, then missing runs."""
     by_id = {o.id: o for o in outcomes}
+    repeated = {name for name in by_id if sum(o.id == name for o in outcomes) > 1}   # which outcome belongs to which criterion is unknowable
     manual = {m["ac_id"] for m in manual_acceptance}
     verdicts = []
     for ac in acceptance:
@@ -85,6 +86,8 @@ def acceptance_verdicts(acceptance, verification, manual_acceptance, outcomes):
         results = [by_id.get(name) for name in linked]
         if not linked:
             status, reason = "not_run", "manual" if ac["id"] in manual else "no_check"
+        elif any(name in repeated for name in linked):
+            status, reason = "unmet", "duplicate_check_id"   # unmet, not failed: the verdict must be fail, never pass
         elif any(r is not None and r.status == "failed" for r in results):
             status, reason = "unmet", "check_failed"
         elif any(r is not None and r.status == "error" for r in results):

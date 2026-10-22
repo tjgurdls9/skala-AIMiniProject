@@ -89,7 +89,11 @@ def validate_command(argv, cwd=".", timeout=TOOL_POLICY["timeout_default"]):
     return dict(argv=list(argv), cwd=cwd, timeout=timeout)
 
 
+NOT_A_RUN = frozenset({"-h", "--help", "--version", "-V", "--collect-only", "--co"})
+
+
 def validate_test_command(argv):
+    require(not NOT_A_RUN.intersection(argv), "FORBIDDEN", "도움말·버전·목록 출력은 테스트 실행이 아닙니다.", 403)
     is_python = len(argv) > 2 and argv[0] in ("python", "python3") and argv[1] == "-m" and argv[2] in ("pytest", "unittest")
     is_node = len(argv) > 1 and argv[0] == "node" and argv[1] == "--test"
     is_npm = len(argv) > 1 and argv[0] == "npm" and (argv[1] == "test" or argv[1:3] == ["run", "test"])
@@ -130,7 +134,7 @@ class DockerExecutor:
 
     def build_args(self, name, workspace, argv, cwd, network, env, deps, deps_writable):
         container_env = {"HOME": "/tmp", "PYTHONDONTWRITEBYTECODE": "1", **(env or {})}
-        args = ["run", "--rm", *Sandbox.limits(name, network), "--ulimit", f"fsize={FILE_BYTES_LIMIT}:{FILE_BYTES_LIMIT}", "--mount", f"type=bind,src={workspace},dst={CONTAINER_WORK}",
+        args = ["run", "--rm", *Sandbox.limits(name, network), "--ulimit", f"fsize={FILE_BYTES_LIMIT}:{FILE_BYTES_LIMIT}", "--mount", f"type=bind,src={workspace},dst={CONTAINER_WORK},readonly",
                 "--workdir", CONTAINER_WORK if cwd == "." else f"{CONTAINER_WORK}/{cwd}"]
         if deps is not None:
             args += ["--mount", f"type=bind,src={deps},dst={CONTAINER_DEPS}" + ("" if deps_writable else ",readonly")]

@@ -5,7 +5,7 @@ from pathlib import Path
 from backend.contracts import DomainError, digest, require
 from backend.store import now
 from runner.commands import (TOOL_POLICY, package_name, redact, validate_command, validate_install, validate_test_command)
-from runner.tdd_gate import TDD_KINDS, is_test_path, progress
+from runner.tdd_gate import NO_TESTS_RAN, TDD_KINDS, count_tests, is_test_path, progress
 from runner.workspace import Workspace
 
 READ_ROLES = frozenset({"builder", "validator", "security"})
@@ -124,7 +124,13 @@ class ToolBox:
         def action(who):
             command = validate_command(argv, cwd, timeout)
             validate_test_command(command["argv"])
-            return self._execute(command)
+            public, extra = self._execute(command)
+            count = count_tests(public["stdout"], public["stderr"])
+            public = dict(public, tests_run=count)
+            extra = dict(extra, result_digest=digest(public))
+            if public["exit_code"] == 0 and not count:
+                extra["error_code"] = NO_TESTS_RAN   # recorded, not raised: the run happened, it just proves nothing
+            return public, extra
         return self._call("run_tests", dict(argv=argv, cwd=cwd, timeout=timeout), BUILD_ROLES, action)
 
     INFRASTRUCTURE_EXIT_CODES = frozenset({125, 126, 127})   # docker could not start / invoke / find the program: not a program result

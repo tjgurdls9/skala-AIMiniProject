@@ -60,7 +60,7 @@ INSTRUCTIONS = (
     "changing an existing file. Write only inside write_scope; test files must be inside it too, with conventional names "
     "(test_*.py, *_test.py, *.test.js, tests/). Environment: commands have no network; the python image has only the standard library "
     "(no pytest); the node image has the built-in test runner (node --test). The finished app is declared in lifecycle.app.json {runtime: python|node, start: argv list, port: 8080, health: /path}, listens on 0.0.0.0:8080 and keeps data under /data. The server decides RED, GREEN and completion from recorded "
-    "exit codes; stating that something passed has no effect. Follow gate.next. Implement only the acceptance criteria shown; "
+    "exit codes and the number of tests that ran; stating that something passed has no effect. Commands see the workspace read-only (only /tmp is writable inside them); files change only through write_file/delete_file/move_file. Follow gate.next. Implement only the acceptance criteria shown; "
     "do not install packages outside the approved list.")
 
 

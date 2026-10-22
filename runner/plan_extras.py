@@ -105,7 +105,7 @@ class PlanExtras:
         return dict(work_plan=value["work_plan"], omitted_areas=value["omitted_areas"], dependencies=value.get("dependencies", {}))
 
     async def verification(self, job, worker, plan, work_plan):
-        specs, manual = [], []
+        specs, manual, prefixes = [], [], set()
         areas = [dict(kind=i["kind"], title=i["title"], write_scope=i["write_scope"]) for i in work_plan]
         for ac in plan["acceptance"]:
             def check(value, ac=ac):
@@ -118,7 +118,12 @@ class PlanExtras:
                              "checked mechanically return no checks and explain in manual_reason. A command check must be self-contained inline code "
                              "(python -c or node -e that imports the implementation and asserts the expected value); it must never run test files or a test runner."), VERIFICATION_SCHEMA, check)
             prefix = re.sub(r"[^A-Za-z0-9_-]", "_", ac["id"])[:30] or "ac"
+            if prefix in prefixes:   # different criterion ids can sanitise to the same text; a check id must still name one check
+                prefix = f"{prefix[:24]}_{len(prefixes) + 1}"
+            prefixes.add(prefix)
             specs += [dict(c, id=f"{prefix}-{n}", ac_ids=[ac["id"]]) for n, c in enumerate(value["checks"], 1)]
             if not value["checks"] and value.get("manual_reason"):
                 manual.append(dict(ac_id=ac["id"], reason=value["manual_reason"]))
+        problems = check_verification(specs, manual, plan["acceptance"])
+        require(not problems, "INVALID_COMMAND", "점검 명세가 서로 맞지 않습니다: " + "; ".join(problems[:3]), 422)
         return dict(verification=specs, manual_acceptance=manual)
