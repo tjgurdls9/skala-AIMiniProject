@@ -89,5 +89,27 @@ class WorkspaceSize(unittest.TestCase):
         self.assertEqual(refused.exception.code, 'INVALID_COMMAND')
 
 
+class SamplingSchemas(unittest.TestCase):
+    """Live run 5d13ca: Ollama could not compile a `pattern` with `\\s` into a grammar and refused the whole call (HTTP 400)."""
+    def test_patterns_the_grammar_cannot_express_are_left_to_the_servers_own_validation(self):
+        from runner.model import sampling_schema
+        sampled = sampling_schema(dict(type='object', properties=dict(
+            path=dict(type='string', pattern='^/[^\\s]{0,200}$'), name=dict(type='string', pattern='^[A-Za-z0-9_-]{1,40}$'))))
+        self.assertNotIn('pattern', sampled['properties']['path'])
+        self.assertEqual(sampled['properties']['name']['pattern'], '^[A-Za-z0-9_-]{1,40}$')
+
+    def test_no_planning_schema_sends_a_backslash_pattern_to_the_model(self):
+        import json
+        from runner import plan_extras
+        from runner.context import plan_step_schema
+        from runner.model import sampling_schema
+        from backend.contracts import SCHEMAS
+        plan = SCHEMAS['http.v1.schema.json']['$defs']['PlanDraft']
+        schemas = [plan_extras.ALTERNATIVES_SCHEMA, plan_extras.WORK_PLAN_SCHEMA, plan_extras.VERIFICATION_SCHEMA,
+                   plan_step_schema(plan, True), plan_step_schema(plan, False)]
+        for schema in schemas:
+            self.assertNotIn('\\\\', json.dumps(sampling_schema(schema)))
+
+
 if __name__ == '__main__':
     unittest.main()

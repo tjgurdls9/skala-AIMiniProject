@@ -12,7 +12,7 @@ from backend.contracts import SCHEMAS, SECRET, DomainError, canonical, digest, p
 from backend.store import Store, now, uid
 from backend.templates import plan_support, template_contract
 from knowledge import Corpus
-from runner.model import ModelUnavailable, Ollama
+from runner.model import ModelRejected, ModelUnavailable, Ollama
 from runner.pipeline import Pipeline
 from runner.commands import package_name, tool_policy_digest
 from runner.context import PlanningContext
@@ -31,6 +31,8 @@ POLICY = "Inference: local Ollama Qwen/DeepSeek only; no paid fallback or extern
 def failure_reason(error):
     if isinstance(error, ExceptionGroup) and len(error.exceptions) == 1:
         return failure_reason(error.exceptions[0])
+    if isinstance(error, ModelRejected):
+        return "failed", "로컬 모델 서버가 요청을 거절했습니다(서비스 설정 또는 스키마 오류, 모델 판단이 아님): " + SECRET.sub("[redacted]", str(error))
     if isinstance(error, (ModelUnavailable, httpx.HTTPError, MemoryError)):
         return "waiting_resource", "로컬 모델 또는 자원을 확인하고 재개하세요."
     if isinstance(error, DomainError):

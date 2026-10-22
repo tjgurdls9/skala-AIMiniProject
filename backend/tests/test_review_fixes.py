@@ -110,5 +110,33 @@ class RuntimeNotice(unittest.TestCase):
         self.assertIn('모델', text)
 
 
+class ModelServerRejections(unittest.TestCase):
+    """Live run 5d13ca: Ollama answered HTTP 400 (grammar) and the run was shown as "check the local model or resources"."""
+    def test_a_400_from_the_model_server_is_a_service_error_with_the_cause_not_a_resource_wait(self):
+        import httpx
+        from unittest.mock import patch
+        from runner.model import ModelRejected, Ollama
+        from runner.worker import failure_reason
+
+        async def get(self, url, **kw):
+            return httpx.Response(200, json={'models': [{'name': 'qwen3.5:4b'}]} if url.endswith('/api/tags') else {'models': []},
+                                  request=httpx.Request('GET', url))
+
+        async def post(self, url, **kw):
+            return httpx.Response(400, text='{"error":"parse: error parsing grammar: unknown escape at \\\\s]"}', request=httpx.Request('POST', url))
+        with patch.object(httpx.AsyncClient, 'get', get), patch.object(httpx.AsyncClient, 'post', post):
+            with self.assertRaises(ModelRejected) as raised:
+                asyncio.run(Ollama('qwen3.5:4b').generate(dict(role='planner'), dict(type='object')))
+        state, reason = failure_reason(raised.exception)
+        self.assertEqual(state, 'failed')
+        self.assertIn('error parsing grammar', reason)
+        self.assertIn('HTTP 400', reason)
+
+    def test_connection_trouble_is_still_a_resource_wait(self):
+        import httpx
+        from runner.worker import failure_reason
+        self.assertEqual(failure_reason(httpx.ConnectError('down'))[0], 'waiting_resource')
+
+
 if __name__ == '__main__':
     unittest.main()

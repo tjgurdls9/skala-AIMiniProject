@@ -56,6 +56,8 @@ class ThinkFlagChecks(unittest.IsolatedAsyncioTestCase):
                 captured.update(json)
 
                 class Response:
+                    status_code = 200
+
                     def raise_for_status(self):
                         pass
 

@@ -14,6 +14,10 @@ class ModelUnavailable(Exception):
     pass
 
 
+class ModelRejected(Exception):
+    """The model server understood the request and refused it (HTTP 4xx): a service or schema defect, not a missing resource."""
+
+
 @asynccontextmanager
 async def inference_slot():
     root = ROOT / 'runtime-data'
@@ -32,9 +36,11 @@ async def inference_slot():
 
 
 def sampling_schema(value):
-    # Large maxLength creates invalid Ollama grammar; callers still validate the original schema.
+    # Large maxLength creates invalid Ollama grammar, and so does a regex with escapes such as \s (HTTP 400 "error parsing grammar").
+    # Callers still validate the original schema and return the errors to the model.
     if isinstance(value, dict):
-        return {key: sampling_schema(item) for key, item in value.items() if key != "maxLength"}
+        return {key: sampling_schema(item) for key, item in value.items()
+                if key != "maxLength" and not (key == "pattern" and isinstance(item, str) and "\\" in item)}
     if isinstance(value, list):
         return [sampling_schema(item) for item in value]
     return value
@@ -95,6 +101,8 @@ class Ollama:
                     {"role": "user", "content": json.dumps(packet, ensure_ascii=False)},
                 ], "options": {"num_ctx": 16384, "num_predict": 4096, "temperature": 0}, "think": self.think,
             })
+            if result.status_code == 400:
+                raise ModelRejected(f"HTTP 400: {result.text[:300]}")
             result.raise_for_status()
             return json.loads(result.json()["message"]["content"])
 
