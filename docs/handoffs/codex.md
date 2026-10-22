@@ -1,3 +1,400 @@
+# Codex CLI 인계 — 공통 준비·백엔드·런타임
+
+## 최우선 인계 — Claude로 이관 / 자율 개발 검증 경계 정정 (2026-10-21)
+
+**상태: HANDOFF_TO_CLAUDE. 카공지도 자율 개발·P01–P05 전체 수용은 미완료다.** 이 절은 아래 모든 이전 서비스/대기 상태보다 우선한다. 사용자가 “지금까지 정리해놔 클로드로 이어서 작업하게”라고 지시했다. Codex는 앱 기능 대행·문맥 수정·추가 모델 실행을 중단하고 여기까지의 사실만 인계한다. 이 문서는 Claude에 자동 전달되거나 세션을 자동 재개하지 않는다.
+
+### 1. 사용자가 바로잡은 핵심과 Codex의 책임
+
+사용자 원문:
+
+> 근데 너 올라마가 잘 작동하는지 테스트하는거라면서 왜 니가 작업을 도와주고 있는거야?
+> 이러면 우리 서비스의 본질이 어그러지잖아
+
+이어 “누구 잘못이니 이거”라고 물었고, Codex가 **본인의 판단 잘못**이라고 인정했다. 서비스는 사용자 요청을 받아 로컬 Ollama가 기획·구현·독립 검토·수정으로 이어가는 과정을 제공해야 한다. 상위 개발 CLI가 특정 수용 앱의 정답 코드/어댑터를 대신 채워 성공으로 이어가면 그 실행은 자율 개발 완주의 근거가 될 수 없다.
+
+- Codex가 직접 작성/수정한 cafemap 템플릿·보호 검사·지도 공급자 어댑터와 직접 실행한 API probe는 **개발자 개입**이다. Ollama가 생성한 앱 성과로 계산하지 않는다. 사무실 프론트·영속 실행기 등 서비스 개발 작업과 수용 앱의 대행 구현을 구분하지 못한 책임은 Codex에 있다.
+- 기존 파일/커밋/실패/원본 DB를 지우지 않는다. 개입을 숨기기 위해 기록을 초기화하거나 이미 성공한 것처럼 재명명하지 않는다. 아래 자체 검사 통과와 지도 연결 성공은 서비스 자율 개발 수용 통과가 아니다.
+- 실제 모델이 막힌 지점은 실패/미완료로 보존한다. 범용 런타임 결함을 수정하더라도 변경 전 실패·수정 커밋·새 실행을 구별하고, 특정 앱 정답을 주입한 결과를 독립 성공으로 보고하지 않는다. 앱 기능을 상위 CLI가 대신 완성하는 흐름은 이어가지 않는다.
+
+### 2. Git·작업 공간·소유 범위
+
+| 항목 | 현재 기준 |
+|---|---|
+| 원본 | `/Users/seohyeokin/workspace/skala-AIMiniProject`, branch `main` (`6cc9a0b` 기준; 원본의 기획/인계 변경과 초기 backend/runner 초안 보존) |
+| 런타임/최종 통합 | 원본 아래 `.worktrees/codex-runtime`, branch `work/codex-runtime`, **코드 기준 `4aeadce9d56067ddca8842a01850751fdba531d6`** |
+| 사무실 프론트 | 원본 아래 `.worktrees/claude-office`, branch `work/claude-office`, **HEAD `21492ae`**, 확인 시 clean |
+| 최신 Codex 구현 | **`d6d7c20`** — Geoapify 준비 어댑터·공통 보호·템플릿/검사 안내 변경 16파일; 생성 앱 완주 아님 |
+| 최신 통합 | **`4aeadce`** — Claude 소비자 `38aa2d8` 및 인계 `21492ae`까지 병합 |
+
+이 절 작성 전 Codex worktree도 clean이었다. 이후 변경은 이 인계 문서뿐이다. 원본 main에는 기존 사용자/관제 문서 변경과 미추적 backend/runner가 있으므로 일괄 stage/초기화하지 않는다. 원본 폴더에서 제품을 구현하지 않는다. Codex는 Claude 소유 frontend/인계 파일을 직접 수정하지 않았으며, 완료 커밋만 병합했다. Claude가 런타임까지 이어받으면 이 실제 통합 worktree/브랜치를 명시적으로 선택해 중복 구현·동시 쓰기를 피한다. 추가 에이전트/agy를 기동하지 않는다.
+
+### 3. 현재 실행 상태와 서비스 인수
+
+- 실제 run: **`846eed645f8245909d72cff799099d0b`**, project **`190f68a8719345e6aa957fd90217bea7`**. DB는 런타임 worktree **`runtime-data/s09-cafemap.sqlite3`**.
+- 현재 **`needs_input`, state_version=10, last_event_seq=18, spec_version_id=null**. 이유: “필수 목표·제약·AC 또는 한 파일 자체가 문맥 예산을 초과했습니다. 원문을 보존했으니 작업 범위를 나누어 요청하세요.”
+- 사용자 공급자 정정은 `request_changes(scope=spec)`로 전달했다. command_id **`9386c64bf81c4ef580191b29bcb18376`**, receipt `accepted`, HTTP **202**. 같은 command_id 재전송도 같은 receipt였다. 최초 확인 스크립트가 200을 기대해 실패했지만 실제 명령은 이미 접수된 상태였고, 202로 확인을 바로잡았다. 추가 승인 명령은 만들지 않았다.
+- 이전 v8/seq14 기획 **`8e303310f79542f9967a6c64e9cfb642`**는 불변 기록으로 보존돼 있다. 그 기획의 pending 승인은 **invalidated**. 새 정정 기획은 발급되지 못했다. 과거 기획을 현재 기획으로 보여 주거나 승인하지 않는다.
+- 최신 문맥 근거: source **`sha256:9932692414988b8f4a0d1ec12baa4c44742bcbc892d85035cf24858e974ccc80`**, **3조각 중 2조각 완료**, status=needs_input. 원문/체크포인트/검색 근거와 실패 사건 보존. 실제 모델은 **qwen3.5:4b**, 로컬 임베딩 **qwen3-embedding:0.6b**, 추론 슬롯 1이었다.
+- 이 실제 DB의 **grants/candidates/reviews/previews/operations 모두 0**, builder job 0이다. 사용자 기획 승인·생성 앱 후보·독립 검토·프리뷰·출시 완료는 없다. 예전 합성 개발 DB의 보고서/프리뷰를 여기에 합치지 않는다.
+
+서비스를 다음과 같이 정리했다:
+
+| 서비스 | 인계 시 상태/소유 |
+|---|---|
+| API·빌드된 사무실 | **동작 중**, `http://127.0.0.1:8000`, PID **68586**, Codex 기동 코드 **4aeadce**, PTY 73080. 조회 화면 보존. 직접 주소 `http://127.0.0.1:8000/?run=846eed645f8245909d72cff799099d0b` |
+| worker | 코드 4aeadce로 기동했던 PID **68869**, PTY 45184를 **인계 준비 중 Ctrl-C 종료**했다. 추가 자동 실행을 막았다. lease는 10초 뒤 만료된다. 재개 시 새 worker 하나만 기동한다. |
+| 기존 Ollama | PID **25744**, 그대로 둠. 다른 사용자/서비스 소유 모델을 임의 종료하지 않는다. |
+| 지도 전용 localhost:8017 | **미기동**, 예약 주소뿐이다. 실제 지도 화면은 없다. |
+
+예전 API PID 51993 / worker PTY 21788 등 아래 기록은 과거다. 새 세션은 PID/포트를 다시 확인한다. Claude가 이 인계 뒤 서비스 운용을 이어받을 수 있도록 소유를 명시했으며, 이미 종료한 worker와 실행 중 API를 혼동하지 않는다. 모델/키 검증을 이유로 사용자 승인이나 명령을 합성하지 않는다.
+
+재기동이 필요하면 **런타임 worktree 루트**에서 실행한다(키/토큰을 명령줄에 넣지 않음):
+
+```sh
+LIFECYCLE_DB=runtime-data/s09-cafemap.sqlite3 LIFECYCLE_MODEL=qwen3.5:4b LIFECYCLE_EMBEDDING=qwen3-embedding:0.6b LIFECYCLE_TEMPLATE=cafemap-v1 backend/.venv/bin/python -m runner.worker
+```
+
+API가 이미 동작 중이면 두 번째 API를 띄우지 않는다. 현재 API 재기동 명령은 다음과 같다:
+
+```sh
+LIFECYCLE_DB=runtime-data/s09-cafemap.sqlite3 LIFECYCLE_MODEL=qwen3.5:4b LIFECYCLE_EMBEDDING=qwen3-embedding:0.6b LIFECYCLE_TEMPLATE=cafemap-v1 backend/.venv/bin/python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000 --no-access-log --no-proxy-headers --timeout-graceful-shutdown 5
+```
+
+기존 API 종료 시 SSE 연결 때문에 첫 Ctrl-C 후 대기했고 두 번째 Ctrl-C로 종료했다. 새 API는 위 graceful timeout 옵션으로 기동했다. 키가 준비됐어도 현재 Runtime.external_api_enabled=false / data_source_status=unconfigured이며 실제 앱 연결 기능은 없다.
+
+### 4. Geoapify 키·직접 검사와 개입 범위
+
+- 사용자는 카카오 무료 앱 자격을 아끼기 위해 **“Geoapify로 변경”**, 이어 **“Free 플랜 확인 후 true로 저장했어”**라고 답했다. 카카오 코드/파일을 보존하되 사용하지 않는다. 공급자 선택/키 준비는 실제 기획·배포 승인이 아니다.
+- 키 파일은 **`/Users/seohyeokin/workspace/skala-AIMiniProject/.worktrees/codex-runtime/runtime-data/secrets/geoapify.json`**. 현재 사용자 소유·권한600·Git 제외. 키는 준비돼 있고 free_plan_confirmed=true다. 저장 후에도 디스크 확인값이 false여서, 사용자의 명시적인 Free 확인에 따라 **그 확인값만 true로 바꾸고 키 바이트는 보존**했다. 키 값은 출력하지 않았다. 다른 worktree로 secret을 복사/커밋하거나 모델/생성 컨테이너/공개 기록에 넣지 않는다.
+- Codex가 네트워크 권한 승인 후 공개 서울시청 지점으로 geocoding/Places 각 1회 직접 호출했다. **2026-10-21 06:20:16Z**, 지역 후보5·카페 분류20, 한글 장소명 포함. 사용자 위치는 사용하지 않았다. 이 검사는 **개발자 probe**, Ollama의 도구 사용/생성 앱 실행/실제 사용자 수용은 아니다.
+- 비공개 근거: `runtime-data/geoapify-public-probe-20261021T062016785411.json`, `runtime-data/geoapify-usage.sqlite3`, `runtime-data/geoapify-user-correction-9386c64bf81c4ef580191b29bcb18376.json`. DB/키는 Git·제출 tar에 넣지 않는다.
+- `backend/geoapify.py`는 geocoding 후보 선택·좌표 중심 카페/이름/인터넷 태그 검색, `backend/map_access.py`는 비공개 파일·고정 목적지·일200회 시도 제한·429 당일 중단·크기/오류 보호다. **API/worker/생성 앱 프리뷰·지도 타일과 미연결**이다. GPS 동의/신뢰 브로커/지도 UI는 미구현·미검증이다. cafemap 지원 판정은 아직 implementation_allowed=false다. 키만 준비됐다고 이를 true로 바꾸지 않는다.
+- 카페 분류에 들어간 실제 업종의 정확도, 한국 전역 검색 품질, 조용함·콘센트·장시간 이용 적합성은 확인하지 않았다. OSM/Geoapify 출처를 표시하고 가짜 장소/공부 적합성을 만들지 않는다. 준비 절차는 런타임 worktree `docs/setup/geoapify-local.md` 참조.
+
+### 5. 검사·계약·이전 제출물
+
+- backend **72개/45.562초 통과**, Geoapify 합성 검사3 포함. 이 결과는 d6d7c20의 코드 검사이며 실제 사용자 승인/독립 제품 검토가 아니다.
+- Claude 소비자 통합 뒤 frontend **247개/6.14초 통과**, `npm run build`의 vue-tsc/Vite 통과(JS gzip75.45KB). 로그는 `/private/tmp/skala-geoapify-frontend-tests.log`, `/private/tmp/skala-geoapify-frontend-build.log`; backend 로그 `/private/tmp/skala-geoapify-tests.log`.
+- HTTP SHA256 **`6b48afe375253346fe7defb686b599e2ecaf3dc3c23b32039f19208c2ae6b9ba`**, protocol SHA256 **`43e0f444b2f6fc408dd177d8db599a7a13f0f3e7e8f0e2993595701c89147147`**. **CR-C14=기획별 지원 공백, CR-C15=출시·복구 결과** 유지. free_policy 호환 enum 계약 fa07aec / Claude 채택075a0fa·소비38aa2d8은 통합됐다. 채택을 다시 요청할 필요 없다.
+- CT36/CT40/CT46의 기존 코드 보완과 후속 한계는 아래 기록을 보존한다. 현재 문맥 크기 실패를 CT40 정정 검증을 제거해 통과시키지 않는다. 전체 실제 사용자 수용/배포 완료로 처리하지 않는다.
+- 이전 검토 패키지 `runtime-data/submission-check/skala-lifecycle-post-integration-review.tar.gz`(기준603d02c, SHA256 **20e2de2b6ac2d84f3bd5550bc2028e043c58524fd68e8e2f2c1d3623a59922f4**)와 더 이전 tar를 보존했다. Geoapify 변경·새 계약·이번 실패가 반영된 최신 제출물은 아니다. 이번 인계에서 재패키징/외부 push/배포는 하지 않았다.
+
+### 6. Claude의 다음 착수점과 금지선
+
+1. 원본의 이 최상단 인계, POST_INTEGRATION_RESUME.md, P01–P05 보완 프롬프트/계획, 사용자 최신 지적을 먼저 읽는다. Codex는 이번 인계 후 병행 코딩하지 않는다. 서비스의 자율 개발이라는 목적과 CLI의 개발자 개입 경계를 먼저 점검한다.
+2. 현재 실패/원본 요청·불변 기획/부분 문맥·개발자 직접 작성 코드를 보존하고, 이번 S09 실행을 자율 완주 성공으로 승격하지 않는다. 특정 카공지도 정답을 CLI가 더 작성해 Ollama 성과를 대체하지 않는다. fixed template의 지원 범위와 범용 개발 주장 간 차이도 확인한다.
+3. 범용 문맥/실행기 개선이 필요한 경우 이전 실패와 분리해 다룬다. 미수정 관찰: `runner/worker.py:claim`은 최신 spec을 승인 여부 필터 없이 latest_spec으로 싣고, `runner/context.py:mandatory`는 이를 approved_spec이라고 부른다. 실제 최신 spec은 승인된 적 없고 현재 invalidated다. 이 상태 표시의 의미와 중복 입력의 문맥 비용을 **검토할 필요가 있다**. 현재 byte budget14,000 / 원문 조각2,400을 단순 확대하거나 필수 요구·정정 증거를 잘라 해결하지 않는다. 이 가설의 수정/회귀/실제 재실행은 아직 하지 않았다.
+4. 이후 검증은 기준 커밋·허용 도구/초기 scaffold·개입 여부를 먼저 고정하고, 실제 Ollama의 기획/패치/도구/검토/수정 근거를 추적한다. 엔진 보완과 수용 실행을 섞지 않는다. API 사용/출시 성공을 개발자가 대신 만들어 주지 않는다.
+5. 실제 기획/배포 결정은 사용자에게 정확한 대상을 보여 주고 따로 받는다. 키를 채팅에 요구하지 않는다. 네트워크/.git/도구 권한 거절을 우회하지 않는다. 추가 에이전트·실제 외부 push/배포는 자동 수행하지 않는다. 기존 frontend/사용자 문서/초안/비공개 키/실패 DB를 삭제·폐기하지 않는다.
+
+Claude CLI에 전달할 짧은 문구:
+
+```text
+원본 /Users/seohyeokin/workspace/skala-AIMiniProject/docs/handoffs/codex.md 최상단 ‘Claude로 이관 / 자율 개발 검증 경계 정정’을 읽고 이어받아라. 코드 기준 4aeadce, 런타임 worktree .worktrees/codex-runtime다. Codex가 수용 앱 기능을 직접 보완한 개입을 사용자가 지적했고 Codex가 책임을 인정했다. 그 코드를 Ollama 성과로 계산하지 마라. 실제 S09는 needs_input v10/seq18, 기획 문맥 2/3에서 예산 초과, 승인·생성 후보·검토·프리뷰·배포는 없다. worker는 인계를 위해 종료했고 API8000은 남아 있다. 먼저 서비스 엔진 개선과 자율 수용 실행의 경계를 바로잡고 실패/개입 근거를 보존하라. 카공지도 정답을 CLI가 대신 구현해 완주시키지 말고 실제 기획·배포 승인을 합성하지 마라. 키는 로컬 비공개 파일에 이미 준비됐다. 기존 변경을 보존하며 인계의 현재 상태·미확인·재개 조건을 따르라.
+```
+
+## Geoapify 변경 — 사용자 선택 수신·키 확인 진행
+
+최신 선택 **“Geoapify로 변경”**을 수신했다. 아래 카카오/공급자 재검토 기록보다 우선한다. 카카오 자격을 소비하지 않으며 준비 코드·파일을 보존한다. 키 발급/저장은 기획·배포 승인이 아니다.
+
+- 범위: backend/geoapify.py·map_access.py, Kakao 공통 보호 재사용, cafemap 프로필·보호 프록시·validator·기획 입력 hash·회귀와 [로컬 준비 안내](../setup/geoapify-local.md). 모델/생성 컨테이너에는 키를 전달하지 않는다. 현재 API/worker/지도·생성 앱 프리뷰와 미연결인 신뢰 검색 어댑터다.
+- 무료 조건: 프로젝트 Free 일 3,000credits·초 5요청, 카드 불필요, 지도/검색 공유 차감, Geoapify/OSM 출처 필수. soft limit을 공급자 강제 차단으로 가정하지 않는다. 호스트 검색/geocoding 합계 UTC 일 200회 시도 제한, upstream429 당일 중단, 고정 목적지/경로·헤더 인증·리다이렉트/크기/응답 검증·비밀 없는 오류를 적용한다. 실제 지도 타일은 미연결이다. [가격](https://www.geoapify.com/pricing/), [크레딧](https://www.geoapify.com/pricing-details/).
+- 사용자에게 비공개 경로 `runtime-data/secrets/geoapify.json`을 안내했다. 키 하나·free_plan_confirmed 확인값이며 현재 사용자 소유/600/Git 제외다. 사용자 “됐어” 뒤 값을 출력하지 않고 검사했으나 **Free 플랜 확인값 false로 차단**됐다. 실제 플랜 확인 뒤 true로 저장해 달라고 요청했다. 외부 호출/좌표 전송은 아직 없다. 기존 카카오 파일은 읽거나 변경하지 않았다.
+- 후속: 사용자가 **“Free 플랜 확인 후 true로 저장했어”**라고 확인했다. 디스크에는 키/600 권한은 정상이나 확인값만 false로 남아 있어, 이 명시 확인에 따라 확인값만 true로 반영하고 키/다른 바이트를 보존했다. 최초 외부 검사도 false에서 네트워크 전 차단된 뒤, 권한 승인 후 **2026-10-21 06:20:16Z** 공개 서울시청 시험 지점으로 geocoding/Places 각 1회 성공했다. 후보 5개·카페 분류 결과 20개(한글 장소명 포함). `runtime-data/geoapify-public-probe-20261021T062016785411.json`과 사용량 원장은 비공개 로컬 증거다. 사용자 위치/GPS·생성 앱 수용·기획 승인·배포는 사용하지 않았다. OSM 카페 분류의 실제 업종/공부 적합성은 미검증이다.
+- 실제 Places/geocoding 품질·지도 표시·GPS/외부 전송 동의·신뢰 브로커/격리 연결은 미확인이다. 한국 카페/한글 검색 품질과 공부 적합성을 보증하지 않는다. 지역 후보 자동 선택·가짜 장소를 금지한다. localhost:8017은 예약만 했고 기동하지 않았다.
+- 검사: backend 전체 **72개/45.562초 통과**(Geoapify 합성 3개 포함, 실제 API 호출/사용자 승인이 아님). Kakao 보호/기존 기록 호환을 유지한다. 이전 제출 패키지를 새 공급자의 수용 결과로 사용하지 않는다.
+- Claude 완료 인계 확인: 계약 fa07aec 채택 075a0fa, 소비자 **38aa2d8**, 인계 **21492ae**, 상대 worktree clean. HTTP SHA256 **6b48afe375253346fe7defb686b599e2ecaf3dc3c23b32039f19208c2ae6b9ba**, protocol **43e0f444b2f6fc408dd177d8db599a7a13f0f3e7e8f0e2993595701c89147147** 유지. CR-C14=기획별 지원 공백 / CR-C15=출시·복구 결과. Geoapify 공급자 문자열 변경에는 추가 공개 계약 변경이 없다. 통합·새 LIVE 기획은 다음 갱신에서 확정한다.
+- 기존 LIVE API/worker f9f60d8/754165a와 실제 v8/seq14 기획은 아직 이전 외부 연결 보류 상태다. 새 선택을 불변 기획에 덮어쓰지 않으며 서비스 교체 뒤 실제 사용자 정정으로 새 명세를 발급해야 한다. 전체 P01–P05/카공지도 수용 완료로 보고하지 않는다.
+
+## 공급자 재검토 — 카카오 무료 앱 자격 보존 요청
+
+최신 사용자 답변: **“다른 거 없어? 무료 1회라 이번 실습 프로젝트에 쓰기 아까워서”**. 카카오의 무료 정책은 호출 1회가 아니라 첫 활성화 앱 1개의 일/월 쿼터임을 설명했다. 사용자가 그 앱 자격을 아끼고 싶으므로 **카카오 활성화·키 준비·실제 호출을 진행하지 않는다.** 아래 카카오 코드는 준비 상태로 보존하며 다른 공급자로 자동 전환/계정 생성하지 않았다.
+
+- 공식 Geoapify Free 조건을 재확인했다: 카드 불필요, 일 3,000credits/초5요청, 지도/검색에서 함께 차감, Geoapify와 원본 데이터 출처 표시 필요. 무료 플랜은 상업 이용도 조건 내 허용한다. 크레딧 한도는 soft limit이므로 선택 시 앱 자체의 사용 한도를 적용해야 한다. [공식 가격](https://www.geoapify.com/pricing/), [API별 비용](https://www.geoapify.com/pricing-details/).
+- 계정이 아닌 프로젝트별 요금/설정 방식이며 프로젝트 수 무제한이나 한국 카페 데이터 품질을 보증하지 않았다. 카페 검색 데이터는 OSM 기반이다. [Places](https://apidocs.geoapify.com/docs/places/), [프로젝트별 billing](https://myprojects.geoapify.com/help/billing/).
+- 사용자에게 Geoapify 변경/카카오 유지 선택을 요청했다. 선택 전에는 새 키 파일/새 어댑터를 추가하지 않는다. 실제 기획·배포 승인은 그대로 별도다. generic free_policy 계약 fa07aec는 특정 공급자 전용이 아니므로 Claude의 채택/타입 재생성은 유효하다.
+- 독립 구현 커밋 **4f84826**: 카카오 자격/키/동의/쿼터 차단·합성 검사·키 준비 문서. 실제 연결/생성 앱 완주가 아니다. 사용자 원본/기존 카카오 파일을 삭제·폐기하지 않았다. 현재 실제 API/worker는 아직 f9f60d8/754165a의 이전 서비스이며 새 준비 모듈을 활성화하지 않았다. 새 사용자 공급자 선택은 실제 run 기획으로 아직 발급하지 않았다.
+
+## 카카오맵 전환 — 최신 지시와 키 준비
+
+이 절이 아래 이전 ‘외부 연결 보류’ 기록보다 우선한다. 사용자가 **카카오맵으로 테스트·외부 연결 보류 해제·무료 조건 우선 확인**을 지시했다. 이어 실제 답변 **“무료 배지가 없거나 확인이 어려워”**를 받았다. 공급자 선택은 확정, 계정 무료 자격은 미확인이며 유료 API 설정/비즈월렛 연결·실제 호출은 하지 않는다. 기획/배포 승인은 별도다.
+
+- [정확한 준비 절차](../setup/kakao-local.md): 같은 앱의 JavaScript 키+REST API 키, JavaScript SDK 도메인 **http://localhost:8017**(별도 신뢰 지도 화면용 예약, 아직 서버 미기동). 사무실/무작위 프리뷰 포트를 대신 등록하지 않는다. 로그인 Redirect URI·어드민/네이티브 키·client secret은 이번 범위에 필요 없다.
+- 비공개 저장 경로: Codex worktree **runtime-data/secrets/kakao.json**, 권한 600/Git 제외. 빈 키/무료 확인 false/유료 비활성 확인 false 틀을 생성했고 기존 파일은 덮어쓰지 않았다. 실제 키 값은 읽거나 출력하지 않았다. 사용자는 무료 배지 미확인 동안 free_quota_confirmed=false를 유지한다.
+- 무료 조건: 계정에서 처음 카카오맵을 활성화한 앱의 앱 정보 **카카오맵 무료 쿼터 배지**를 확인해야 한다. 일 Web SDK 300,000 / 키워드·카테고리 검색 각 100,000, 월 전체 API 3,000,000(2026-10-21 공식 문서). 실제 계정 잔량은 확인하지 못했다. 배지가 안 보이는 이유가 미활성화/다른 앱 무료 자격인지 구분하지 못했다. [공식 이용 조건](https://developers.kakao.com/docs/ko/kakaomap/common), [쿼터](https://developers.kakao.com/docs/ko/getting-started/quota).
+- 독립 구현: **backend/kakao.py** 비공개 키 로드·무료/유료 비활성 확인·명시 동의·고정 HTTPS 목적지/CE7 검색·응답 제한·비밀 없는 오류·영속 일 200회 시도 한도/429 후 당일 중단을 준비했다. 아직 API/worker/프리뷰에 연결하지 않은 신뢰 어댑터다. 실제 지도/장소 결과로 보고하지 않는다. 합성 키·MockTransport 검사 5개 통과. 좌표/검색어/키는 모델·생성 컨테이너·공개 원장에 넣지 않는다.
+- CR-C14 새 기획 support는 provider=kakao/status=unconfirmed/implementation_allowed=false로 준비한다. 기존 불변 기획의 deferred 값은 수정하지 않는다. 무료 배지/키·위치 동의·격리 연결 검증은 남았다. 카카오만으로 조용함·콘센트·Wi-Fi/장시간 이용 적합성을 보증하지 않는다.
+- **계약 전용 fa07aec**: 기존 free_policy 상수가 외부 모델과 무료 지도 데이터를 모두 금지하던 문구 충돌을 보완했다. 기존 문구+무료 데이터 조건을 구분한 새 문구 두 개만 enum으로 허용한다. 과거 기록은 호환되며 임의/유료 정책은 허용하지 않는다. HTTP SHA256 **6b48afe375253346fe7defb686b599e2ecaf3dc3c23b32039f19208c2ae6b9ba**, protocol SHA256 **43e0f444b2f6fc408dd177d8db599a7a13f0f3e7e8f0e2993595701c89147147**. 경로/다른 필드 변경 없음. 원래 번호 CR-C14/CR-C15 유지.
+- **Claude 요청**: fa07aec 계약만 채택해 타입/hash를 재생성하고 free_policy 문구 그대로 표시를 확인해 완료 커밋을 인계한다. 생성 앱 지도 UI를 사무실 frontend에 만들거나 키를 읽지 않는다. 새 기획 공개는 소비자 채택 뒤 진행한다. frontend/Claude 인계는 직접 수정하지 않는다.
+- 회귀 영향: 정책 문구 변경을 최초 전체 검사에서 HTTP const가 거절했다. 계약을 호환 enum으로 확장한 뒤 전체 backend **69개/44.686초** 통과했다. 이후 준비 확인값의 문자열 우회/특수 파일 차단을 보완하고 관련 **5개** 검사도 통과했다. 최초 실패를 통과로 덮지 않는다. 제품 코드는 Codex worktree, 원본 초안/기록/이전 검토 패키지는 보존한다. 새 코드·무료 조건 변경 이후 기존 패키지를 최신 카카오 수용 결과로 사용하지 않는다.
+
+## POST-INTEGRATION 재개 — 실제 수신·착수
+
+원본 POST_INTEGRATION_RESUME.md의 Codex 절을 사용자에게 실제 수신했다. 관제 대기는 해제됐으며 P01–P05의 남은 구현/수용을 계속한다. 실제 기획/배포 승인은 별도다. 사용자 선택 **“외부 연결은 나중에 결정”**을 보존한다. 공급자/키/실제 위치 전송은 하지 않으며 로컬 프로필·검토 경계와 LIVE 근거를 먼저 준비한다. 과거 제출 후보는 이전 확인 범위다.
+
+- **계약 번호 정정(사용자 지적 반영)**: Claude 원래 요청을 유지한다. **CR-C14=기획별 지원 공백**, **CR-C15=출시·복구 결과**. 8ff4ca1의 번호/Runtime 대체 설명은 폐기한다. 계약 전용 **8ff4ca1 → a6eb8a4**를 순서대로 채택한다(이미 8ff를 채택했다면 a6eb8a4만 추가). HTTP SHA256 **f35c48532161dbc2adb6ff3c4538c8563541e8c9d05687a351ed2b96dda61c81**, protocol **43e0f444b2f6fc408dd177d8db599a7a13f0f3e7e8f0e2993595701c89147147**.
+- CR-C14는 각 PlanView.support에 template/spec/request digest·요청 인용과 미지원 이유/필요 입력·공급자/무료·키/쿼터/attribution/동의/격리 의존·구현 승인 가능 여부를 동결한다. Runtime 템플릿 상태는 보조 정보이며 기획별 공백을 대신하지 않는다. support 미제공/다른 spec은 지원 완료로 추정하지 않는다. implementation_allowed=false는 UI/서버 모두 approve를 거절하며 reject/수정 요청은 유지한다. 실제 공급자 결정 보류는 deferred다.
+- CR-C15 ReleaseView는 정확한 target/details와 operation별 accepted/applied/uncertain/failed/rolled_back·의도 기록 시각/실제 조회 시각/안전한 이유/볼륨 보존 조회 여부를 제공한다. 없는 과거 조회 근거는 null이며 GET 시각으로 만들지 않는다. 현재 enabled=false, rolled_back은 첫 출시 공개 중단/볼륨 보존이고 이전 버전 복원이 아니다.
+- Claude 요청: 위 정정 계약을 채택해 타입/hash를 생성하고 **기획 승인 화면의 별도 지원 공백**과 **출시/복구 결과**를 각각 원래 ID로 구현·인계한다. 제공자/소비자와 실제 LIVE 서버 정보는 아래 최신 확인을 따른다.
+- 제공자 구현 점검: 새 고정 cafemap-v1 프로필/run별 불변 선택·기획별 support/approve 차단·planner 실제 코퍼스 검색/공개 문맥을 planner 작업에 연결·출시 원장 GET/operation별 실제 조회 시각과 사건/artifact 연결을 구현했다. 공급자 미설정은 독립 검토 not_run·신뢰 프록시 차단이며 가짜 장소/실제 앱 완료로 취급하지 않는다. backend 자체 검사 **61개/43.281초** 통과(합성 결정/도구 fixture 포함, 실제 사용자 승인 아님). 이 수치는 최초 제공자 검사이며 후속 실제 실행/수정 결과는 아래와 같다.
+- 실제 모델 1차 실행: 1cb6e5674eaaa9f83083d5f15a4617eb3c424f34의 API/worker에서 실제 qwen3.5:4b·로컬 embedding을 사용했다. S09 run **846eed645f8245909d72cff799099d0b**, DB `runtime-data/s09-cafemap.sqlite3`. 원래 사용자 요청과 **“외부 연결은 나중에 결정”** 답변은 보존했다. 모델이 첫 조각에 존재하지 않는 이전 요구의 정정 근거를 생성하여 `needs_input`으로 안전하게 차단됐다. 승인/구현/외부 연결은 없었다.
+- 정정: 최초 조각 출력 스키마의 revisions를 빈 배열로 제한하고 기존 정정 검증을 유지했다. checkpoint 입력 버전을 올려 실패 원문/기록을 덮어쓰지 않고 새 시도를 구별한다. 회귀 포함 backend 전체 **62개/43.546초** 통과. 합성 검사와 실제 모델 실패를 구분한다.
+- 실제 두 번째 시도: 첫 조각 1/2를 저장한 뒤 두 번째 입력 14,928bytes가 예산 14,000을 넘어 needs_input으로 차단됐다. 앞선 기획 전체 2,853bytes를 두 번 실은 것이 원인이었다. **754165a**에서 원문/계획 전문은 한 번만 전달하고 prior_values를 위치별 hash로 변경했다. CT40 원문 인용/hash 검증을 유지했으며 전체 backend **63개/44.048초** 통과했다. 실패 checkpoint/공개 근거는 그대로 보존했다.
+- **LIVE 현재 기동 완료**: API 실행/사무실 코드 **f9f60d8125b6c4de8d33234a18342b8111ee50d8** (archive URL 경계 보완 + Claude 1f1953a까지 통합). API/빌드된 사무실 **http://127.0.0.1:8000**, 직접 주소 **http://127.0.0.1:8000/?run=846eed645f8245909d72cff799099d0b**. API PID **51993**/PTY **58209**, worker PTY **21788**(754165a에서 기동, runner/backend 의존 바이트는 f9f60d8과 동일; archive는 worker가 소비하지 않음). 기동·종료 소유자는 **Codex**다. 이전 API 5398·10470/worker 4627은 종료했다. Claude는 이 서비스와 기존 Ollama PID 25744를 임의 종료하지 않는다. 자기 Vite 127.0.0.1:5173 사용 시 API 프록시 8000이다.
+- 실제 runtime: qwen3.5:4b ready·worker ready·live_available=true·추론 슬롯 1, 로컬 qwen3-embedding:0.6b. 외부 지도/키/좌표 전송·배포는 비활성, 데이터 unconfigured. LIVE는 키 없는 재생 사본이 아니며 지도 지원/수용 통과를 뜻하지 않는다. DB는 Codex worktree `runtime-data/s09-cafemap.sqlite3`다.
+- 같은 실제 run에서 **Codex 개발자 제어**로 resume→pause→resume과 각 같은 command_id 재전송의 동일 receipt를 확인했다. paused 상태/버전/명세/공개 artifact가 유지돼 중지 뒤 옛 시도의 결과를 게시하지 않았다. 사용자 기획/배포 승인은 보내지 않았다. 주체·명령/결과는 `runtime-data/s09-developer-controls-754165a.json`에 보존했다. 실제 기획은 v8/seq14의 awaiting_plan_approval로 생성됐다. 명세 **8e303310f79542f9967a6c64e9cfb642**, plan digest **sha256:308c1eb1d3c81993e41b2881d9da054b7d6242af4cdd0c1e24d1a0daf11b643b**. 실제 요청 묶음 digest **sha256:c9a7df3bac04c1ece3235aa796c0aac89c796215ff15b96d4c197ba5f4243b1a**와 support가 결속됐고 implementation_allowed=false/provider=null/status=deferred다. 실제 planner의 spec/context/retrieval 3개가 작업에 연결됐다. 모델 기획 생성은 전체 기능·사용자 기획 승인 통과를 뜻하지 않는다.
+- Claude 완료 소비자 `d625f74`/인계 `4f396c8` 통합, 프론트 **239개/5.99초**·vue-tsc/Vite build 통과(JS gzip 74.95KB). 직접 frontend 수정/미완료 diff 복사는 하지 않았다. 실제 브라우저에서 지원 공백 원문/무료·키·쿼터·출처·동의·격리/보류와 구현 승인 버튼 disabled를 확인했다. 승인/거절은 누르지 않았다. 화면 `runtime-data/s09-plan-support-2dcbd46.jpg`를 보존했다. 실제 release GET은 enabled=false/unconfigured/target=null/operations=[]이며 외부 호출·출시 실행이 없다.
+- Claude 후속 완료 `6fe75ee`/인계 `78acde0`을 **2dcbd46**에 통합했다. 실패 시 작업 밖 retrieval/context 근거를 여는 소비자 수정이다. 통합 프론트 **242개/6.25초**·타입/빌드 통과(JS gzip 75.16KB). 실제 Chrome에서 planner에 연결된 문맥 ready 2/2·동일 명세와 의미 검색 근거/과거 실패 근거를 열 수 있고 새로고침 뒤 사건 14건을 다시 받음을 확인했다.
+- **Claude 다음 확인 요청**: 위 실제 LIVE run에서 검색/문맥 근거와 CR-C14 기획별 지원 공백·CR-C15 출시 미설정 상태, 중지/재연결 표시를 확인한다. 실제 사용자 승인/거절을 대신 생성하지 않는다. 외부 연결과 사람 승인을 성공으로 보고하지 않는다.
+- 새 실제 기록 이동: `runtime-data/s09-cafemap-2dcbd46.json`, manifest **sha256:83c5f1a1ea2141ca728d3b9937e1f0232913129809efa04c59547ef436965c76**. 별도 모델/worker 없는 DB `s09-keyless-2dcbd46.sqlite3`에 CLI/HTTP import/export 200·동일 manifest 멱등·support 완전 동결·resume 409 REPLAY_READ_ONLY·jobs/commands/grants/operations 전부 0건을 확인했다. 14사건/8공개 artifact이며 아직 후보/두 검토 보고서가 없는 **실제 기획 대기 기록**이다. 이전 합성 문의 완주 기록을 대체하지 않는다.
+- 읽기 전용 확인: 별도 Chrome 탭에서 서명 없음/읽기 전용과 기획 검토 dialog의 support를 확인했다. **추가 소비자 요청(기존 CR-C14)**: PlanViewBody 아티팩트 본문 경로는 support를 누락한다. 기획 검토 dialog에서는 읽을 수 있으므로 재생 전체가 읽기 불가한 것은 아니다. 같은 지원 공백을 아티팩트에도 재사용하고 읽기 전용 문구를 구분하도록 사용자에게 수동 전달을 요청했고 전달 답변을 받았다. frontend/Claude 인계는 직접 수정하지 않는다. 해당 소비자 후속 **c892a7f/1f1953a**를 **f9f60d8**에 통합했다. 실제 별도 DB 재생에서 작업→기획 아티팩트에 지원 공백/동일 request digest/읽기 전용 문구가 나오고 결정 버튼이 없음을 확인했다. 화면 `runtime-data/s09-readonly-support-f9f60d8.jpg`. 통합 프론트 **245개/6.27초**, 타입/빌드 통과(JS gzip 75.30KB). 실제 후보/수정·배포 수용은 미완료다.
+- 새 ReleaseView의 저장소 URL도 기획 기록과 같은 자격증명 제외 검증이 필요함을 회귀에서 확인했다(수정 전 실패). deployment.details.repository에 사용자정보가 든 URL을 hash 재계산으로 포장해도 import/export에서 거절하도록 공통 검증을 확장했다. 회귀 포함 전체 backend **64개/45.543초** 통과. 실제 출시/push는 하지 않았다.
+- 현재 추가 대기 조건: 사용자의 **외부 연결 보류를 유지**하므로 공급자/키/위치 권한·무료 자격과 실제 사람 기획 승인 없이는 카공지도 구현/후보·두 검토·프리뷰 수정으로 진입하지 않는다. 실제 출시 대상/승인도 없으므로 출시 API는 비활성이다. 이 조건을 해제하거나 사람의 거절·수정을 임의 생성하지 않는다. 상대 완료 커밋은 통합됐으며 별도 관제 대기를 새로 만들지 않았다.
+- 준비된 후속 검토 패키지는 과거 제출 후보를 덮어쓰지 않고 `runtime-data/submission-check/skala-lifecycle-post-integration-review.tar.gz`로 새로 만든다. 실제 기획 대기와 과거 합성 개발 검토 기록을 구분하고 코드/lock·빌드·보고서·hash·검토용 공개 기록만 포함한다. 패키지 자체 import/보존 검사와 digest는 생성 후 이 절에 기록한다.
+- 최종 보존 대조: 원본 backend/runner 초기 8개는 049ed58과 바이트 동일. root main은 6cc9a0b, 두 작업 브랜치/경로 유지. 원본의 다른 기획·Claude 인계·untracked 초안 변경은 보존했다. 제공자/소비자 protocol·HTTP hash가 동일함을 확인했다.
+- **후속 검토 패키지 생성/검증 완료**: 코드 **603d02c350f2565275a44cbcf6c2be7760d59d3e**, `runtime-data/submission-check/skala-lifecycle-post-integration-review.tar.gz`와 `.sha256`, **189파일/601,791bytes**, tar SHA256 **20e2de2b6ac2d84f3bd5550bc2028e043c58524fd68e8e2f2c1d3623a59922f4**. 과거 1dd51e3 패키지는 보존했다. 동봉 actual-cafemap-pending의 manifest **sha256:b117a336056ae7cac2ef9d4a1ce74b29bdb1a153fb07c7a970f8dd7461695c3d**, synthetic-development-reviewed는 **sha256:078e45a146684dee6c7601c4edc2a51d33cc91114990b1c46863d35d5db14e2d**다. exporter 버전 갱신으로 앞선 2dcbd46 capsule digest와 다르며 원래 사건/명세는 보존된다.
+- 패키지 자체 모듈+기존 격리 locked venv에서 두 기록을 새 별도 DB로 import/re-export해 exporter revision=null·replay·권한 원장 4종 0건을 확인했다. 이번에 새 venv/의존성을 다시 설치한 것은 아니다. 검증 스크립트가 열어 둔 SQLite cursor 때문에 최초 확인은 lock으로 실패했고 cursor를 닫은 뒤 통과했다(제품 변경 없음, KEYLESS_CHECK에 명시). tar 목록/각 파일 SHA256와 DB/키·가중치·venv/node_modules/cache 제외도 검사했다. 실제 배포/전체 수용 제출본이 아니다.
+- **최종 서비스/대기**: 실제 API **51993/PTY58209**와 worker **PTY21788**은 사용자 검토를 위해 유지한다(소유자 Codex). 별도 재생 API **52005/PTY51654, 8016**은 확인 뒤 정상 종료했다. 사용자 검토 탭은 실제 LIVE 주소에 유지한다. 최종 GET에서 ready/단일 슬롯·v8/seq14·승인 결정/구현 jobs/grants/operations 0건을 확인했다. 외부 연결 결정 보류와 미승인 조건 때문에 S09 실제 앱·후보/수정 수용, S10/S11 실제 출시/복구는 미완료다. Claude 추가 요청 없이 완료 인계 1f1953a까지 통합했다. 자동 세션 전달/추가 agent/외부 push·배포는 하지 않았다.
+
+
+
+## P01–P05 보완 배정 — 현재 작업 목록
+
+배정: 사용자 요청으로 원본 `CODEX_PHASE_COMPLETION.md`를 실제 수신했다. 기준 `c3e11c1`, `work/codex-runtime`. 원본 main의 초기 초안·다른 변경은 보존한다. frontend·Claude 인계·관제탑 인계를 수정하지 않는다. DEV-P/DEV-S는 개발 계획이며 생성 앱의 런타임 Phase/Sprint와 구분한다. 이 목록이 이번 보완 작업 상태의 단일 원본이다. 아래 이전 기록은 당시 근거다.
+
+| DEV-P/S | 현재 구현·근거·다음 입력 |
+|---|---|
+| P01/S01 | 원본의 검토한 계획/진입점/프롬프트 10개를 명시 반영. Git/worktree·무료 모델/실행기·소유 경계의 기존 근거 유지. 원본 제품 초안은 가져오지 않음 |
+| P01/S02 | CR-C14/15 원래 번호로 계약·소비자·실제 기획 공백/출시 미설정 연결. Claude 1f1953a까지 통합, 프론트 245개·타입/빌드 통과. 기획 아티팩트 공백 표시 c892a7f까지 통합·재생 확인, 최신 후보 수정·재검토 수용은 별도 |
+| P02/S03 | lease/시도/버전 fence·실제 자식 프로세스 인계 검사·손상 artifact 503·attempt별 프리뷰·취소 자원 조정 구현. 실제 모델/Docker 프로세스 강제 종료·응답 유실의 종합 수용은 미확인 |
+| P02/S04 | 원문 조각/정정 증거·최신 AC·영속 checkpoint/패치 의도·유실 조정 구현/검사. CT40은 c8bbdd7에서 철회/대체를 활성 조건 합집합으로 남기지 않도록 보완. 실제 모델 정정 품질과 필수 집합/한 파일 초과 needs_input 경계는 별도 |
+| P02/S05 | 로컬 Qwen3-Embedding/ACL·버전 cache·단일 추론 lock/순차 unload 및 공개 근거 연결 구현. 실제 의미 검색 6.6초(키워드 0→semantic found), 역할/오류 경계 검사. 일반 검색 품질·장비 전체 경합은 보증하지 않음 |
+| P03/S06 | Infra→Backend/Data→Frontend→통합 작업/DAG/불변 쓰기 scope·실제 diff/candidate 연결. 작은 문의 스택에 한정하며 AI/별도 Data 생략 이유 명시. 실제 모델 분야별 완주·카공지도 지원은 미확인 |
+| P03/S07 | 같은 후보 독립 검토·불변 원본·미확정 상호 차단·실패/미실행 차단/새 회차 검사 유지. 전체 백엔드 57개(43.294초) 통과, 후속 archive 6개(5.544초) 통과. 개발 fixture 판정은 실제 사용자/출시 근거 아님 |
+| P04/S08 | 사용자의 직접 디자인·피드백과 CT36/CT46/기록 안내 수정까지 Claude 완료 커밋만 통합. 최신 실제 API의 키 없는 재생 확인. 사용자 시각 수용·최신 LIVE 수정 흐름·실기기/타 브라우저는 미확인 |
+| P04/S09 | 실제 카공지도 원문/외부 연결 보류를 보존한 cafemap-v1 기획 생성, 지원 공백·승인 차단/검색·문맥 2/2·중지/재개/재접속 확인. 실제 지도 공급자·키/권한·인간 기획 승인/앱 후보·프리뷰 수정/재기획 수용 미완료 |
+| P05/S10 | 고정 Git/registry 조회·보호 프록시/내부망의 로컬 Docker 첫 출시·unpublish/볼륨 보존·불변 manifest·응답 유실 조회 어댑터 구현/fixture 검사. 실제 대상/무료·권한/정확한 HITL 미정으로 제품 출시 API/worker 비활성 |
+| P05/S11 | 원장 1,200개 추가 사건 페이지/이동, 프론트 1만 건 묶음 검사, 복구 경계 자체 검사와 실제 별도 환경 열람 근거 확보. 실제 사용자→배포/복구 전체 완주·장기 장애/장비 전체 자원 측정 미완료 |
+| P05/S12 | CLI/HTTP export/import·검증·멱등 unsigned 재생과 사무실 연결. 새 venv/별도 DB/Git archive 사본에서 실제 HTTP/화면 열람 확인. 브라우저 파일 선택 권한·다운로드된 파일 확인은 미실행; 보고서/제출 후보 패키지 제공 |
+
+S01–02 경계: `docs/planning/phase-completion.md` 전체 및 최신 원본 설계/요구/아키텍처/계약/수용/협업·delivery §3·양쪽 인계를 읽었다. 계획 파일만 복사했고 이전 P01 후 무조건 대기 지시는 적용하지 않는다. contract-first와 기존 ECC 문맥 지침을 사용하며 별도 CONTEXT/기획 체계를 만들지 않는다. 이전 28/120 검사 수치는 이번 새 코드 검증으로 승격하지 않는다.
+
+제공자 전용 산출물: `docs/handoffs/contracts/v1-c3e11c1-from-2403a0e.patch` 및 같은 폴더 README. 변경은 HTTP 스키마/전송 문서 두 파일뿐, protocol은 그대로다. protocol SHA256 `ad6decc2849e1eb80af54b557c7cc61ee05e7ac2b70e92abdddeedd3990bb07d`, HTTP `a7f384026fbde0f6dfe0c29f853c42911b000fefa0a95ee792424fb5dc909b4f`, patch `72976f6e210da86c2d5a6e8c039489fdcfa3e73836d87c36e7c73ebc693f2d0c`. Claude는 이미 적용한 계약을 중복 적용하지 말고 소비자 완료 커밋을 인계하면 된다. 현재 진행 중 frontend diff를 건드리지 않았으며 준비된 P02를 이어간다.
+
+## 최신 통합 결과 — CR-C12·S12 / CT36·CT40·CT46
+
+상태: **`INTEGRATED_WITH_ACCEPTANCE_PENDING`**. P01–P05 배정의 독립 가능한 구현·통합·검증/문서 준비를 진행했지만 S09 지도 지원/실제 사용자 승인과 S10/S11 실제 출시 수용은 미완료다. 위 목록과 이 절이 아래 당시 기록보다 우선한다. 별도 재개를 기다리기 위해 P01에서 멈추지 않았다.
+
+- 제공자 `a514b05`, 사본 버전/긴 이력 `6069b04`; Claude CR-C12/S12 `d85ea5a`/인계 `c054287` 병합 `b7f01f0`; CT46 `a8e1590` 병합 `24e7e6c`; 사용자 입력이 없다는 잘못된 export 안내 수정 `7da9bac` 병합 `512b397`; 제공자 경계/보고서 `ca0946b`; Claude 오류 안내 `efb73f4`/최종 인계 `900425a` 병합 **`914a269`**. 프론트는 완료 커밋만 병합했으며 직접 수정하지 않았다.
+- 기준/두 경로/브랜치: 공통 `6cc9a0bd8c0e382f4a53a5e4a5fa32c7f5e04b18`; 원본/.worktrees/codex-runtime = work/codex-runtime, 원본/.worktrees/claude-office = work/claude-office. 원본 main의 초안/다른 사용자 변경은 보존했다.
+- 현재 protocol SHA256 **43e0f444b2f6fc408dd177d8db599a7a13f0f3e7e8f0e2993595701c89147147**, HTTP **2b8516cebbb75cb28f1c20ac371706532063f65f3ffa4c425e75f0f37ab2cddc**. Claude 생성 hash와 동일하다. API/공개 artifact 활성화는 소비자 완료 커밋 확인 뒤 수행했다.
+- 변경 파일: `backend/{archive,api,store,contracts,__main__}.py`, `runner/{release,pipeline,worker,context}.py`, 관련 backend/tests·README·계약 전송 문서·[검증 보고서](../reports/p01-p05-verification.md). 검색/문맥 근거는 엄격한 본문·task/event 참조로 공개하며 raw prompt/상대 미확정 검토는 공개하지 않는다. 보호 프록시 파일 hash도 기획 결속에 추가했으므로 옛 승인은 새 보호 입력의 승인으로 재사용할 수 없다.
+- 최종 backend 전체 **57개/43.294초**, 후속 URL 사용자정보/문맥 조각 계수 경계의 archive **6개/5.544초**, 최종 통합 frontend **217개/5.78초**, vue-tsc/Vite build 통과(JS gzip 70.37 KB). fake 모델/mock 외부 도구·합성 승인/PASS와 실제 MCP를 사용한 개발 검사다. 실제 배포나 사용자 승인 근거로 승격하지 않는다.
+- CT36은 현재 spec/state/report 결속과 조회 실패 시 무효화 코드/회귀 통합. CT40은 c8bbdd7의 원문 인용/hash 정정 증거와 철회/대체 조건 처리/새 승인 무효화 검사. CT46은 backend에서 알려진 preview/retrieval/context 본문을 import마다 개별 검증하고 잘못된 역할을 재계산한 해시로도 거절; Claude a8e1590도 역할 원소/형식 오류 표시 회귀를 통합했다. 최신 LIVE 사용자 수용·실제 모델 정정 품질까지 해소했다고 보고하지 않는다.
+- 실제 키 없는 측정: 새 Python 3.14 venv + 고정 backend lock(pip check 통과), Git archive의 신뢰 사무실 build·별도 새 DB, 모델/worker/배포 미설정. 24e7e6c 사본의 HTTP import/export 200·resume 409 REPLAY_READ_ONLY, exporter revision=null(상위 repo 오인 안 함), 원장 11사건/9공개 artifact/2보고서. Chrome에서 서명 없음/읽기 전용·6개 동결 AC/두 보고서·11사건 수신, iframe 0을 확인했다. 개발 합성 기록이며 실제 사용자 승인 아님.
+- 측정 원장 capsule: `runtime-data/submission-check/recording-24e7e6c.json`, digest `sha256:fc46fa492b9f1b7029ff0da47ba6e71a38c00d5f5a6d62f794c559ef424c21e3`, 새 imported run ca233b381f4e4450b7c84a06e7e5429a. 공개 확인 `keyless-http-verification.json`/`keyless-replay-final.jpg`. 사본 API 자체 RSS 단일 관찰 28,944 KiB/CPU 0.1%(51초 시점), 모델/Docker 전체 메모리 측정이 아니다.
+- 한계: 브라우저 file chooser는 확장 파일 접근 권한이 없어 진행하지 못했다. 권한 확대/우회 없음. UI export의 "내보냄"과 manifest는 확인했지만 download event timeout으로 다운로드 파일 자체 확인은 미실행이다. 실제 HTTP/CLI 이동과 분리해서 기록한다. 기록에는 사용자 입력/산출물이 포함될 수 있으므로 공유 전 검토해야 한다. 비밀 패턴 검사는 모든 개인 정보를 자동 익명화하는 기능이 아니다.
+- S10은 실제 target/무료 자격·push 자동 배포 영향·정확한 사용자 기획/출시 승인 없이는 쓰기를 거절한다. 제품 API/worker의 release 결정은 비활성. 내부 어댑터의 registry 조회/후보 결속·원장 pending→조회 조정은 mock 검사이며 실제 push/deploy/rollback·registry upload·cloud·명세 간 데이터 이전은 미실행이다.
+- 최종 제공자 실제 확인: **ca0946b**의 새 Git archive/새 빈 DB에서 HTTP import/export 200·같은 manifest 재가져오기 동일 run·resume 409·exporter revision=null을 다시 확인했다. jobs/commands/grants/operations는 모두 0건이다. manifest `sha256:85aa57a613370d3d30c6fd4c9e9bd89c49ed651eef63a9c2b51a4ce1a6b971ea`, imported run a68f83d97531499faeb37bf3a3037a0d. Chrome에 11사건·읽기 전용 배지/보고서/AC, iframe 0개를 확인했다. 914a269의 backend/runner는 ca0946b와 바이트가 같다. 마지막 프론트 오류 안내 수정은 217개 검사와 빌드로 검증했다.
+- 최종 제출 후보: `runtime-data/submission-check/skala-lifecycle-review.tar.gz`와 `.sha256`. 신뢰 사무실 build·전체 추적 코드/lock·검증 보고서/README·공개 기록·KEYLESS_CHECK와 SHA256 목록을 포함하며 원본 DB/키/가중치/venv/node_modules/cache는 제외한다. 코드 revision/기록 digest/파일 목록은 패키지 `CHECKSUMS.json`이 기준이다. 전체 수용·배포 완료 제출본은 아니다.
+- 제출 후보 생성/검증 완료: 코드 **1dd51e30ad4262b480d340ae2d2a18d7f1ef013c**, **173파일/600,705 bytes**, tar SHA256 **c68d7418072c651cf8c3fa3b858d4b58599a90e867f0b0e8c732b898b3cc5b49**. 동봉 recording manifest **sha256:899146f0a235772cecdac1b90fec2d8cfc46090dbd556a1f2cc28aed8b51b0d2**. 최종 패키지 자체 모듈의 fresh venv CLI import도 성공했다. 원본 DB/키/가중치/실행 환경·cache의 tar 제외를 검사했다. 실제 배포·원격 push는 하지 않았다.
+- 자체 검증 API/탭은 종료했다. 마지막 API PID 71176의 정상 종료를 확인했고 다른 세션 프로세스/DB/볼륨은 제거하지 않았다. 원본 backend/runner 초기 8개는 049ed58과 바이트 일치를 다시 확인했다.
+- Claude 최종 인계 900425a의 임시 파일 서버 우회 정정을 읽었다. 해당 파일 선택 검사를 수용 근거로 사용하지 않으며 본 세션은 제한을 우회하지 않았다. 파일 선택/다운로드 파일 확인은 미확인으로 남긴다.
+- 다음 대기/요청: Claude의 b7f01f0 기반 키 없는 API 확인은 인계받았으며 최신 LIVE 기획/수정·CT36 실제 흐름/CR-C12 실제 새 원장 표시는 미확인이다. 관제탑은 최신 통합/기록 열람·남은 조건을 검토한다(새 자동 메시지는 없음). 카공지도는 무료 지도/장소 공급자 자격·키/쿼터·attribution/위치 동의와 격리 허용 범위가 필요한 지원 확장 후 실제 기획을 제시해야 한다. 기존 문의 CRUD를 카공지도 수용으로 대체하지 않는다. 실제 출시 대상·승인은 그 이후 필요한 시점에 확인한다.
+
+## 보완 진행 — 2026-10-21, S03·CR-C13
+
+- `backend/store.py`, `runner/{worker,pipeline,sandbox}.py`, `backend/tests/{test_runtime,test_pipeline}.py`: 같은 실행기가 만료 lease를 재인수해도 옛 attempt는 게시/패치할 수 없다. 손상 JSON/metadata/digest 아티팩트는 계약의 503 오류다.
+- 프리뷰 physical operation은 attempt별 이름으로 분리한다. 재시작 시 미확정 자원의 부재를 조회/확인한 뒤 새 자원을 만든다. Docker 단절/확인 실패는 `uncertain`으로 보존하며 `not_applied`로 추정하지 않는다. 취소된 Docker thread가 끝나기 전 정리하지 않는다. 정리/교체는 데이터 volume을 삭제하지 않는다.
+- **CR-C13 응답**: `/api/replays[].recorded_at`와 동결 `replay_source.recorded_at`는 원본에 포함된 마지막 사건의 `occurred_at`이다. 단순 조회·재생 생성 시각을 사용하지 않는다. 원본에 새 사건이 없으면 반복 GET의 시각/manifest는 같다. 새 사건이 생긴 LIVE 목록은 최신 기록 시각으로 갱신하고 이미 생성된 REPLAY는 동결한다. 필드/타입 변경 없음.
+- 자체 검사: `backend/.venv/bin/python -m unittest discover -s backend/tests -q` **32개 통과**. 임시 DB/fake 모델/mock Docker와 실제 MCP stdio 사용. 실제 Docker daemon 단절/프로세스 종료의 제품 수용을 수행했다는 뜻은 아니다.
+- Claude clean HEAD `0dbe45e`까지 확인: S02 소비자·P02/P03 UI·직접 사용자 디자인 `8d69830`와 전환 저항 피드백 `0dbe45e` 완료 커밋을 다음 통합 대상으로 확정했다. 직접 디자인을 다시 요청하지 않는다. CR-C12 검색 provenance 기계 계약을 먼저 제공할 예정이며 소비자 타입/화면 변경은 Claude 담당이다.
+
+### S02 통합·S04/S05 구현 중 근거
+
+- `c4941bb`: Claude `0dbe45e`까지 완료 커밋만 병합. frontend 소스·생성 타입을 직접 수정하지 않았다. 통합 `npm test` **180개 통과**, `npm run build`의 타입/빌드 통과(JS gzip 63.59KB). happy-dom이 iframe 로드를 막는 예상 진단을 출력했으며 실제 브라우저 프리뷰 접속 증거가 아니다.
+- CR-C12 계약 전용 `573c169`/`docs/handoffs/contracts/v1-cr-c12.patch`; HTTP SHA256 `9c5f15539411010c8216c8c116e94c26585ff59085ad904a896acefeca101662`. protocol 변경 없음. **Claude가 이 계약만 반영해 타입/해시·검색/문맥 근거 UI의 완료 커밋을 인계해야 한다.** 내부 근거 저장은 진행하며 공개 task/artifact 연결은 그 후 활성화한다. 세션 자동 전달은 하지 않았다.
+- S04: `runner/context.py`는 정확한 원문을 2,400 UTF-8 byte 이하 조각으로 나누고 request_id/코드포인트 위치/hash를 보존한다. 이전 기획·제약/AC·현재 조각·최신 승인 목표/제약/AC·미해결 오류를 직접 입력하고 14,000 byte 호출 예산 안에서 순서대로 처리한다. 중간 제약/AC를 잊은 모델 출력으로 덮지 않으며 정의 충돌/필수 집합 초과는 needs_input이다. 첫/정정 원문은 원장에 유지한다. 체크포인트는 원문·승인 명세·보호 입력 hash에 묶이고 모델의 의미 보존을 자동 보증하지 않는다. 최종 계획은 실제 사용자 승인 전 실행하지 않는다.
+- 구현은 파일별/원문 조각별로 나누고 patch 의도·expected/output digest를 먼저 저장한다. 응답 유실 뒤 실제 파일 hash가 저장된 결과와 같으면 모델 재호출/중복 패치 없이 조정한다. 한 파일/필수 명세 자체가 예산보다 크면 자동 절단하지 않고 분해 입력을 요청한다. 일반적인 대형 파일 편집기를 구현한 것은 아니다.
+- S05: 승인된 실제 다운로드 `qwen3-embedding:0.6b`, checkpoint `ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d`(639MB, 가중치 Git 제외). [공식 모델 카드](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B)의 Apache-2.0 및 [Ollama embed](https://docs.ollama.com/api/embed)의 truncate=false/keep_alive=0 경로 확인. 200선의 기존 선정 근거(`evidence.md` §5)를 사용하며 새 패키지/벡터DB·다른 저장소 통째 수집은 하지 않았다.
+- 실제 로컬 개발 측정 `runtime-data/semantic-result.json`: query `호스트비밀보호`, 키워드 0건, 의미 검색 4개 출처(계약/격리 notes), 6.6초. builder ACL 밖 검토 전용 문서가 입력/결과에 없다. threshold .35는 작은 고정 코퍼스의 후보 관련도 기준이며 일반 검색 품질/한국어 전체 평가는 아니다. 첫 수집 시각/내용 버전·본문 hash를 보존한다. 생성·임베딩은 같은 파일 lock을 MCP 프로세스까지 공유하고 keep_alive=0; 다른 상주 모델을 내리지 않고 resource wait한다. 종료 후 `/api/ps`에서 models=[] 확인. 외부 Ollama 호출자는 이 앱 lock 밖이므로 서버의 병렬 설정도 운영자가 유지해야 한다.
+
+### CT36·CT40 실제 수신 / S06–S07 보완
+
+- 사용자 지시로 원본 `docs/handoffs/control-tower.md`의 CT36·CT40·CT42를 찾아 실제 읽었다. 관제탑/Claude 소유 파일을 수정하지 않는다. 남은 항목을 수용 완료로 표시하지 않는다.
+- **CT40 수정**: `177d6ce`의 배열 합집합/동일 AC ID 변경 거절을 제거했다. 가변 목표·기능·비범위·제약·가정·AC의 삭제/대체는 현재 원문 조각의 정확한 인용과 이전 값 digest에 연결한다. 현재 계획에는 새 유효 집합만 남고, 원문·옛 계획·정정 관계/request_id/위치·해시는 불변 checkpoint에 보존한다. 무료/도구 정책은 서버 소유이며 가변 사용자 요구와 구분한다. build는 최신 승인 명세가 유효 범위이고 옛 원문으로 철회 조건을 재도입하면 안 된다고 지시한다. 해시/인용 검증을 모델의 의미 이해에 대한 자동 증명으로 주장하지 않는다.
+- 회귀: 같은 요청의 뒤 조각·후속 정정에서 목표/제약 대체·기능/비범위 철회·동일 AC ID 정의 교체, 원문/관계 유지·옛 승인 무효·최신 실행 입력을 확인한다. 근거 없는 모델 누락은 새 승인 명세가 되지 않는다. fake 모델 fixture이며 실제 Qwen의 모든 정정 문장에 대한 품질 수용은 아니다.
+- **CT36**: 제공자는 같은 명세의 reports=[]인 수정 회차에 `/acceptance`가 `unmet`/report_id 없음으로 응답하며 옛 원본을 보존하는 회귀를 추가했다. Claude `f5a26d5`는 버전/명세·현재 보고서에 묶어 표시·조회 실패 시 삭제·근거 패널 안내를 수정했다. 아직 통합/재검증 전이므로 해소 완료로 보고하지 않는다. `573c169`는 실제 존재하는 CR-C12 계약 전용 커밋이다(Claude 인계의 '전용 커밋 없음'은 현 제공자 상태와 다름).
+- S06: 템플릿의 분야별 scope가 기획 승인 `contract_digests`에 묶인다. 선행 작업 완료 후 claim하며 Infra는 모델 없이 runtime lock 확인, Backend/Data·Frontend는 담당 파일만 MCP patch, 통합만 candidate를 freeze한다. 단계별 실제 diff/hash를 보존한다. 재개는 미완료 작업을 잇고 검토 실패 뒤에는 새 Sprint/task/scope로 새 후보·독립 검토 회차를 만든다. 추가 추론 슬롯/CLI agent를 기동하지 않았다.
+- 새 자체 검사 **43개 통과**: CT40 세 경우, 분야별 DAG/쓰기 거부, 같은 명세 AC 무효화, 실제 자식 worker 프로세스 종료 후 10초 lease 만료/후속 프로세스 인계 포함. 나머지 fake 모델/mock Docker·실제 MCP stdio와 구분한다. 실제 Docker 응답 유실·사용자 HITL·CT36 최신 LIVE 화면 수용은 남았다.
+
+### CT36·CT40 통합 결과 / P05 / 실제 S09 입력
+
+- **CT36** 코드 수정 `f5a26d5`를 `c86d099`로 실제 통합했다. `npm test` **188개**, 타입/빌드 통과(JS gzip 67.00KB). 해당 미확정 옛 met 표시를 코드/회귀 수준에서 보완했다. CT40은 `c8bbdd7`의 세 정정 시나리오로 보완했다. 실제 Qwen 정정 품질·최신 LIVE 화면 수용까지 완료했다고 보고하지 않는다.
+- S03 후속: cancelled 프리뷰의 실제 자원 정리를 다음 tick에서 조회·조정한다. 확인 실패는 uncertain/30초 간격, 확인한 부재만 정리 완료로 남긴다. 데이터 볼륨·원본 artifact는 삭제하지 않는다.
+- **S12 계약 전용 `ce6dcc1`**: `RecordingBundle`/`RecordingImportResult`, `ReplaySource`/`ReplayRecording`의 선택적 `provenance=local_ledger|imported_unsigned`. CR-C12 `573c169` 다음 계약이다. CLI `backend.archive`는 원본 DB를 mode=ro로 읽고 공개 snapshot/events/artifact만 내보낸다. 비밀 형식/개인 호스트 경로·해시/명세/보고서/사건·계층 불일치는 거절하며 불변 원본을 고쳐 숨기지 않는다. import는 새 읽기 전용 run을 만들고 동일 manifest는 재사용한다. jobs/grants/실행/외부 URL/승인 권한은 가져오지 않는다.
+- 실제 기존 합성 개발 원장 `ae947cc5946f425e9ec16239c16d85e7`→새 `runtime-data/submission-check/keyless.sqlite3`로 이동했다. bundle `runtime-data/submission-check/recording.json`, digest `sha256:1890a39a9c38a2e77f94542a7dbe5cd624acf126b0cced193d47a5bf598334d0`, imported run `f53b2fd05bbd47609fe16e2fc896d636`. 키/모델 없이 CLI 검증/import했으며 UI 열람은 아직 소비자 연결 대기다. bundle exporter dirty=true를 보존했으며 과거 실행 당시 제품 commit으로 속이지 않는다.
+- **Claude에게 필요한 실제 다음 입력**: 계약 전용 **`573c169` → `ce6dcc1`**을 순서대로 채택해 타입/해시를 생성하고 CR-C12 검색/문맥 근거 및 S12 서명 없는 가져온 재생·파일 import/export를 연결한 완료 커밋을 인계해 달라. 제품 API 등록/공개 task artifact 연결은 그 뒤 진행한다. 현재 상대는 backend 통합 대기이므로 사용자가 전달해야 하며 자동 메시지/터미널 우회/상대 파일 수정을 하지 않았다.
+- S10은 생성 앱 전용 GitHub `generated/*` branch(자동 배포 없음), 검토 local image ID↔불변 registry manifest 실제 조회, 무료 로컬 Docker 환경·별도 port·같은 명세의 새 volume에 제한했다. 실제 배포/이전 버전 이전·cloud 공급자 자격은 미확인이다. 불변 manifest는 명세/계획 hash·두 원본 보고서·commit·registry digest·repo/환경 설정·데이터 보존 rollback에 묶이고 정확한 사용자 승인/실행 fence 없이는 외부 쓰기를 거절한다. 응답 유실 뒤 조회가 기대 상태를 확인하면 조정하고 아니면 uncertain으로 남겨 재실행하지 않는다. 임시 실제 remote/push/deploy는 하지 않았다. 연결할 실제 대상이 없는 현재는 API/worker에 출시를 활성화하지 않는다.
+- 사용자 실제 S09 원문: **“카페에서 공부하는 게 너무 좋은데 공부나 작업을 할만한 카페를 찾기 어려운 사람들을 위해서 만들어 놓은 카공지도. 내 위치를 기반으로 주변 카페를 추천해주거나 일반 지도 앱처럼 검색도 되어야 해”**. `runtime-data/s09-cafemap.sqlite3`의 project `190f68a8719345e6aa957fd90217bea7`/`s09-cafemap-project.json`에 실제 요청을 저장했다. LIVE run/기획/승인은 아직 만들지 않았다.
+- 현재 requests-v1은 지도/위치/장소 검색을 지원하지 않는다. S09를 CRUD로 축소/합성 성공으로 대체하지 않는다. 카공지도용 template·API/검사/격리·무료 장소 데이터 경로를 준비하고 실제 기획 승인을 받아야 한다. [Nominatim 정책](https://operations.osmfoundation.org/policies/nominatim/)은 자동 생성 플랫폼의 기본 generic 장소 검색 사용을 제한하므로 자동 채택하지 않는다. [OSM tiles 정책](https://operations.osmfoundation.org/policies/tiles/)은 attribution/Referer/cache·일괄 다운로드 금지/가용성 제한이 있다. 현재 opaque iframe/CSP/네트워크 경계도 지도·geolocation과 그대로 호환되지 않는다. [카카오 지도](https://developers.kakao.com/docs/ko/kakaomap/common)는 2026-07-21 변경된 첫 앱 무료 자격/유료 전환 조건을 실제 확인해야 한다. [Geoapify](https://www.geoapify.com/pricing/)의 무료 플랜도 운영자 계정/키/쿼터·attribution 확인 전 호출하지 않는다. 실제 좌표/장소 검색 호출·키 설정은 하지 않았다. 생성 모델은 계속 로컬 무료 정책이다.
+
+## 최신 진행 — 2026-10-20, D3–D8 연결
+
+아래는 이전 기록에 우선한다. 공통 준비 상태는 `READY_FOR_PARALLEL_IMPLEMENTATION`이다. **제품 완주·보안 PASS·실제 배포 완료는 아니다.** 원본 main에서 제품 코드를 수정하지 않았고 frontend 소스도 수정하지 않았다.
+
+- 기준/경로/브랜치: 공통 기준 `6cc9a0bd8c0e382f4a53a5e4a5fa32c7f5e04b18`; Codex `/Users/seohyeokin/workspace/skala-AIMiniProject/.worktrees/codex-runtime` / `work/codex-runtime`; Claude `/Users/seohyeokin/workspace/skala-AIMiniProject/.worktrees/claude-office` / `work/claude-office`.
+- protocol v1 SHA256 유지: `ad6decc2849e1eb80af54b557c7cc61ee05e7ac2b70e92abdddeedd3990bb07d`.
+- HTTP v1 SHA256: `a7f384026fbde0f6dfe0c29f853c42911b000fefa0a95ee792424fb5dc909b4f`. `AcceptanceStatus`와 GET 경로만 추가했다. 기존 Snapshot/Command/Event는 변경하지 않았다. 소비자 타입/생성 해시 갱신은 Claude가 해야 한다.
+
+### 구현·검사 결과
+
+1. 단일 추론 슬롯·로컬 Qwen3.5:4b를 실제 설치/호출했다. 각 모델 호출은 짧은 LangGraph, 다음 역할은 SQLite 큐다. 모델 서버는 `OLLAMA_NO_CLOUD=1`; 외부 키·유료 fallback·tracing 전송을 사용하지 않았다. 큰 maxLength의 Ollama grammar 400을 실제 발견해 샘플링에서만 제거하고 서버 원본 검증은 유지했다.
+2. `knowledge/**`, `runner/{access,mcp_server}.py`: 출처·버전·역할 ACL을 가진 작은 키워드 코퍼스와 실제 MCP Tool/Resource/Prompt. stdio로 명세/파일 읽기·digest 조건 패치·검색을 호출한다. 임의 shell/홈/환경/Docker socket은 노출하지 않는다. 권한은 실행 시도·lease·상태 버전·담당 파일에 묶이고 중지/인계 뒤 옛 grant는 거절된다.
+3. `templates/requests-v1/**`, `infra/**`, `runner/{sandbox,pipeline,review}.py`: 고정 FastAPI/Vue/SQLite 템플릿, 해시 lock, 비권한 Docker·읽기 전용 root·내부망·자원 제한, 변경 불가 후보 Git/이미지, 후보 밖의 보호된 기능·보안 도구를 연결했다. Vue 원문 MIT·출처/npm 무결성 기록을 동봉했다. 코드 실행은 모델 명령이 아닌 고정 서버 도구다.
+4. 기능·보안은 같은 후보에서 독립 입력/컨테이너로 실행한다. 첫 보고서는 두 번째 검토 완료 전 공개 artifact/event/Snapshot에 싣지 않는다. 원본 보고서는 불변이며 error/not_run/fail은 출시를 막는다. 보안은 정적 AST/비밀 패턴·실제 격리 inspect·Grype 의존성/이미지 검사를 수행한다. 일반 목적 종합 SAST를 구현했다고 주장하지 않는다.
+5. 합성 개발 실제 실행: 요청→모델 기획→**스크립트 테스트 결정(실제 사용자 승인 아님)**→MCP 파일 수정→후보→기능 PASS·보안 FAIL→`needs_input` 출시 차단을 먼저 확인했다. 반려 실행 `9452916ee2e54a1d95f556b92806fe71`과 `08b298fa5d3b4a57bdfde0463f4c8a6c`의 원본 보고서를 보존했다. 이미지 수정 후 실행 `ae947cc5946f425e9ec16239c16d85e7`은 같은 후보의 두 검사 PASS와 프리뷰 발급을 실제 확인했다. 최초 통과 후보 commit `6fd73b3a5dff28573b8fa35295de7930e3a4b100`, image `sha256:6b113ada7bc8d5b49e7969912a8de1876afe6686ed249757a8437cb8df43e283`. DB/모델/캐시는 무시된 `runtime-data/`에만 있다. 가짜 도구 결과나 모델 단독 선언으로 통과를 채우지 않았다.
+6. 프리뷰 operation의 고정 이름·이미지 조회/재개, 별도 hostname `localhost`·sandbox opaque origin/CORS·신뢰 CSP 프록시를 연결했다. 제품 프리뷰는 두 PASS 후에만 발급한다. 실제 발급 프리뷰 health와 별도 fixture의 CSP·CORS·브라우저 Vue iframe 렌더링을 확인했다. 실패한 후보에는 프리뷰 artifact를 발급하지 않았다. 확인 후 자기 컨테이너/네트워크만 정리하며 데이터 볼륨은 지우지 않았다.
+7. 명시적 CSS 수정은 같은 승인 명세의 새 Sprint·CSS만 쓰기 가능한 grant로 실행하며 옛 검토/출시 승인을 무효화한다. 실제 합성 수정에서 `app_frontend/style.css` 한 파일만 바뀌고 데이터·명세가 유지됐으며 새 후보도 두 검사를 통과했다. 수정 후보 commit `df44da90e17ff06db690c214f7455b9be1623048`, image `sha256:002ef8f9367e19e1713ed2f1c67ea94c32f506e7991cc1b1d1538a1ea41379ff`. 브라우저에서 보존된 항목을 확인했다. 기능/데이터/API/권한·모호한 요청은 재기획/재승인한다. 원문과 옛 보고서를 보존한다.
+8. 자체 검사: **28개 통과**(임시 DB·fake 모델/mock 도구 포함, 실제 MCP handshake). pending 보고서 비공개·not_run 차단·후보 불일치 거부·stale 결과/옛 grant 차단·스타일 쓰기 제한·재생 AC 판정 보존·스캐너 DB/배포판 불명 차단·같은 명세의 볼륨 보존/옛 서비스 교체·동일 산출물의 실행별 연결·not_run 후 새 검토 회차·명령 ID 사건/멱등 재시도 포함. 승인 명세는 두 JSON 계약과 템플릿 계약/lock·Dockerfile·보호된 검사 파일 해시에 묶이며 입력 변경 후 옛 승인은 거절된다. `pip check` 통과. 개발 검사는 외부의 독립 제품 보안 감사가 아니다.
+
+### 실제 환경·남은 차단
+
+- 실제 모델: Ollama 0.33.0 / Qwen3.5:4b. 공개 카탈로그의 Apache 2.0 경로를 사용했다. 모델 파일 약 4GB는 Git에서 제외했다. `sysctl`로 메모리 17,179,869,184 bytes·CPU 10 확인. 실제 추론 중 `ollama ps`는 3.6GB·100% GPU·context 16,384로 보고했다. 단일 시점 관찰이며 전체 앱 동시 성능·최대 메모리는 보장하지 않는다. `vm_stat`의 낮은 free/압축 메모리는 장비 전체 상태로 다른 앱 영향과 분리하지 않았다.
+- 초기 Debian 런타임은 build 도구 제거 뒤에도 **High 55개 패키지-취약점 일치 항목**으로 출시를 차단했다(55개 고유 CVE라는 뜻 아님). 공식 Python Alpine으로 OS 패키지를 줄인 뒤 남은 zlib High 1개를 `1.3.2-r1`로 고정 수정했다. 배포판의 서명 저장소로 설치하고 재검사했다. 예외/비적용으로 숨기지 않았다. 기존 반려 원본은 보존했다.
+- 최종 런타임 `sha256:c90dc49f8c62dd5473877227226056018fddb671ccefbf3e23843be33307d1cb`, base `python@sha256:d9368b3a5ac59afea7b5d4f2e2aea0941dbf9fdee9c369c5bec00b98244bc929` / Alpine 3.24.2. 최종 후보는 static·secrets·isolation·scanner_coverage·dependency_image 모두 true, **High/Critical/Unknown 0, Medium 9, Negligible 1**이다. 알려진 검사 범위의 정책 통과이며 무취약성 보증은 아니다. 고정 이미지 값은 로컬 Docker image ID이고 원격 registry manifest digest 검증은 D9에 남았다.
+- Grype v0.121.0 image `sha256:621d56d1d68106b787022c81546f7e0a36202a25d1239f0c20195fab8c16f7ea`, DB v6.1.10, built `2026-10-19T06:39:15Z`, valid 상태. 실제 검사는 오프라인이며 DB 시점·원본 JSON을 보고서에 보존한다. 스캐너 임시 공간 부족도 실제 발견/수정했다.
+- D9–D11: 외부 저장소/자동 배포 트리거/무료 대상/배포 승인·복구 manifest·push/deploy 어댑터와 제출 완주는 **미구현/미확인**이다. 대상 질문은 사용자에게 너무 일찍 드렸음을 정정했으며 지금 답을 요구하지 않는다. 실제 배포 직전에만 구체 대상·권한·승인을 확인한다. 현재 release 결정/외부 배포는 서버에서 비활성이다.
+- 긴 기획 문맥은 4,000 UTF-8 바이트 초과 시 원문 보존 needs_input이며 자동 분해 미구현. 범용 스택·AI/Data 생성·벡터 검색·모델 순위·추가 테마는 미구현이다. 전체 시간/수정 횟수 상한과 강제 PASS는 없다.
+- 같은 명세의 교체는 볼륨을 보존하고 새 health/발급 후 옛 서비스를 정리한다. 장기 방치·취소 후 자동 서비스 정리, 실제 사용자 승인에 의한 완주, 장시간 재시작/응답 유실 복구, 깨끗한 제출 환경 재생·배포는 미확인이다. 다른 명세 간 자동 DB 이전은 제공하지 않는다.
+
+### Claude 계약 응답·필요 요청
+
+- **CR-C09 응답**: `GET /api/runs/{id}/acceptance` → `http.AcceptanceStatus` (`spec_version_id`, `items: [{id,status,report_id?}]`). status는 `unmet|met|failed|not_run`. 현재 명세·공개된 validator 원본/해시에만 연결하며 첫 미확정 검토는 숨긴다. REPLAY는 동결된 원본 판정이다. 보안 FAIL과 개별 기능 AC met는 함께 표시할 수 있으며 전체 출시 통과로 합치지 않는다. 새 타입/해시·API 어댑터·fixture 반영은 Claude 담당이다.
+- **CR-C10 응답**: 계약 §7에 `kind: preview → http.Preview`를 명시했고 실제 발급 본문은 url/origin/commit_sha다.
+- **CR-C11 응답(원래 요청: 명령 ID 보장)**: 계약 §7에 접수 명령의 공개 사건에 해당 `command_id`를 반드시 포함함을 명시했다. receipt·상태·사건·작업 예약은 한 트랜잭션이며 POST 응답 전에 SSE가 올 수도 있다. 멱등 재시도는 기존 receipt/원래 사건을 유지하고 중복 사건/작업을 만들지 않는다. 무관한 버전 증가는 확인 근거가 아니다. 기존 서버 동작을 문서로 보장했으며 pause/resume/request_changes/decide와 중복 명령의 회귀 검사를 추가했다. Snapshot/Command/Event 스키마 변경은 없다.
+- **CODEX-UI-001 요청(재생의 읽기 전용)**: 이전 이 인계가 CR-C11을 재사용한 것은 ID 충돌이었다. 기존 Claude CR-C11은 위 명령 ID 요청으로 유지한다. 이 새 UI 요청은 별도 ID다. `PreviewDialog`는 현재 readOnly여도 외부 iframe을 만든다. REPLAY에서는 iframe을 마운트하지 않고 기록 URL/commit만 표시해 달라. 실행 중 아닌 상태/현재 후보와 다른 옛 프리뷰도 기록임을 명시하고 새 후보 프리뷰로 취급하지 말라. 해당 frontend 소스는 Codex가 고치지 않았다.
+- Claude 인계 `b3a52bc`까지 준비된 커밋을 확인했다. 통합 커밋/확인 결과는 아래 최종 근거에 기록한다. 추가 agent/agy·세션 자동 전달·터미널 거절 우회를 하지 않았다.
+
+### 통합·최종 근거
+
+- Codex 구현 커밋 `44d8670` — backend/runner/knowledge/templates/infra/계약/문서 42개. 모델·DB·캐시·키·frontend는 이 구현 커밋에 포함하지 않았다.
+- 후속 구현 `8648fca` — 보호 입력 변경 후 옛 승인 차단·Alpine/zlib 수정·스캐너 메타데이터 검사·같은 명세의 프리뷰 데이터 보존/옛 서비스 정리. 검사만을 위해 수정한 프론트 소스는 없다.
+- Claude 기준 `b3a52bc`를 통합한 merge `6bc3597f9cbdbd45620de682d27a018167c390b6`. 충돌한 공유 문서 3개는 Claude 측 내용이 `2403a0e`와 바이트 단위로 동일함을 확인한 뒤 Codex의 최신 제공자 계약/인계를 유지했다. `git diff b3a52bc HEAD -- frontend`가 빈 결과임을 확인했다. Claude worktree는 clean 상태를 보존했다.
+- 통합 프론트 확인: `npm ci --ignore-scripts`로 고정 lock을 설치한 뒤 **8개 파일/120개 테스트 통과**, `vue-tsc`·Vite build 통과(JS 162.71kB / gzip 55.72kB). frontend 소스·lock·생성 타입을 직접 수정하지 않았다. 새 AcceptanceStatus의 타입/해시와 CODEX-UI-001 수정은 여전히 Claude가 해야 한다.
+- 브라우저는 실제 API의 모델 `qwen3.5:4b 준비됨`, worker 부재로 LIVE 불가, 합성 개발 실제 원장 목록과 합성 예시의 구분을 확인했다. 실제 생성 프리뷰와 스타일 교체 후 보존된 데이터도 확인했다. 실제 사용자 기획 승인·SSE 재연결/장기 REPLAY·실제 배포의 UI 완주는 미확인이다.
+- 보호 프록시 fixture: Docker 내부망은 published port 접근을 차단하므로 신뢰 프록시만 별도 ingress network에 추가 연결했다. 생성 앱은 내부망만 유지했다. loopback health/CSP/opaque-origin CORS와 브라우저 Vue iframe 로드를 확인하고 자체 fixture 컨테이너·네트워크를 정리했다. 제품 실행에는 프리뷰 artifact가 없다.
+- 종료 정리: 합성 실행은 확인 뒤 cancel 사건으로 종료하고 자체 프리뷰 컨테이너·네트워크를 제거했다. 테스트 데이터 볼륨·원장·후보·이미지·모델 파일은 보존했다. 이전 프리뷰 URL은 기록이며 현재 서비스가 아니다. 자체 API/Vite·확인용 브라우저 탭을 닫고 모델을 메모리에서 내렸다. Docker Desktop/모델 서버와 다른 사용자 세션은 종료하지 않았다.
+- 로컬 근거: `runtime-data/development-check.sqlite3`의 불변 원문/이벤트/보고서, `runtime-data/{development-result,style-result,scanner,runtime-image}.json`. 테스트용 스크립트 결정과 실제 사용자 승인은 구분한다. 이 데이터는 Git 미포함이며 깨끗한 환경용 공개 REPLAY export/import는 아직 없다.
+- 관제탑 문서는 원본의 미추적 `docs/handoffs/control-tower.md`를 읽기 전용으로 확인했고 수정/커밋하지 않았다. **CT11 응답**: 후보 키에 서버 attempt ID를 포함해 실행/명세별 연결을 분리했다. 같은 commit/image를 두 실행·명세에 연결하는 회귀 검사에서 서로 다른 후보 행과 바른 소유 관계를 확인했다. **CT12 응답**: 새 build 시도마다 검토 회차가 새 후보 연결을 사용한다. not_run → resume/rebuild → 새 validator/security pass를 확인했고 옛 not_run 원본을 유지했다. 보호된 검사 입력 변경 시 재승인하며 DB가 바뀐 뒤 명시적으로 재검토하면 새 회차로 검사한다. 동일 회차의 인계만 기존 원본을 재사용한다. **CT26 응답**: 요청 ID 충돌을 위와 같이 정정했다. CT15의 프론트 L2/L3 장기 복구·성능 위험은 미해결이다.
+- 다음: **CR-C09 소비자 타입/API·CODEX-UI-001 UI 반영, CR-C11 계약 소비 확인** → 실제 사용자 입력·승인과 장기 복구/재생 통합 확인 → 실제 대상이 준비됐을 때만 D9 배포 승인·복구/상태 조정 구현. 지금 사용자에게 저장소/배포 대상 답을 요구하지 않는다.
+
+아래 D1·이전 기록의 미연결/모델 부재 문구는 당시 이력이다.
+
+## 현재 상태 — 2026-10-20
+
+`READY_FOR_PARALLEL_IMPLEMENTATION` — Git 연결·두 브랜치/worktree·초안 보존을 실제 완료했다. Claude는 자기 worktree에서 예시 기반 F0–F5/F7을 시작할 수 있다. LIVE 연결은 아래 D1 제공자 계약을 명시 반영한 뒤 수행한다. 소비자 통합 확인은 아직 남았다. 제품 구현 완료·검토 PASS·배포 완료 신호가 아니다.
+
+| 항목 | 확인 결과 |
+|---|---|
+| 원격 | `https://github.com/tjgurdls9/skala-AIMiniProject.git` · private · default `main` |
+| 공통 기준 커밋 | `6cc9a0bd8c0e382f4a53a5e4a5fa32c7f5e04b18` (원격 실제 fetch 결과, 과거 `807ce7c`의 후속) |
+| 원본 | `/Users/seohyeokin/workspace/skala-AIMiniProject` · `main` → `origin/main` 추적 |
+| Codex | `/Users/seohyeokin/workspace/skala-AIMiniProject/.worktrees/codex-runtime` · `work/codex-runtime` |
+| Claude | `/Users/seohyeokin/workspace/skala-AIMiniProject/.worktrees/claude-office` · `work/claude-office` |
+| 초안 보존 커밋 | `049ed58` · Codex 브랜치만 · backend 6개/runner 2개 · 미검증 상태를 명시 |
+| protocol v1 SHA256 | `ad6decc2849e1eb80af54b557c7cc61ee05e7ac2b70e92abdddeedd3990bb07d` |
+| 공통 기준 HTTP 초안 SHA256 | `3e16e55ec6ff629013ceb41afa1ab94ba4378b36f583f4ab0bfd8a11d9827a1d` |
+| D1 제공자 HTTP SHA256 | `9a10711627ee332f39e933caec4e1244de7bf679a0e88ce48b48c94e3d41f945` · CR-C01–C08 응답에 따른 추가 타입 |
+| 포트 | 프론트 `127.0.0.1:5173`, API `127.0.0.1:8000`; 확인 당시 listener 없음. Vite의 `/api` 프록시 대상 `http://127.0.0.1:8000` |
+
+### 수행·보존 근거
+
+- 승인된 `.git` 쓰기와 네트워크로 `init`, origin 등록, fetch, main ref/index 연결, 두 worktree 생성을 수행했다. 원본 파일을 checkout으로 덮지 않았다.
+- 원격 26개 추적 파일을 바이트 단위 비교해 전부 동일함을 확인했다. HTTP 초안은 이미 원격에 있다. backend/runner 8개는 로컬에만 있었다.
+- 초안 8개를 Codex worktree로 복사한 뒤 원본/사본 바이트와 SHA256을 대조했다. 원본 초안은 삭제·변경하지 않고 원본에 untracked로 남겼다. 이후 제품 코딩은 Codex worktree에서만 한다.
+- GitHub keyring 인증 정상, private 확인. 등록된 Actions workflow는 0개다. push·force push·배포는 하지 않았다. 외부 GitHub App/webhook 배포 연계는 미확인이다.
+- 원본의 이 인계는 대기 중인 세션이 발견할 준비 신호 사본이다. 최신 구현 인계는 Codex worktree/브랜치의 같은 경로에서 읽는다. 다른 worktree에 문서·코드가 자동 반영되지 않는다.
+
+### 작업 목록 (상태의 단일 원본)
+
+| 작업 | 현재 상태·다음 결과 |
+|---|---|
+| D0 Git/worktree | 완료. 로컬 Qwen·Docker·오프라인 스캐너 준비 확인. 실제 배포 대상은 미정 |
+| D1 계약/저장 | 세션/명령/SSE/승인/저장·추가 AC 판정 제공자 연결. 최신 소비자 타입/CR-C09 반영 필요 |
+| D2–D3 | 영속 worker/lease/버전 fence/중지·재개·짧은 LangGraph·실제 모델 확인. 긴 문맥 자동 분해 미구현 |
+| D4–D6 | 작은 ACL 코퍼스·실제 MCP·격리 패치·같은 후보 두 검토 연결. 실제 반려→이미지 수정→두 검사 PASS 확인 |
+| D7 | Claude b3a52bc까지 통합. 120개 테스트·타입 검사·빌드 통과. CR-C09·CODEX-UI-001 소비자 반영과 CR-C11 계약 소비 확인 남음 |
+| D8 | 두 검사 통과 후 실제 프리뷰·CSS만 수정·같은 명세/데이터 유지·새 후보 재검토·옛 서비스 교체 확인. 실제 사용자 승인 완주는 별도 |
+| D9–D11 | 외부 Git/배포·승인/복구 manifest·제출 완주 미구현/대상 미정. 실제 배포는 사용자 승인 후에만 진행 |
+
+### Claude에게 필요한 요청
+
+- **CODEX-BOOTSTRAP-001** 해결: 위 기준/브랜치/경로를 사용한다. 원본에서 코딩하거나 branch를 바꾸지 않는다.
+- **CODEX-CONTRACT-001**: protocol v1은 위 기준 그대로 사용 가능. HTTP는 초안이므로 F6 LIVE 전송은 D1 응답/커밋 반영 후 연결한다. CR-C01–C08은 읽었으며 아래 구현 기록에서 같은 ID로 답한다.
+- 추가 agent·agy를 기동하지 않았다. 기존 Claude 세션으로의 자동 전달·재개는 확인하지 않았으며, 이 파일을 준비 신호로 제공한다.
+
+### 확인 범위·위험
+
+Git/worktree·바이트/해시·포트·원격 메타데이터만 확인했다. 제품 테스트·API·모델 호출·Docker·배포는 아직 미실행이다. 원본의 보존 초안을 다시 stage하지 말고 Codex 브랜치의 보존 커밋을 사용한다. 독립 검증·보안 PASS를 주장하지 않는다.
+
+## D1 계약 응답 — Claude 소비자에게
+
+공유 계약은 protocol v1을 유지하고 HTTP v1에 타입을 추가했다. HTTP 초안의 ProjectCreate/CommandReceipt/Runtime 필드는 유지했다. 아래 응답은 제공자 연결 기준이며 소비자 타입/fixture 반영 완료를 뜻하지 않는다. 계약 커밋은 `2403a0ef979f44c7882ab74d965c713cffb6e546`이다. protocol 변경 없이 HTTP 타입/전송 의미와 이 응답만 분리했다.
+
+| 요청 ID | 결정·실제 제공 형태·소비자 영향 |
+|---|---|
+| CR-C01 | 채택: loopback·허용 Origin + HttpOnly/SameSite=Strict 쿠키. POST/GET/DELETE `/api/session`; 변경 요청 `X-CSRF-Token`. 브라우저 Bearer 금지, SSE는 쿠키. 외부 공개 인증은 미지원. 계약 §7 참조 |
+| CR-C02 | 기능 채택, 제안 필드명은 초안 유지: `{title,request}` → Project, runs는 `{mode,source_run_id?}` → 전체 Snapshot. `/api/replays` → ReplayRecordings. request_text를 보내면 422 |
+| CR-C03 | 세부 기존 Runtime 채택: model_status/runner_status/live_available/reasons 등. 범용 status item 배열로 변경하지 않음. 생성 앱/배포 미연결을 reasons와 deployment_enabled=false로 표시 |
+| CR-C04 | 채택: 202 CommandReceipt의 기존 `command_id,run_id,status:accepted,accepted_at`. accepted:true는 채택하지 않음. 오류 Error, 409 버전 충돌에 current_state_version 추가 |
+| CR-C05 | 채택: 최초 ?after=, 재접속 Last-Event-ID 우선. event:lifecycle + Event, 약15초 주석 heartbeat. 범위 밖 event:resync 후 닫기. 현재 이벤트 전부 보존. 잘못된 cursor는 422 |
+| CR-C06 | (a) 채택: spec 아티팩트의 PlanView. AC 정의·스택·대상·정책·가정·변경 설명 제공. Snapshot 변경 없음. AC 이행 상태는 아직 없음; 정의만으로 met 표시 금지 |
+| CR-C07 | 계약 추가/실행 보류: Preview·Environment 타입과 환경 조회 경계 명시. 실제 격리 프리뷰·배포 대상 미설정, 현재 환경조회404·preview 아티팩트 없음. 임의 URL/같은 hostname 다른 port를 프리뷰로 신뢰하지 않음 |
+| CR-C08 | 채택: 현재 Sprint를 running/ready에서 도출·표시. 중지 접수 후 Snapshot 확인. worker 버전/lease fence 사용. 외부 operation 아직 없음; 결과불명 사건을 합성하지 않음 |
+
+Claude 요청: 이 계약 커밋만 자기 브랜치에 명시 반영(cherry-pick)하고 frontend 안의 타입·예시를 재생성한다. 제공자 구현 커밋은 소비자 타입 생성에 필요하지 않다. `http.v1.schema.json`의 상대 protocol 참조를 해석하고 새 HTTP 타입도 생성할 것. `/api` proxy와 `http://127.0.0.1:5173`을 사용하며, 생성 결과·타입/예시 확인·누락은 Claude 인계에 같은 요청 ID로 남긴다. frontend 파일은 Codex가 만들거나 수정하지 않았다.
+
+## 구현·확인 기록 — 2026-10-20 (D1, D2–D3 일부)
+
+### 수행 내용·커밋·파일
+
+- `049ed58`: 원본 8개 파일 보존. 최종 확인에서도 원본 8개와 이 커밋의 바이트가 모두 같았다.
+- `f4d08de`: 실제 worktree 준비 완료 인계.
+- `2403a0ef979f44c7882ab74d965c713cffb6e546`: 공유 계약 전용. Claude는 자기 브랜치에서 이 커밋을 명시 반영한 뒤 타입/fixture를 생성한다. 다른 세션에 자동 적용하지 않았다.
+- `a70a7b1e367ddc83f5d8949c1124398d1147f741`: 로컬 세션 인증/CSRF, API 오류·생성·SSE·REPLAY 목록, 영속 기획 worker·lease·중지/재개·문맥/시도와 최소 자체 검사.
+- 변경 파일: `.gitignore`, `backend/{README.md,__main__.py,api.py,config.py,contracts.py,store.py,requirements.lock,tests/test_runtime.py}`, `runner/{model.py,worker.py}`, 공유 `docs/planning/{contracts.md,http.v1.schema.json}`, 이 인계. `frontend/**`와 Claude 인계는 수정하지 않았다.
+- 직접 의존성은 초안 핀 그대로, 전이 설치 핀은 `backend/requirements.lock`에 기록했다. Codex worktree의 `backend/.venv`만 설치했다. 루트 공용 lock을 만들지 않았다.
+- 적용 지침: 설치된 Ponytail, ECC contract-first/product-capability/context-and-decisions/strategic-compact/FastAPI/MCP 지침을 읽었다. 기존 기획·도메인 용어를 재사용했고 별도 기획 체계/서브에이전트를 만들지 않았다. MCP 지침을 읽은 사실을 제품 MCP 구현 완료로 취급하지 않는다.
+
+### 실행 확인·관련 기준
+
+- `backend/.venv/bin/python -m unittest discover -s backend/tests -v`: **13개 통과**, Python 3.14.7/macOS arm64, 외부 키·실제 모델·Docker 없이 임시 DB와 fake 모델만 사용했다.
+- 범위: 쿠키/CSRF/Origin/Host/로그아웃, 요청 크기·잘못된 스키마, 실행기 부재의 LIVE 차단, 기획/승인/plan digest, 명령 멱등·중복 본문 충돌·버전 충돌, 승인 없는 building 차단, 중복 AC ID 차단, 중지 후 늦은 결과 차단/진행 중 요청 취소, lease 이중 인수 차단/인계 복구, 원문·정정/불변 원장 보존, 문맥 예산 초과 시 원문 보존, 실제 원장 REPLAY의 불변·읽기 전용 의미, SSE 직렬화/범위 밖 resync를 확인했다.
+- `pip check`: 의존성 충돌 없음. `git diff --check`: 통과. 원격 26개 파일 일치·보존 초안 8개 바이트·두 worktree/브랜치·계약 해시를 확인했다.
+- R04/AC03, R05/AC05, R11–13/AC11–12, R14–16/AC13, R25/AC22 관련 일부 서버 경계의 자체 근거다. AC01 전체 완주·AC06 범위 분류·AC09/10 독립 검토·AC15 장비 실측·AC16 제출 완주를 통과 판정하지 않았다.
+
+### 미실행·실패·남은 위험
+
+- 승인된 읽기 전용 D0 확인: Ollama `127.0.0.1:11434/api/tags` 연결 실패(curl exit 7). Docker는 `~/.docker/run/docker.sock` 부재로 데몬 연결 실패했다. 모델 다운로드·기동·추론, 컨테이너 생성/실행은 하지 않았다.
+- 실제 모델 태그/라이선스/자원·한국어/JSON 품질은 미확정. 실제 모델 없이 만들어진 테스트 결과를 실제 LIVE 실행/배포 기록으로 제출하지 않는다. 이번 테스트 DB는 임시 파일이며 제출용 REPLAY를 만들지 않았다.
+- provider 오류 시 자원 대기/실패를 보존한다. 기획 승인 뒤 격리 구현기는 아직 없어서 waiting_resource다. RAG/MCP·역할 그래프·생성 앱·서로 격리된 검증/보안·프리뷰·Git operation/배포는 미연결이다. 실제 배포는 사용자 승인 후에만 수행한다.
+- 4,000 UTF-8 바이트의 보수적 입력 예산을 넘으면 원문을 자르지 않고 needs_input에 둔다. 긴 문맥 자동 분해는 미구현이다. 모든 수정 요청은 범위 분류 검증 전까지 보수적으로 재기획/재승인한다. 무한 반복을 짧은 횟수 뒤 합격으로 만드는 로직은 없다.
+- 개발 브라우저·실제 SSE 소켓 재연결·프론트 타입 생성/fixture·통합·공개 서버·다른 OS/Python 설치·의존성 취약점/전체 비밀 검사·독립 검증/보안은 미확인이다. 알려진 키 형식 차단은 종합 보안 검사를 대신하지 않는다.
+- push·원격 branch 생성·main 병합·배포·force push를 하지 않았다. 외부 GitHub App/webhook 연계는 미확인이다.
+- 원본 main에는 준비/진행 인계 사본만 의도적인 미커밋 변경으로 남기며 backend/runner 보존 초안은 untracked 상태다. 원본 HTTP 스키마는 공통 기준 초안 그대로다. **최신 D1 계약/제품 코드는 Codex worktree에만 있다.**
+
+### Claude 재개 요청·다음 착수점
+
+- **CODEX-SESSION-001**: 사용자가 기존 터미널 Claude 세션의 제목을 `사무실 프론트엔드 담당 R&R`로 지정했다. Claude 앱 탐색은 중단했다. 터미널을 직접 조작하려는 도구 요청은 `Computer Use is not allowed to use the app 'com.googlecode.iterm2' for safety reasons.`로 거절됐다. 우회 입력/추가 프로세스 기동을 하지 않았고 **기존 CLI에 메시지 전달/재개는 확인되지 않았다**.
+- 기존 Claude CLI에 전달할 내용: `READY_FOR_PARALLEL_IMPLEMENTATION. 원본 docs/handoffs/codex.md는 최신 인계 사본이다. /Users/seohyeokin/workspace/skala-AIMiniProject/.worktrees/claude-office (work/claude-office, 공통 기준 6cc9a0b)에서만 작업하라. 계약 커밋 2403a0ef979f44c7882ab74d965c713cffb6e546을 반영하고 CR-C01–C08 응답에 따라 frontend 타입/fixture와 F0–F7을 이어가라. backend 완료를 기다리지 말고 예시 화면을 진행하라. frontend 밖 코드·추가 agent·배포를 실행하지 말라. 결과와 누락은 docs/handoffs/claude.md에 남겨라.`
+- 다음 Codex 작업: Claude 소비자 응답 확인 → 실제 Ollama 태그/실행 환경 확인 → 긴 문맥 분해·역할별 문맥/ACL 검색/MCP → Docker 격리 도구·템플릿 및 두 검토 연결. 실제 대상/모델이 없다는 이유로 가짜 성공을 채우지 않는다.
+
+---
+
+## 이전 인계 원문 (아래 BOOTSTRAP_REQUIRED 등은 당시 기록)
+
 # 관제탑 → Codex CLI: 공통 준비 인계
 
 ## 현재 상태
