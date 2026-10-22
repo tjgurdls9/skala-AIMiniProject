@@ -3,6 +3,7 @@
 Each step is one small bounded call. The service validates what the model proposes and returns the errors to it;
 it never fills in an answer. A repeated identical mistake stops for the user (no hidden attempt cap, no spin)."""
 import asyncio
+import copy
 import json
 import re
 
@@ -11,7 +12,8 @@ from jsonschema import Draft202012Validator, ValidationError
 from backend.contracts import SCHEMAS, digest, require
 from backend.store import now
 from runner.context import bounded, mandatory
-from runner.plan_checks import AREAS, check_verification, check_work_plan
+from runner.commands import TOOL_POLICY
+from runner.plan_checks import AREAS, INLINE_FLAGS, check_verification, check_work_plan
 
 DEFS = SCHEMAS["http.v1.schema.json"]["$defs"]
 KINDS = ["contract", "infra", "backend", "frontend", "ai_data", "integration"]
@@ -36,6 +38,23 @@ VERIFICATION_SCHEMA = dict(type="object", additionalProperties=False, required=[
     manual_reason=dict(type=["string", "null"], maxLength=2000)))
 
 
+FILE_PATH_PATTERN = "^[A-Za-z0-9_.-][^ ]*$"   # workspace-relative: no leading slash; no backslash, which Ollama's grammar rejects
+
+
+def sampling_verification_schema():
+    """The verification answer shape the model is sampled with: policy it keeps breaking is enforced by the format itself.
+    The server still validates with VERIFICATION_SCHEMA and the full check rules, so this only narrows what is generated."""
+    schema = copy.deepcopy(VERIFICATION_SCHEMA)
+    inline_programs = [e for e in TOOL_POLICY["executables"] if e in INLINE_FLAGS]
+    for variant in schema["properties"]["checks"]["items"]["oneOf"]:
+        properties = variant["properties"]
+        if properties["kind"] == {"const": "command"}:
+            properties["argv"] = dict(properties["argv"], prefixItems=[{"enum": inline_programs}])
+        elif properties["kind"] == {"const": "file"}:
+            properties["path"] = dict(properties["path"], pattern=FILE_PATH_PATTERN)
+    return schema
+
+
 def summary(plan):
     return {k: plan[k] for k in ("goal", "features", "non_goals", "constraints")} | dict(
         acceptance=[dict(id=a["id"], title=a["title"], description=a["description"]) for a in plan["acceptance"]])
@@ -46,7 +65,7 @@ class PlanExtras:
         self.store = store
 
     # -- bounded ask with validation feedback ---------------------------
-    async def ask(self, job, worker, step, call, schema, check):
+    async def ask(self, job, worker, step, call, schema, check, sampling=None):
         key = digest(["plan-extras", job["run_id"], step, call])   # step inputs only; volatile failure notes must not change it
         call = dict(role="planner", step=step, **mandatory(job["packet"]), **call)
         cached = self._recall(key)
@@ -54,7 +73,7 @@ class PlanExtras:
             return cached
         seen = set()
         while True:
-            proposal = await worker.infer(job, bounded(dict(call)), schema)
+            proposal = await worker.infer(job, bounded(dict(call)), sampling or schema)
             try:
                 Draft202012Validator(schema).validate(proposal)
                 errors = check(proposal)
@@ -130,7 +149,7 @@ class PlanExtras:
                 instructions="Propose up to 3 declarative checks (http, command or file) that demonstrate this single acceptance criterion "
                              "against the finished app. Give each a unique short id and put this criterion's id in ac_ids. If it cannot be "
                              "checked mechanically return no checks and explain in manual_reason. A command check must be self-contained inline code "
-                             "(python -c or node -e that imports the implementation and asserts the expected value); it must never run test files or a test runner."), VERIFICATION_SCHEMA, check)
+                             "(python -c or node -e that imports the implementation and asserts the expected value); it must never run test files or a test runner."), VERIFICATION_SCHEMA, check, sampling_verification_schema())
             prefix = re.sub(r"[^A-Za-z0-9_-]", "_", ac["id"])[:30] or "ac"
             if prefix in prefixes:   # different criterion ids can sanitise to the same text; a check id must still name one check
                 prefix = f"{prefix[:24]}_{len(prefixes) + 1}"

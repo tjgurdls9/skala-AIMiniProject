@@ -78,7 +78,7 @@ def validate_command(argv, cwd=".", timeout=TOOL_POLICY["timeout_default"]):
             "FORBIDDEN", "셸 문자열이 아닌 인자 배열이 필요합니다.", 403)
     require(len(argv) <= TOOL_POLICY["max_args"] and all(len(a.encode()) <= TOOL_POLICY["arg_bytes"] for a in argv),
             "INVALID_COMMAND", "인자 개수나 길이 한도를 넘었습니다.", 422)
-    require(argv[0] in EXECUTABLES, "FORBIDDEN", "허용된 실행 파일이 아닙니다.", 403)
+    require(argv[0] in EXECUTABLES, "FORBIDDEN", f"허용된 실행 파일이 아닙니다(허용: {', '.join(EXECUTABLES)}).", 403)
     if argv[0] == "npm":
         first = next((a for a in argv[1:] if not a.startswith("-")), None)
         require(first not in DENIED_NPM, "FORBIDDEN", "의존성 설치는 install_dependencies 도구로만 합니다.", 403)

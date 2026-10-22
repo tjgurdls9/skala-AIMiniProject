@@ -158,6 +158,55 @@ class VerificationRetry(unittest.TestCase):
         self.assertNotIn('c2', ' '.join(seen[1]))
 
 
+class ConstrainedVerificationSchema(unittest.TestCase):
+    """Live run 3e1730: policy the model kept breaking (allowed programs, relative file paths) is now enforced by the response schema."""
+    setUp = extras.PlanExtrasChecks.setUp
+    command = extras.PlanExtrasChecks.command
+    post_command = extras.PlanExtrasChecks.post_command
+    start = extras.PlanExtrasChecks.start
+
+    @staticmethod
+    def variants(schema):
+        return {v['properties']['kind']['const']: v['properties'] for v in schema['properties']['checks']['items']['oneOf']}
+
+    def test_the_program_of_a_command_check_must_be_one_the_policy_allows_for_inline_code(self):
+        from runner.commands import TOOL_POLICY
+        from runner.plan_checks import INLINE_FLAGS
+        from runner.plan_extras import sampling_verification_schema
+        allowed = [e for e in TOOL_POLICY['executables'] if e in INLINE_FLAGS]
+        argv = self.variants(sampling_verification_schema())['command']['argv']
+        self.assertEqual(argv['prefixItems'], [dict(enum=allowed)])
+        self.assertNotIn('curl', allowed)
+
+    def test_the_path_of_a_file_check_cannot_start_with_a_slash_and_needs_no_backslash(self):
+        import re
+        from runner.plan_extras import sampling_verification_schema
+        pattern = self.variants(sampling_verification_schema())['file']['path']['pattern']
+        self.assertNotIn('\\', pattern)
+        self.assertTrue(re.search(pattern, 'server/main.py'))
+        self.assertIsNone(re.search(pattern, '/app/main.py'))
+
+    def test_the_constrained_schema_is_what_the_model_is_sampled_with_while_the_server_validates_the_original(self):
+        seen = []
+
+        class Recording(extras.Scripted):
+            async def generate(inner, packet, schema):
+                if packet.get('step') == 'verification':
+                    seen.append(schema)
+                return await super().generate(packet, schema)
+        run_id = self.start(Recording())
+        asyncio.run(self.worker.tick())
+        self.assertEqual(self.store.snapshot(run_id)['state'], 'awaiting_plan_approval')
+        self.assertTrue(seen and 'prefixItems' in json.dumps(seen[0]))
+
+    def test_a_rejected_program_lists_the_allowed_ones(self):
+        from runner.plan_checks import check_verification
+        spec = dict(id='C1', ac_ids=['AC1'], kind='command', argv=['curl', 'x'], expect=dict(exit=0))
+        errors = check_verification([spec], [], [dict(id='AC1', title='a', description='a')])
+        self.assertIn('python', errors[0])
+        self.assertIn('node', errors[0])
+
+
 class AlternatingMistakes(unittest.TestCase):
     """Live run b7630a: the model alternated between two wrong answers, so "the same error twice in a row" never happened."""
     setUp = extras.PlanExtrasChecks.setUp
