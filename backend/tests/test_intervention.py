@@ -32,6 +32,19 @@ class LedgerRules(unittest.TestCase):
         self.assertEqual(unledgered(["a.py", "generated.txt"], calls), ["generated.txt"])
 
 
+class InstallLockFiles(unittest.TestCase):
+    """Re-review N-3: the lock file a successful install writes through the ledgered install tool is not a hand edit."""
+    def test_a_successful_install_explains_its_own_lock_file_only(self):
+        pip = [call("install_dependencies", manager="pip", packages=["fastapi"])]
+        self.assertEqual(unledgered(["requirements.lock", "package-lock.json", "a.py"], pip), ["a.py", "package-lock.json"])
+        npm = [call("install_dependencies", manager="npm", packages=["left-pad"])]
+        self.assertEqual(unledgered(["requirements.lock", "package-lock.json"], npm), ["requirements.lock"])
+
+    def test_a_failed_install_explains_nothing(self):
+        failed = [call("install_dependencies", ok=False, manager="pip", packages=["fastapi"])]
+        self.assertEqual(unledgered(["requirements.lock"], failed), ["requirements.lock"])
+
+
 class WorkspaceState(unittest.TestCase):
     def setUp(self):
         self.workspace = Path(self.enterContext(tempfile.TemporaryDirectory())) / "ws"
