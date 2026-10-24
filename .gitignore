@@ -35,3 +35,7 @@ coverage/
 .ruff_cache/
 runtime-data/
 .coverage
+
+# SKALA 수업·발표 자료: 로컬에만 둔다
+/presentations/
+/docs/demo/demo-script.md
